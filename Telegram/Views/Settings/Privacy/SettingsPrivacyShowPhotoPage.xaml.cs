@@ -1,0 +1,69 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Telegram.Controls;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+using Telegram.ViewModels.Settings;
+using Telegram.ViewModels.Settings.Privacy;
+using Microsoft.UI.Xaml;
+
+namespace Telegram.Views.Settings.Privacy
+{
+    public sealed partial class SettingsPrivacyShowPhotoPage : HostedPage, IUserDelegate
+    {
+        public SettingsPrivacyShowPhotoViewModel ViewModel => DataContext as SettingsPrivacyShowPhotoViewModel;
+
+        public SettingsPrivacyShowPhotoPage()
+        {
+            InitializeComponent();
+            Title = Strings.PrivacyProfilePhoto;
+
+        }
+
+        #region Delegate
+
+        public void UpdateUser(Chat chat, User user, UserFullInfo fullInfo, bool secret, bool accessToken)
+        {
+            if (fullInfo != null)
+            {
+                if (fullInfo.PublicPhoto != null)
+                {
+                    RemovePhotoPhoto.Source = ProfilePictureSource.ChatPhoto(ViewModel.ClientService, user, fullInfo.PublicPhoto, false);
+                    RemovePhoto.Visibility = Visibility.Visible;
+
+                    UpdatePhoto.Content = Strings.UpdatePhotoForRest;
+                }
+                else
+                {
+                    RemovePhoto.Visibility = Visibility.Collapsed;
+
+                    UpdatePhoto.Content = Strings.SetPhotoForRest;
+                }
+            }
+        }
+
+        public void UpdateUserStatus(Chat chat, User user) { }
+
+        #endregion
+
+        #region Binding
+
+        private Visibility ConvertNever(PrivacyValue value)
+        {
+            return value is PrivacyValue.AllowAll or PrivacyValue.AllowContacts ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private Visibility ConvertAlways(PrivacyValue value)
+        {
+            return value is PrivacyValue.AllowContacts or PrivacyValue.DisallowAll ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        #endregion
+
+    }
+}

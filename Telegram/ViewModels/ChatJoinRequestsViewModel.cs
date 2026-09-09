@@ -1,0 +1,78 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Threading.Tasks;
+using Telegram.Collections;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Microsoft.UI.Xaml.Data;
+
+namespace Telegram.ViewModels
+{
+    public partial class ChatJoinRequestsViewModel : ViewModelBase, IIncrementalCollectionOwner
+    {
+        private readonly Chat _chat;
+        private readonly string _inviteLink;
+
+        public ChatJoinRequestsViewModel(Chat chat, string inviteLink, IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+            _chat = chat;
+            _inviteLink = inviteLink;
+
+            Items = new IncrementalCollection<ChatJoinRequest>(this);
+        }
+
+        public bool IsChannel => _chat?.Type is ChatTypeSupergroup supergroup && supergroup.IsChannel;
+
+        public IncrementalCollection<ChatJoinRequest> Items { get; private set; }
+
+        public async void Process(ChatJoinRequest request, bool approve)
+        {
+            Items.Remove(request);
+
+            var response = await ClientService.SendAsync(new ProcessChatJoinRequest(_chat.Id, request.UserId, approve));
+            if (response is Ok && approve && ClientService.TryGetUser(request.UserId, out User user))
+            {
+                ShowToast(string.Format(IsChannel
+                    ? Strings.HasBeenAddedToChannel
+                    : Strings.HasBeenAddedToGroup, user.FullName(true)));
+            }
+        }
+
+        #region IIncrementalCollectionOwner
+
+        private ChatJoinRequest _offset;
+
+        public async Task<IncrementalLoadResult> LoadMoreItemsAsync(uint count)
+        {
+            Logger.Info();
+
+            var totalCount = 0u;
+            var hasMoreItems = false;
+
+            var response = await ClientService.SendAsync(new GetChatJoinRequests(_chat.Id, _inviteLink, string.Empty, _offset, 10));
+            if (response is ChatJoinRequests requests)
+            {
+                foreach (var item in requests.Requests)
+                {
+                    _offset = item;
+
+                    Items.Add(item);
+                    totalCount++;
+                }
+
+                hasMoreItems = requests.Requests.Count > 0;
+            }
+
+            return new IncrementalLoadResult(totalCount, hasMoreItems);
+        }
+
+        #endregion
+    }
+}

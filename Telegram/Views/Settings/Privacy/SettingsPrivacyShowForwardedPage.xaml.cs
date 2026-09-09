@@ -1,0 +1,128 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Numerics;
+using Telegram.Common;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Telegram.ViewModels.Settings;
+using Telegram.ViewModels.Settings.Privacy;
+using Windows.Foundation.Metadata;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.Views.Settings.Privacy
+{
+    public sealed partial class SettingsPrivacyShowForwardedPage : HostedPage
+    {
+        public SettingsPrivacyShowForwardedViewModel ViewModel => DataContext as SettingsPrivacyShowForwardedViewModel;
+
+        public SettingsPrivacyShowForwardedPage()
+        {
+            InitializeComponent();
+            Title = Strings.PrivacyForwards;
+
+
+            // ApiInformation is asked directly here instead of through Common/ApiInfo.cs, which is
+            // the class every other shadow site in the tree goes through and whose Linux branch
+            // already answers CanCreateThemeShadow => false (Common/ApiInfo.cs:52). Uno answers
+            // IsPropertyPresent by reflection, so it can well say yes for a property that exists
+            // and does nothing - and behind this "yes" come ThemeShadow plus two Receivers.Add
+            // calls, in a page constructor. Guarded rather than rerouted through ApiInfo: changing
+            // the condition itself would also change Windows 10 behaviour, which is not this
+            // batch's business.
+#if !LINUX
+            if (ApiInformation.IsPropertyPresent("Microsoft.UI.Xaml.UIElement", "Shadow"))
+            {
+                var themeShadow = new ThemeShadow();
+                ToolTip.Shadow = themeShadow;
+                ToolTip.Translation += new Vector3(0, 0, 32);
+
+                themeShadow.Receivers.Add(BackgroundControl);
+                themeShadow.Receivers.Add(MessagePreview);
+            }
+#endif
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+                {
+#if LINUX
+            // Uno raises OnNavigatedTo from Frame.ChangeContent, i.e. inside Frame.Navigate and
+            // BEFORE the Navigated event that NavigationService uses to assign the DataContext, so
+            // on the first navigation to this page ViewModel is null here and every line below
+            // would be a NullReferenceException (measured on this very page, 2026-08-26).
+            // See PageEx.WhenViewModelReady in Telegram.Linux/Xaml/FrameworkElementEx.Linux.cs.
+            if (ViewModel == null)
+            {
+                WhenViewModelReady(() => ViewModel != null, () => OnNavigatedTo(e));
+                return;
+            }
+#endif
+            UpdateMessage();
+            BackgroundControl.Update(ViewModel.ClientService, ViewModel.Aggregator);
+
+            ViewModel.PropertyChanged += OnPropertyChanged;
+        }
+
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            ViewModel.PropertyChanged -= OnPropertyChanged;
+        }
+
+        private void OnPropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ViewModel.SelectedItem))
+            {
+                UpdateMessage();
+            }
+        }
+
+        private void UpdateMessage()
+        {
+            var user = ViewModel.ClientService.GetUser(ViewModel.ClientService.Options.MyId);
+            if (user != null && ViewModel.ClientService.TryGetChat(user.Id, out Chat chat))
+            {
+                MessageOrigin origin = ViewModel.SelectedItem == PrivacyValue.DisallowAll
+                    ? new MessageOriginHiddenUser(user.FullName())
+                    : new MessageOriginUser(user.Id);
+
+                var forwardInfo = new MessageForwardInfo(origin, 0, null, string.Empty);
+                var content = new MessageText(Strings.PrivacyForwardsMessageLine.AsFormattedText(), null, null);
+
+                var message = new Message(0, new MessageSenderUser(user.Id), null, 0, null, null, false, false, false, false, false, false, false, false, false, false, DateTime.Now.ToUnixTimeSeconds(), 0, forwardInfo, null, null, Array.Empty<UnreadReaction>(), null, null, null, null, null, 0, 0, 0, null, 0, 0, string.Empty, 0, string.Empty, 0, 0, null, string.Empty, content, null, null);
+
+                var delegato = new ChatMessageDelegate(ViewModel.ClientService, ViewModel.Settings, chat);
+                var viewModel = new MessageViewModel(ViewModel.ClientService, delegato, chat, null, null, message, true);
+
+                MessagePreview.UpdateMessage(viewModel);
+            }
+        }
+
+        #region Binding
+
+        private string ConvertToolTip(PrivacyValue value)
+        {
+            return value == PrivacyValue.AllowAll ? Strings.PrivacyForwardsEverybody : value == PrivacyValue.AllowContacts ? Strings.PrivacyForwardsContacts : Strings.PrivacyForwardsNobody;
+        }
+
+        private Visibility ConvertNever(PrivacyValue value)
+        {
+            return value is PrivacyValue.AllowAll or PrivacyValue.AllowContacts ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private Visibility ConvertAlways(PrivacyValue value)
+        {
+            return value is PrivacyValue.AllowContacts or PrivacyValue.DisallowAll ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        #endregion
+
+    }
+}

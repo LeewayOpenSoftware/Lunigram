@@ -1,0 +1,60 @@
+﻿<UserControl x:Class="Telegram.Controls.Cells.StarWithdrawCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Telegram.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <controls:HeaderedControl IsFooterLink="True"
+                              Header="{CustomResource BotStarsOverviewAvailableBalance}"
+                              Footer="{CustomResource BotStarsWithdrawInfo}">
+        <StackPanel Background="{ThemeResource SettingsItemBackground}">
+            <Grid HorizontalAlignment="Center"
+                  Margin="-8,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <controls:PremiumStarCount Width="40"
+                                           Height="40" />
+
+                <TextBlock FontWeight="SemiBold"
+                           FontSize="28"
+                           Grid.Column="1">
+                    <Run x:Name="CryptocurrencyAmountLabel"
+                         FontWeight="SemiBold"
+                         FontSize="28" /><Run x:Name="CryptocurrencyDecimalLabel"
+                                              FontWeight="SemiBold"
+                                              FontSize="20" />
+                </TextBlock>
+            </Grid>
+
+            <TextBlock x:Name="AmountLabel"
+                       Foreground="{ThemeResource SystemControlDisabledChromeDisabledLowBrush}"
+                       TextAlignment="Center"
+                       Margin="0,-4,0,8" />
+
+            <Button x:Name="TransferButton"
+                    Click="{x:Bind ViewModel.Transfer}"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Center"
+                    Height="40"
+                    Margin="12,8">
+                <StackPanel>
+                    <TextBlock x:Name="TransferText"
+                               Text="{CustomResource BotStarsButtonWithdrawUntil}" />
+                    <TextBlock x:Name="TransferCountdown"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               FontFamily="{StaticResource EmojiThemeFontFamilyWithSymbols}"
+                               HorizontalAlignment="Center"
+                               Margin="0,-2,0,0"
+                               Visibility="Collapsed"
+                               Opacity="0.6" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </controls:HeaderedControl>
+</UserControl>

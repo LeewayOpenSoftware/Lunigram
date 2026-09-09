@@ -1,0 +1,25 @@
+﻿<controls:TeachingTipEx x:Class="Telegram.Views.Popups.CreateLinkPopup"
+                        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                        xmlns:controls="using:Telegram.Controls"
+                        mc:Ignorable="d"
+                        Title="CreateLink"
+                        Style="{StaticResource DefaultTeachingTipStyle}"
+                        ActionButtonStyle="{StaticResource AccentButtonStyle}"
+                        ActionButtonClick="TeachingTip_ActionButtonClick">
+
+    <StackPanel>
+        <TextBox x:Name="TextField"
+                 FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                 PlaceholderText="{CustomResource Text}"
+                 Margin="0,0,0,12"
+                 KeyDown="TextField_KeyDown"
+                 Loaded="TextField_Loaded" />
+        <TextBox x:Name="LinkField"
+                 PlaceholderText="{CustomResource URL}"
+                 InputScope="Url"
+                 KeyDown="LinkField_KeyDown" />
+    </StackPanel>
+</controls:TeachingTipEx>

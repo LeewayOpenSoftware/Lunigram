@@ -1,0 +1,151 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Settings.SettingsProfilePage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:local="using:Telegram.Views"
+                  mc:Ignorable="d"
+                  NavigationMode="Root">
+
+    <local:HostedPage.Action>
+        <Button Content="{CustomResource Save}"
+                Command="{x:Bind ViewModel.SendCommand}"
+                Style="{StaticResource AccentButtonStyle}" />
+    </local:HostedPage.Action>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <ScrollViewer x:Name="ScrollingHost"
+                      VerticalScrollBarVisibility="Auto"
+                      VerticalScrollMode="Auto">
+            <controls:SettingsPanel>
+                <controls:HeaderedControl Footer="{CustomResource RegisterText2}">
+                    <Grid Background="{ThemeResource SettingsItemBackground}"
+                          BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                          Padding="12,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition />
+                            <RowDefinition />
+                        </Grid.RowDefinitions>
+                        <Grid Height="96"
+                              Width="96"
+                              Margin="0,0,12,0"
+                              Grid.RowSpan="2">
+                            <controls:ProfilePicture x:Name="Photo"
+                                                     Size="96" />
+                        </Grid>
+
+                        <TextBox Text="{x:Bind ViewModel.FirstName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="{CustomResource FirstNameSmall}"
+                                 FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                                 MaxLength="{StaticResource UserFirstNameMaxLength}"
+                                 VerticalAlignment="Bottom"
+                                 Margin="0,0,0,2"
+                                 Grid.Column="1" />
+                        <TextBox Text="{x:Bind ViewModel.LastName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="{CustomResource LastNameSmall}"
+                                 FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                                 MaxLength="{StaticResource UserLastNameMaxLength}"
+                                 VerticalAlignment="Top"
+                                 Margin="0,2,0,0"
+                                 Grid.Column="1"
+                                 Grid.Row="1" />
+                    </Grid>
+                    <controls:SettingsButton Content="{CustomResource ChatSetNewPhoto}"
+                                             Glyph="&#xE9FE;">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuFlyoutItem Text="{CustomResource ChoosePhotoOrVideo}"
+                                                Click="{x:Bind ViewModel.SetPhoto}">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xEB9F;"
+                                                  Style="{StaticResource DefaultFontIconStyle}" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="{CustomResource StickersName}"
+                                                Click="{x:Bind ViewModel.CreatePhoto}">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xF4AA;"
+                                                  Style="{StaticResource DefaultFontIconStyle}" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </controls:SettingsButton>
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl IsFooterLink="True"
+                                          Header="{CustomResource EditProfileBio}"
+                                          Footer="{CustomResource EditProfileBioInfo}"
+                                          Click="BioPrivacy_Click">
+                    <TextBox x:Name="About"
+                             Text="{x:Bind ViewModel.Bio, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                             MaxLength="{x:Bind ViewModel.BioMaxLength}"
+                             PlaceholderText="{CustomResource EditProfileBioHint}"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="False"
+                             Padding="12,11,6,12" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl IsFooterLink="True"
+                                          Header="{CustomResource EditAccountInfoHeader}"
+                                          Footer="{x:Bind ConvertBirthdateFooter(ViewModel.IsBirthdateContactsOnly), Mode=OneWay}"
+                                          Click="BirthdatePrivacy_Click">
+                    <controls:SettingsButton x:Name="PhoneNumber"
+                                             Click="{x:Bind ViewModel.ChangePhoneNumber}"
+                                             Content="{CustomResource PhoneNumberChange2}"
+                                             Glyph="&#xF61B;" />
+                    <controls:SettingsButton x:Name="Username"
+                                             Click="{x:Bind ViewModel.ChangeUsername}"
+                                             Content="{CustomResource Username}"
+                                             Glyph="&#xE168;" />
+                    <controls:SettingsButton x:Name="NameColor"
+                                             Content="{CustomResource YourNameColor}"
+                                             Click="{x:Bind ViewModel.ChangeProfileColor}"
+                                             Glyph="&#xE2B1;">
+                        <controls:SettingsButton.Badge>
+                            <controls:ProfileColorBadge x:Name="ProfileColor" />
+                        </controls:SettingsButton.Badge>
+                    </controls:SettingsButton>
+                    <controls:SettingsButton x:Name="Birthdate"
+                                             Content="{CustomResource EditProfileBirthdayText}"
+                                             Click="{x:Bind ViewModel.ChangeBirthdate}"
+                                             Glyph="&#xEA84;" />
+                    <controls:SettingsButton x:Name="BirthdateRemove"
+                                             Content="{CustomResource EditProfileBirthdayRemove}"
+                                             Click="{x:Bind ViewModel.RemoveBirthdate}"
+                                             Foreground="{ThemeResource DangerButtonBackground}" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl x:Name="Automation"
+                                          Footer="{CustomResource EditProfileChatAutomationInfo}">
+                    <controls:SettingsButton x:Name="PersonalChannel"
+                                             Content="{CustomResource EditProfileChannelTitle}"
+                                             Click="{x:Bind ViewModel.ChangePersonalChannel}"
+                                             Glyph="&#xE789;" />
+                    <controls:SettingsButton Content="{CustomResource EditProfileHours}"
+                                             Click="{x:Bind ViewModel.ChangeHours}"
+                                             Glyph="&#xE911;" />
+                    <controls:SettingsButton Content="{CustomResource EditProfileLocation}"
+                                             Click="{x:Bind ViewModel.ChangeLocation}"
+                                             Glyph="&#xE1C4;" />
+                    <controls:SettingsButton Content="{CustomResource EditProfileChatAutomation}"
+                                             Click="{x:Bind ViewModel.ChangeAutomation}"
+                                             Glyph="&#xEB02;" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl>
+                    <controls:SettingsButton Click="LogOut_Click"
+                                             Content="{CustomResource LogOutTitle}"
+                                             Foreground="{ThemeResource DangerButtonBackground}"
+                                             Glyph="&#xE999;" />
+                </controls:HeaderedControl>
+            </controls:SettingsPanel>
+        </ScrollViewer>
+    </Grid>
+</local:HostedPage>

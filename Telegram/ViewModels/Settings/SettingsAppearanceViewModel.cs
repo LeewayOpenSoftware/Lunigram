@@ -1,0 +1,645 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Native;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Services.Settings;
+using Telegram.Td.Api;
+using Telegram.Views.Popups;
+// Both configurations since u-053: SettingsThemesPage/SettingsBackgroundsPage (OpenThemes/
+// OpenWallpaper below) are in the Linux subset too; SettingsProfileColorPage (ChangeProfileColor)
+// stays Windows-only, guarded at its own call site.
+using Telegram.Views.Settings;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Settings
+{
+    public partial class SettingsAppearanceViewModel : ViewModelBase
+    {
+        private readonly IThemeService _themeService;
+
+        public SettingsAppearanceViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, IThemeService themeService)
+            : base(clientService, settingsService, aggregator)
+        {
+            _themeService = themeService;
+
+            var fonts = Direct2D.Current.GetSystemFontFamilies(new[] { LocaleService.Current.Id, NativeUtils.GetCurrentCulture() })
+                .OrderBy(x => x)
+                .Select(x => new SettingsOptionFontFamily(x, x, x));
+
+            FontFamilyOptions = new List<SettingsOptionFontFamily>(fonts);
+            FontFamilyOptions.Insert(0, new SettingsOptionFontFamily(string.Empty, Strings.Default, Microsoft.UI.Xaml.Media.FontFamily.XamlAutoFontFamily.Source));
+
+            ChatThemes = new ObservableCollection<ChatThemeViewModel>();
+
+            var stored = AppSettings.Appearance.Scaling;
+
+            if (AppSettings.Appearance.UseDefaultScaling)
+            {
+                stored = 0;
+            }
+
+            _scaling = stored;
+        }
+
+        public ObservableCollection<ChatThemeViewModel> ChatThemes { get; }
+
+        protected override Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            static Background GetDefaultBackground(bool dark)
+            {
+                var freeform = dark ? new[] { 0x6C7FA6, 0x2E344B, 0x7874A7, 0x333258 } : new[] { 0xDBDDBB, 0x6BA587, 0xD5D88D, 0x88B884 };
+                return new Background(0, true, dark, string.Empty,
+                    new Document(string.Empty, "application/x-tgwallpattern", null, null, TdExtensions.GetLocalFile("Assets\\Background.tgv", "Background")),
+                    new BackgroundTypePattern(new BackgroundFillFreeformGradient(freeform), dark ? 100 : 50, dark, false));
+            }
+
+            var defaultLight = new ThemeSettings
+            {
+                AccentColor = 0x158DCD,
+                OutgoingMessageAccentColor = 0xF0FDDF,
+                OutgoingMessageFill = new BackgroundFillSolid(0xF0FDDF),
+                Background = GetDefaultBackground(false)
+            };
+
+            var defaultDark = new ThemeSettings
+            {
+                AccentColor = 0x71BAFA,
+                OutgoingMessageAccentColor = 0x2B5278,
+                OutgoingMessageFill = new BackgroundFillSolid(0x2B5278),
+                Background = GetDefaultBackground(true)
+            };
+
+            var defaultTheme = new ChatThemeViewModel(ClientService, "\U0001F3E0", defaultLight, defaultDark, false);
+            var themes = ClientService.ChatThemes.Select(x => new ChatThemeViewModel(ClientService, x, false));
+
+            var selectedTheme = themes.FirstOrDefault(x => x.AreTheSame(AppSettings.Appearance.ChatTheme)) ?? defaultTheme;
+            if (selectedTheme != null)
+            {
+                selectedTheme.LightSettings.Background = ClientService.GetDefaultBackground(false) ?? defaultLight.Background;
+                selectedTheme.DarkSettings.Background = ClientService.GetDefaultBackground(true) ?? defaultDark.Background;
+            }
+
+            ChatThemes.AddRange(new[] { defaultTheme }.Union(themes));
+
+            _selectedChatTheme = selectedTheme;
+            RaisePropertyChanged(nameof(SelectedChatTheme));
+
+            return Task.CompletedTask;
+        }
+
+        private ChatThemeViewModel _selectedChatTheme;
+        public ChatThemeViewModel SelectedChatTheme
+        {
+            get => _selectedChatTheme;
+            set => SetChatTheme(value);
+        }
+
+        public bool SelectionChanged { get; private set; }
+
+        private void SetChatTheme(ChatThemeViewModel chatTheme)
+        {
+            if (chatTheme == null || chatTheme.AreTheSame(_selectedChatTheme?.Type))
+            {
+                return;
+            }
+
+            void SetBackground(Background background, bool forDarkTheme)
+            {
+                if (chatTheme.Type is not ChatThemeEmoji emoji)
+                {
+                    return;
+                }
+
+                if (background != null && emoji.Name != "\U0001F3E0")
+                {
+                    ClientService.Send(new SetDefaultBackground(new InputBackgroundRemote(background.Id), background.Type, forDarkTheme));
+                }
+                else
+                {
+                    ClientService.Send(new DeleteDefaultBackground(forDarkTheme));
+                }
+            }
+
+            SetBackground(chatTheme.LightSettings?.Background, false);
+            SetBackground(chatTheme.DarkSettings?.Background, true);
+
+            AppSettings.Appearance.ChatTheme = chatTheme.ToEmoji();
+            NightModeService.Current.Update(updateBackground: false);
+
+            _selectedChatTheme = chatTheme;
+            SelectionChanged = true;
+            RaisePropertyChanged(nameof(SelectedChatTheme));
+        }
+
+        public NightMode NightMode => AppSettings.Appearance.NightMode;
+
+        private string _emojiSet;
+        public string EmojiSet
+        {
+            get => _emojiSet;
+            set => Set(ref _emojiSet, value);
+        }
+
+        private string _emojiSetId;
+        public string EmojiSetId
+        {
+            get => _emojiSetId;
+            set => Set(ref _emojiSetId, value);
+        }
+
+        private int _scaling;
+        public int Scaling
+        {
+            get => Array.IndexOf(_scalingIndexer, _scaling);
+            set
+            {
+                if (value >= 0 && value < _scalingIndexer.Length && _scaling != _scalingIndexer[value])
+                {
+                    var scaling = _scalingIndexer[value];
+                    if (scaling == 0)
+                    {
+                        NativeUtils.OverrideScaleForCurrentView(AppSettings.Appearance.Scaling = _scaling = NativeUtils.GetScaleForCurrentView());
+                        AppSettings.Appearance.UseDefaultScaling = true;
+                    }
+                    else
+                    {
+                        NativeUtils.OverrideScaleForCurrentView(AppSettings.Appearance.Scaling = _scaling = scaling);
+                        AppSettings.Appearance.UseDefaultScaling = false;
+                    }
+
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Touch mode: one column and a bigger interface, for using Unigram with a finger.
+        ///
+        /// Two things happen when it goes on, and both are reversible.
+        /// <list type="bullet">
+        /// <item><description>The layout is pinned to <see cref="MasterDetailState.Minimal"/> -
+        /// the chat list fills the window and a chat opens over it with a back button, which is the
+        /// layout Unigram already uses in a narrow window and the one Telegram for Android uses
+        /// always. That part applies at once, through
+        /// <c>AppearanceSettings.TouchModeChanged</c>.</description></item>
+        /// <item><description>The interface scale is raised to at least
+        /// <see cref="AppearanceSettings.TouchModeScaling"/>, if it was smaller. The scale it
+        /// replaced is remembered in <c>ScalingBeforeTouchMode</c> and put back when touch mode goes
+        /// off, so turning it on and off again leaves the setting where the user had it. On Linux
+        /// the scale itself only moves on the next start (see
+        /// <c>Telegram.Common.InterfaceScale</c>), which is why the two halves of touch mode do not
+        /// land together.</description></item>
+        /// </list>
+        /// </summary>
+        public bool TouchMode
+        {
+            get => AppSettings.Appearance.TouchMode;
+            set
+            {
+                if (AppSettings.Appearance.TouchMode == value)
+                {
+                    return;
+                }
+
+                if (value)
+                {
+                    // Remember what the scale was, but only if we are about to move it: turning
+                    // touch mode on twice must not overwrite the original with 150.
+                    var current = AppSettings.Appearance.UseDefaultScaling ? 0 : AppSettings.Appearance.Scaling;
+                    if (current is 0 or < AppearanceSettings.TouchModeScaling)
+                    {
+                        AppSettings.Appearance.ScalingBeforeTouchMode = current;
+                        ApplyScaling(AppearanceSettings.TouchModeScaling);
+                    }
+                }
+                else
+                {
+                    var previous = AppSettings.Appearance.ScalingBeforeTouchMode;
+                    if (previous >= 0)
+                    {
+                        AppSettings.Appearance.ScalingBeforeTouchMode = -1;
+                        ApplyScaling(previous);
+                    }
+                }
+
+                // Last: the setter raises TouchModeChanged, and MasterDetailView reads the scale
+                // decisions above when it re-lays out.
+                AppSettings.Appearance.TouchMode = value;
+
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(Scaling));
+            }
+        }
+
+        /// <summary>
+        /// Store a scale and hand it to the platform, the same way the <see cref="Scaling"/> setter
+        /// does. <paramref name="scaling"/> of 0 means "the system's", which is
+        /// <c>UseDefaultScaling</c> plus whatever the platform reports as current.
+        /// </summary>
+        private void ApplyScaling(int scaling)
+        {
+            if (scaling == 0)
+            {
+                NativeUtils.OverrideScaleForCurrentView(AppSettings.Appearance.Scaling = _scaling = NativeUtils.GetScaleForCurrentView());
+                AppSettings.Appearance.UseDefaultScaling = true;
+            }
+            else
+            {
+                NativeUtils.OverrideScaleForCurrentView(AppSettings.Appearance.Scaling = _scaling = scaling);
+                AppSettings.Appearance.UseDefaultScaling = false;
+            }
+        }
+
+        private readonly int[] _scalingIndexer = new[]
+        {
+            0,
+            100,
+            125,
+            150,
+            175,
+            200,
+            225,
+            250
+        };
+
+        public List<SettingsOptionItem<int>> ScalingOptions { get; } = new()
+        {
+            new SettingsOptionItem<int>(0, Strings.Default),
+            new SettingsOptionItem<int>(100, "100%"),
+            new SettingsOptionItem<int>(125, "125%"),
+            new SettingsOptionItem<int>(150, "150%"),
+            new SettingsOptionItem<int>(175, "175%"),
+            new SettingsOptionItem<int>(200, "200%"),
+            new SettingsOptionItem<int>(225, "225%"),
+            new SettingsOptionItem<int>(250, "250%"),
+        };
+
+        private readonly Dictionary<int, int> _indexToSize = new() { { 0, 12 }, { 1, 13 }, { 2, 14 }, { 3, 15 }, { 4, 16 }, { 5, 17 }, { 6, 18 } };
+        private readonly Dictionary<int, int> _sizeToIndex = new() { { 12, 0 }, { 13, 1 }, { 14, 2 }, { 15, 3 }, { 16, 4 }, { 17, 5 }, { 18, 6 } };
+
+        public double FontSize
+        {
+            get
+            {
+                var size = AppSettings.Appearance.MessageFontSize;
+                if (_sizeToIndex.TryGetValue(size, out int index))
+                {
+                    return index;
+                }
+
+                return 2d;
+            }
+            set
+            {
+                var index = (int)Math.Round(value);
+                if (_indexToSize.TryGetValue(index, out int size))
+                {
+                    AppSettings.Appearance.MessageFontSize = size;
+                }
+
+                RaisePropertyChanged();
+            }
+        }
+
+        public int BubbleRadius
+        {
+            get => AppSettings.Appearance.BubbleRadius;
+            set
+            {
+                AppSettings.Appearance.BubbleRadius = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ForceNightMode
+        {
+            get => AppSettings.Appearance.ForceNightMode || NightModeService.Current.IsDarkTheme();
+            set
+            {
+                // TODO: this should be probably unified with the code in RootWindow and might need some changes.
+                if (AppSettings.Appearance.NightMode != NightMode.Disabled)
+                {
+                    AppSettings.Appearance.NightMode = NightMode.Disabled;
+                    NightModeService.Current.UpdateTimer();
+
+                    ShowToast(Strings.AutoNightModeOff, ToastPopupIcon.AutoNightOff);
+                }
+
+                AppSettings.Appearance.ForceNightMode = value;
+                AppSettings.Appearance.RequestedTheme = value
+                    ? TelegramTheme.Dark
+                    : TelegramTheme.Light;
+
+                NightModeService.Current.Update();
+
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(NightMode));
+            }
+        }
+
+
+
+        public bool SwipeToShare
+        {
+            get => AppSettings.SwipeToShare;
+            set
+            {
+                AppSettings.SwipeToShare = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool SwipeToReply
+        {
+            get => AppSettings.SwipeToReply;
+            set
+            {
+                AppSettings.SwipeToReply = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool SwipeToGoBack
+        {
+            get => AppSettings.SwipeToGoBack;
+            set
+            {
+                AppSettings.SwipeToGoBack = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool DoubleClickToReply
+        {
+            get => AppSettings.Appearance.IsQuickReplySelected;
+            set
+            {
+                if (AppSettings.Appearance.IsQuickReplySelected != value)
+                {
+                    AppSettings.Appearance.IsQuickReplySelected = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        public bool DoubleClickToReact
+        {
+            get => !AppSettings.Appearance.IsQuickReplySelected;
+            set
+            {
+                if (AppSettings.Appearance.IsQuickReplySelected == value)
+                {
+                    AppSettings.Appearance.IsQuickReplySelected = !value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+
+
+        public bool FullScreenGallery
+        {
+            get => AppSettings.FullScreenGallery;
+            set
+            {
+                AppSettings.FullScreenGallery = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool UseSystemSpellChecker
+        {
+            get => AppSettings.UseSystemSpellChecker;
+            set
+            {
+                AppSettings.UseSystemSpellChecker = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool IsReplaceEmojiEnabled
+        {
+            get => AppSettings.IsReplaceEmojiEnabled;
+            set
+            {
+                AppSettings.IsReplaceEmojiEnabled = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool IsAdaptiveWideEnabled
+        {
+            get => AppSettings.IsAdaptiveWideEnabled;
+            set
+            {
+                AppSettings.IsAdaptiveWideEnabled = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        public int FontFamily
+        {
+            get => FontFamilyOptions.FindIndex(x => x.Value == AppSettings.Appearance.FontFamily);
+            set
+            {
+                if (value >= 0 && value < FontFamilyOptions.Count && AppSettings.Appearance.FontFamily != FontFamilyOptions[value].Value)
+                {
+                    AppSettings.Appearance.FontFamily = FontFamilyOptions[value].Value;
+                    NightModeService.Current.Update(true, updateEmojiSet: true);
+
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        public List<SettingsOptionFontFamily> FontFamilyOptions { get; }
+
+        public int SendBy
+        {
+            get => Array.IndexOf(_sendByIndexer, AppSettings.IsSendByEnterEnabled);
+            set
+            {
+                if (value >= 0 && value < _sendByIndexer.Length && AppSettings.IsSendByEnterEnabled != _sendByIndexer[value])
+                {
+                    AppSettings.IsSendByEnterEnabled = _sendByIndexer[value];
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private readonly bool[] _sendByIndexer = new[]
+        {
+            true,
+            false
+        };
+
+        public List<SettingsOptionItem<bool>> SendByOptions { get; } = new()
+        {
+            new SettingsOptionItem<bool>(true, Strings.SendByEnterKey),
+            new SettingsOptionItem<bool>(false, Strings.SendByEnterCtrl),
+        };
+
+        public int DistanceUnit
+        {
+            get => Array.IndexOf(_distanceUnitIndexer, AppSettings.DistanceUnits);
+            set
+            {
+                if (value >= 0 && value < _distanceUnitIndexer.Length && AppSettings.DistanceUnits != _distanceUnitIndexer[value])
+                {
+                    AppSettings.DistanceUnits = _distanceUnitIndexer[value];
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private readonly DistanceUnits[] _distanceUnitIndexer = new[]
+        {
+            DistanceUnits.Automatic,
+            DistanceUnits.Kilometers,
+            DistanceUnits.Miles
+        };
+
+        public List<SettingsOptionItem<DistanceUnits>> DistanceUnitOptions { get; } = new()
+        {
+            new SettingsOptionItem<DistanceUnits>(DistanceUnits.Automatic, Strings.DistanceUnitsAutomatic),
+            new SettingsOptionItem<DistanceUnits>(DistanceUnits.Kilometers, Strings.DistanceUnitsKilometers),
+            new SettingsOptionItem<DistanceUnits>(DistanceUnits.Miles, Strings.DistanceUnitsMiles),
+        };
+
+        public async void CreateTheme(ChatThemeViewModel theme)
+        {
+            var dark = NightModeService.Current.IsDarkTheme();
+            var settings = dark ? theme.DarkSettings : theme.LightSettings;
+
+            var tint = AppSettings.Appearance[dark ? TelegramTheme.Dark : TelegramTheme.Light].Type;
+            if (tint == TelegramThemeType.Classic || (tint == TelegramThemeType.Custom && !dark))
+            {
+                tint = TelegramThemeType.Day;
+            }
+            else if (tint == TelegramThemeType.Custom)
+            {
+                tint = TelegramThemeType.Tinted;
+            }
+
+            var accent = settings.AccentColor.ToColor();
+            var outgoing = settings.OutgoingMessageAccentColor.ToColor();
+
+            await _themeService.CreateThemeAsync(NavigationService, ThemeAccentInfo.FromAccent(tint, accent, outgoing));
+        }
+
+        public void OpenWallpaper()
+        {
+            NavigationService.Navigate(typeof(SettingsBackgroundsPage));
+        }
+
+        public void ChangeProfileColor()
+        {
+#if !LINUX
+            NavigationService.Navigate(typeof(SettingsProfileColorPage));
+#endif
+        }
+
+        public void OpenNightMode()
+        {
+#if !LINUX
+            NavigationService.Navigate(typeof(SettingsNightModePage));
+#endif
+        }
+
+        public void OpenThemes()
+        {
+            NavigationService.Navigate(typeof(SettingsThemesPage));
+        }
+
+        public void OpenStickers()
+        {
+#if !LINUX
+            NavigationService.Navigate(typeof(SettingsStickersPage));
+#endif
+        }
+    }
+
+    public class SettingsOptionFontFamily : SettingsOptionItem<string>
+    {
+        public SettingsOptionFontFamily(string value, string text, string fontFamily)
+            : base(value, text)
+        {
+            FontFamily = fontFamily;
+        }
+
+        public string FontFamily { get; init; }
+    }
+
+    public partial class ChatThemeViewModel
+    {
+        public IClientService ClientService { get; }
+
+        public ThemeSettings DarkSettings { get; }
+
+        public ThemeSettings LightSettings { get; }
+
+        public ChatTheme Type { get; }
+
+        public bool IsChannel { get; }
+
+        public ChatThemeViewModel(IClientService clientService, EmojiChatTheme chatTheme, bool isChannel)
+        {
+            ClientService = clientService;
+            DarkSettings = Copy(chatTheme.DarkSettings);
+            LightSettings = Copy(chatTheme.LightSettings);
+            Type = new ChatThemeEmoji(chatTheme.Name);
+            IsChannel = isChannel;
+        }
+
+        public ChatThemeViewModel(IClientService clientService, GiftChatTheme chatTheme)
+        {
+            ClientService = clientService;
+            DarkSettings = Copy(chatTheme.DarkSettings);
+            LightSettings = Copy(chatTheme.LightSettings);
+            Type = new ChatThemeGift(chatTheme);
+        }
+
+        private ThemeSettings Copy(ThemeSettings x)
+        {
+            if (x == null)
+            {
+                return null;
+            }
+
+            return new ThemeSettings(x.BaseTheme, x.AccentColor, x.Background, x.OutgoingMessageFill, x.AnimateOutgoingMessageFill, x.OutgoingMessageAccentColor);
+        }
+
+        public ChatThemeViewModel(IClientService clientService, string name, ThemeSettings lightSettings, ThemeSettings darkSettings, bool isChannel)
+        {
+            ClientService = clientService;
+            DarkSettings = darkSettings;
+            LightSettings = lightSettings;
+            Type = new ChatThemeEmoji(name);
+            IsChannel = isChannel;
+        }
+
+        public EmojiChatTheme ToEmoji()
+        {
+            if (Type is ChatThemeEmoji emoji)
+            {
+                return new EmojiChatTheme(emoji.Name, LightSettings, DarkSettings);
+            }
+
+            return null;
+        }
+    }
+}

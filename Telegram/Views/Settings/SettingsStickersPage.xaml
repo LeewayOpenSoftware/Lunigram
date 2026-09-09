@@ -1,0 +1,191 @@
+<local:HostedPage x:Class="Telegram.Views.Settings.SettingsStickersPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:settings="using:Telegram.ViewModels.Settings"
+                  xmlns:local="using:Telegram.Views"
+                  mc:Ignorable="d"
+                  Title="{x:Bind ViewModel.Title}"
+                  NavigationMode="RootWhenParameterless">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Items}"
+                                ItemClick="ListView_ItemClick"
+                                IsItemClickEnabled="True"
+                                DragItemsCompleted="ListView_DragItemsCompleted"
+                                ChoosingItemContainer="OnChoosingItemContainer"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                CanReorderItems="True"
+                                CanDragItems="True"
+                                SelectionMode="None"
+                                AllowDrop="True">
+            <ListView.Header>
+                <Grid>
+                    <controls:SettingsPanel x:Name="InstalledPanel"
+                                            x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.Installed)}">
+                        <controls:HeaderedControl Footer="{CustomResource StickersBotInfo}">
+                            <controls:SettingsButton Content="{CustomResource FeaturedStickers}"
+                                                     Click="{x:Bind ViewModel.OpenFeaturedStickers}"
+                                                     Badge="{x:Bind ViewModel.FeaturedStickersCount, Mode=OneWay}"
+                                                     BadgeVisibility="{x:Bind ViewModel.FeaturedStickersCount, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                     IsChevronVisible="True"
+                                                     Glyph="&#xE989;" />
+
+                            <controls:SettingsButton Content="{CustomResource ArchivedStickers}"
+                                                     Click="{x:Bind ViewModel.OpenArchivedStickers}"
+                                                     Badge="{x:Bind ViewModel.ArchivedStickersCount, Mode=OneWay}"
+                                                     Visibility="{x:Bind ViewModel.ArchivedStickersCount, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                     IsChevronVisible="True"
+                                                     Glyph="&#xE7B8;" />
+
+                            <!--<controls:BadgeButton Content="{CustomResource Masks}"
+                                                  Click="{x:Bind ViewModel.OpenMasks}"
+                                                  IsChevronVisible="True"
+                                                  Glyph="&#xE997;" />-->
+
+                            <controls:SettingsButton Content="{CustomResource Emoji}"
+                                                     Click="{x:Bind ViewModel.OpenEmoji}"
+                                                     IsChevronVisible="True"
+                                                     Glyph="&#xE76E;" />
+                        </controls:HeaderedControl>
+
+                        <controls:HeaderedControl Footer="{CustomResource DynamicPackOrderInfo}">
+                            <controls:SettingsButton Content="{CustomResource SuggestStickers}">
+                                <controls:SettingsButton.Badge>
+                                    <controls:SettingsComboBox ItemsSource="{x:Bind ViewModel.SuggestStickersOptions}"
+                                                               SelectedIndex="{x:Bind ViewModel.SuggestStickers, Mode=TwoWay}" />
+                                </controls:SettingsButton.Badge>
+                            </controls:SettingsButton>
+
+                            <CheckBox IsChecked="{x:Bind ViewModel.LargeEmoji, Mode=TwoWay}"
+                                      Content="{CustomResource LargeEmoji}"
+                                      Style="{StaticResource SettingsCheckBoxStyle}" />
+
+                            <CheckBox IsChecked="{x:Bind ViewModel.DynamicPackOrder, Mode=TwoWay}"
+                                      Content="{CustomResource DynamicPackOrder}"
+                                      Style="{StaticResource SettingsCheckBoxStyle}" />
+                        </controls:HeaderedControl>
+                    </controls:SettingsPanel>
+
+                    <controls:SettingsPanel x:Name="MasksPanel"
+                                            x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.Masks)}"
+                                            IsHeader="True">
+                        <controls:HeaderedControl Visibility="{x:Bind ViewModel.ArchivedStickersCount, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <controls:SettingsButton Content="{CustomResource ArchivedMasks}"
+                                                     Click="{x:Bind ViewModel.OpenArchivedMasks}"
+                                                     Badge="{x:Bind ViewModel.ArchivedStickersCount, Mode=OneWay}"
+                                                     IsChevronVisible="True"
+                                                     Glyph="&#xE7B8;" />
+                        </controls:HeaderedControl>
+
+                        <controls:SettingsFooter Text="{CustomResource MasksInfo}"
+                                                 Margin="24,16,24,6" />
+                    </controls:SettingsPanel>
+
+                    <controls:SettingsPanel x:Name="EmojiPanel"
+                                            x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.Emoji)}">
+                        <controls:HeaderedControl Footer="{CustomResource SuggestAnimatedEmojiInfo}">
+                            <controls:SettingsButton Content="{CustomResource ArchivedEmojiPacks}"
+                                                     Click="{x:Bind ViewModel.OpenArchivedEmoji}"
+                                                     Badge="{x:Bind ViewModel.ArchivedStickersCount, Mode=OneWay}"
+                                                     Visibility="{x:Bind ViewModel.ArchivedStickersCount, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                     IsChevronVisible="True"
+                                                     Glyph="&#xE7B8;" />
+                            <controls:SettingsButton Content="{CustomResource EmojiSet}"
+                                                     Style="{StaticResource EmojiBadgeButtonStyle}"
+                                                     FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                                                     Glyph="{x:Bind ViewModel.EmojiStyleIcon}">
+                                <controls:SettingsButton.Badge>
+                                    <controls:SettingsComboBox ItemsSource="{x:Bind ViewModel.EmojiStyleOptions}"
+                                                               SelectedIndex="{x:Bind ViewModel.EmojiStyle, Mode=TwoWay}" />
+                                </controls:SettingsButton.Badge>
+                            </controls:SettingsButton>
+                            <CheckBox Content="{CustomResource SuggestAnimatedEmoji}"
+                                      IsChecked="{x:Bind ViewModel.SuggestCustomEmoji, Mode=TwoWay}"
+                                      Style="{StaticResource SettingsCheckBoxStyle}" />
+                        </controls:HeaderedControl>
+                    </controls:SettingsPanel>
+
+                    <controls:SettingsFooter x:Name="TrendingPanel"
+                                             x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.Trending)}"
+                                             Text="{CustomResource FeaturedStickersInfo}"
+                                             Margin="24,80,24,6" />
+
+                    <controls:SettingsFooter x:Name="ArchivedPanel"
+                                             x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.Archived)}"
+                                             Text="{CustomResource ArchivedStickersInfo}"
+                                             Margin="24,80,24,6" />
+
+                    <controls:SettingsFooter x:Name="MasksArchivedPanel"
+                                             x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.MasksArchived)}"
+                                             Text="{CustomResource ArchivedMasksInfo}"
+                                             Margin="24,80,24,6" />
+
+                    <controls:SettingsFooter x:Name="EmojiArchivedPanel"
+                                             x:Load="{x:Bind IsType(ViewModel.Type, settings:StickersType.EmojiArchived)}"
+                                             Text="{CustomResource ArchivedEmojiInfo}"
+                                             Margin="24,80,24,6" />
+                </Grid>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="12,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <controls:AnimatedImage x:Name="Player"
+                                                AutoPlay="False"
+                                                LimitFps="True"
+                                                FrameSize="36,36"
+                                                DecodeFrameType="Logical"
+                                                Width="36"
+                                                Height="36"
+                                                Margin="0,0,10,0"
+                                                VerticalAlignment="Top"
+                                                Grid.RowSpan="2" />
+
+                        <TextBlock VerticalAlignment="Bottom"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   Grid.Column="1" />
+                        <TextBlock Style="{StaticResource InfoCaptionTextBlockStyle}"
+                                   VerticalAlignment="Top"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   Grid.Column="1"
+                                   Grid.Row="1" />
+
+                        <TextBlock Text="&#xE9F6;"
+                                   VerticalAlignment="Center"
+                                   FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                   FontSize="16"
+                                   Grid.Column="2"
+                                   Grid.RowSpan="2" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <Border Height="32" />
+            </ListView.Footer>
+        </controls:TableListView>
+    </Grid>
+</local:HostedPage>

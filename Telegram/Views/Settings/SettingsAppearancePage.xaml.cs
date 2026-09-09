@@ -1,0 +1,303 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Linq;
+using Telegram.Common;
+using Telegram.Controls.Cells;
+using Telegram.Controls.Media;
+using Telegram.Controls.Messages;
+using Telegram.Services;
+using Telegram.Services.Settings;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Telegram.ViewModels.Settings;
+#if !LINUX
+using Telegram.ViewModels.Drawers;
+#endif
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.Views.Settings
+{
+    public sealed partial class SettingsAppearancePage : HostedPage
+    {
+        public SettingsAppearanceViewModel ViewModel => DataContext as SettingsAppearanceViewModel;
+
+        public SettingsAppearancePage()
+        {
+            InitializeComponent();
+
+            AutomationProperties.SetName(BubbleRadiusSlider, Strings.BubbleRadius);
+            AutomationProperties.SetName(FontSizeSlider, Strings.TextSizeHeader);
+
+            Title = Strings.Appearance;
+
+            Preview.CreateInsetClip();
+
+#if LINUX
+            // Rows whose destination page is out of the Linux subset: the name colour (Win2D,
+            // SettingsProfileColorPage), the night-mode schedule (SettingsNightModeViewModel is
+            // Windows-only registered) and the sticker set. Collapsed rather than left drawn - a
+            // settings row that navigates nowhere reads as a bug.
+            //
+            // u-053: the theme list and the wallpaper picker used to be on this list too, from
+            // before u-011 (2026-09-02) actually ported SettingsThemesPage/SettingsThemePage/
+            // SettingsBackgroundsPage - collapsing them here stopped being about a missing page
+            // and started being stale copy nobody removed. Un-collapsed; OpenThemes()/
+            // OpenWallpaper() below un-guarded to match.
+            NameColor.Visibility = Visibility.Collapsed;
+            AutoNightTheme.Visibility = Visibility.Collapsed;
+            StickersPanel.Visibility = Visibility.Collapsed;
+
+            // CORREGIDO 2026-08-27: la frase de arriba decia «las acciones de deslizamiento» entre
+            // lo que funciona, y era justo al reves. Las tres casillas de «Acciones rapidas del
+            // chat» gobiernan dos InteractionTracker que estan ENTEROS bajo #if !LINUX:
+            // Controls/Messages/MessageSelector.xaml.cs (deslizar la burbuja para responder o
+            // compartir) y Controls/MasterDetailView.cs (deslizar la pagina para volver). Se
+            // marcaban, se guardaban y no mandaban sobre nada, tambien en modo tactil.
+            ChatQuickActions.Visibility = Visibility.Collapsed;
+
+            // The default reaction preview needs the emoji drawer (EmojiMenuFlyout), which is not
+            // in the subset; the double-click choice itself stays.
+            Reaction.Visibility = Visibility.Collapsed;
+
+            // Uno reads UNO_DISPLAY_SCALE_OVERRIDE once, when the first window builds its
+            // DisplayInformation, so the scale picked here only lands on the next start. Saying so
+            // in the panel is the whole of the fix - see Telegram.Linux/Platform/InterfaceScale.cs.
+            if (LinuxStrings.TryGetString("InterfaceScaleInfo", out var scaleInfo))
+            {
+                ScalePanel.Footer = scaleInfo;
+            }
+#endif
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            if (ViewModel.Window.UpdateChatTheme(ActualTheme, null, null, null, null))
+            {
+                var forDarkTheme = Frame.ActualTheme == ElementTheme.Dark;
+                var background = ViewModel.ClientService.GetDefaultBackground(forDarkTheme);
+                ViewModel.Aggregator.Publish(new UpdateDefaultBackground(forDarkTheme, background));
+            }
+
+            BackgroundControl.Update(ViewModel.ClientService, ViewModel.Aggregator);
+
+            ViewModel.PropertyChanged += OnPropertyChanged;
+#if !LINUX
+            ViewModel.Aggregator.Subscribe<UpdateDefaultReactionType>(this, Handle);
+
+            UpdateDefaultReactionType();
+#endif
+
+            if (ViewModel.ClientService.TryGetUser(ViewModel.ClientService.Options.MyId, out User user))
+            {
+#if !LINUX
+                if (ViewModel.IsPremiumAvailable)
+                {
+                    ProfileColor.SetUser(ViewModel.ClientService, user);
+                }
+                else
+                {
+                    NameColor.Visibility = Visibility.Collapsed;
+                }
+#endif
+
+                Message1.Mockup(ViewModel.ClientService, Strings.FontSizePreviewLine1, user, Strings.FontSizePreviewReply, false, DateTime.Now.AddSeconds(-25));
+                Message2.Mockup(Strings.FontSizePreviewLine2, true, DateTime.Now);
+            }
+        }
+
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            ViewModel.PropertyChanged -= OnPropertyChanged;
+            ViewModel.Aggregator.Unsubscribe(this);
+        }
+
+        #region Binding
+
+        private string ConvertNightMode(NightMode mode)
+        {
+            return mode == NightMode.Scheduled
+                ? Strings.AutoNightScheduled
+                : mode == NightMode.Automatic
+                ? Strings.AutoNightAutomatic
+                : mode == NightMode.System
+                ? Strings.AutoNightSystemDefault
+                : Strings.AutoNightDisabled;
+        }
+
+        private string ConvertQuickAction(bool reply)
+        {
+            return reply
+                ? Strings.QuickReactionInfo2
+                : Strings.QuickReactionInfo;
+        }
+
+        #endregion
+
+        private void OnPropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ViewModel.FontSize) || e.PropertyName == nameof(ViewModel.BubbleRadius))
+            {
+                Message1.UpdateMockup(false, true, true);
+                Message2.UpdateMockup(true, true, true);
+            }
+        }
+
+#if !LINUX
+        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (List.SelectedItem is ChatThemeViewModel chatTheme && ViewModel.SelectionChanged)
+            {
+                // Speed up background preview by manually applying it
+                if (ActualTheme == ElementTheme.Light)
+                {
+                    BackgroundControl.Update(chatTheme.LightSettings.Background, false);
+                }
+                else
+                {
+                    BackgroundControl.Update(chatTheme.DarkSettings.Background, true);
+                }
+            }
+        }
+
+        #region Context menu
+
+        private void Theme_ContextRequested(UIElement sender, ContextRequestedEventArgs args)
+        {
+            var theme = List.ItemFromContainer(sender) as ChatThemeViewModel;
+
+            var flyout = new MenuFlyout();
+            flyout.CreateFlyoutItem(ViewModel.CreateTheme, theme, Strings.CreateNewThemeMenu, Icons.Color);
+
+            //if (!theme.IsOfficial)
+            //{
+            //    flyout.CreateFlyoutSeparator();
+            //    flyout.CreateFlyoutItem(ViewModel.ThemeShareCommand, theme, Strings.ShareFile, Icons.Share);
+            //    flyout.CreateFlyoutItem(ViewModel.ThemeEditCommand, theme, Strings.Edit, Icons.Edit);
+            //    flyout.CreateFlyoutItem(ViewModel.ThemeDeleteCommand, theme, Strings.Delete, Icons.Delete);
+            //}
+
+            flyout.ShowAt(sender, args);
+        }
+
+        #endregion
+
+        #region Recycle
+
+        private void OnChoosingItemContainer(ListViewBase sender, ChoosingItemContainerEventArgs args)
+        {
+            if (args.ItemContainer == null)
+            {
+                args.ItemContainer = new GridViewItem();
+                args.ItemContainer.Style = sender.ItemContainerStyle;
+                args.ItemContainer.ContentTemplate = sender.ItemTemplate;
+                args.ItemContainer.ContextRequested += Theme_ContextRequested;
+            }
+
+            args.IsContainerPrepared = true;
+        }
+
+        private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.ItemContainer.ContentTemplateRoot is not ChatThemeCell content)
+            {
+                return;
+            }
+
+            if (args.InRecycleQueue)
+            {
+                content.Recycle();
+                return;
+            }
+            else if (args.Item is ChatThemeViewModel theme)
+            {
+                content.Update(args.ItemContainer, theme);
+                args.Handled = true;
+            }
+        }
+
+        #endregion
+#endif
+
+        private bool _compact;
+
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            var compact = e.NewSize.Width < 500;
+            if (compact == _compact)
+            {
+                return;
+            }
+
+            _compact = compact;
+
+            Grid.SetColumnSpan(TextSizeHeader, compact ? 2 : 1);
+            Grid.SetColumnSpan(BubbleRadiusHeader, compact ? 2 : 1);
+
+            Grid.SetRow(FontSizeSlider, compact ? 1 : 0);
+            Grid.SetColumn(FontSizeSlider, compact ? 0 : 2);
+
+            Grid.SetRow(BubbleRadiusSlider, compact ? 1 : 0);
+            Grid.SetColumn(BubbleRadiusSlider, compact ? 0 : 2);
+        }
+
+#if !LINUX
+        private void Handle(UpdateDefaultReactionType update)
+        {
+            this.BeginOnUIThread(UpdateDefaultReactionType);
+        }
+
+        private void UpdateDefaultReactionType()
+        {
+            var reaction = ViewModel.ClientService.DefaultReaction;
+
+            var clientService = ViewModel.ClientService;
+            var senderId = new MessageSenderUser(clientService.Options.MyId);
+
+            var message = new Message(0, senderId, null, 0, null, null, false, false, false, false, false, false, false, false, false, false, 0, 0, null, null, null, Array.Empty<UnreadReaction>(), null, null, null, null, null, 0, 0, 0, null, 0, 0, string.Empty, 0, string.Empty, 0, 0, null, string.Empty, null, null, null);
+
+            var settings = clientService.Session.Resolve<ISettingsService>();
+
+            var delegato = new ChatMessageDelegate(clientService, settings, null);
+            var viewModel = new MessageViewModel(clientService, delegato, null, null, null, message, true);
+
+            Reaction.SetReaction(viewModel, new MessageReaction(reaction, 1, false, senderId, new MessageSender[] { }));
+
+            if (Reaction.IsLoaded)
+            {
+                Reaction.SetUnread(new UnreadReaction(reaction, senderId, false));
+            }
+        }
+
+#endif
+
+        private void Reaction_Click(object sender, RoutedEventArgs e)
+        {
+#if !LINUX
+            var empty = Array.Empty<AvailableReaction>();
+            var reactions = ViewModel.ClientService.ActiveReactions
+                .Select(x => new AvailableReaction(new ReactionTypeEmoji(x), false))
+                .ToVector();
+
+            var viewModel = EmojiDrawerViewModel.Create(ViewModel.ClientService.Session, EmojiDrawerMode.Reactions);
+            _ = viewModel.UpdateReactions(new AvailableReactions(reactions, empty, empty, true, false, null));
+
+            var flyout = EmojiMenuFlyout.ShowAt(ViewModel.ClientService, EmojiDrawerMode.Reactions, Reaction, EmojiFlyoutAlignment.TopRight, viewModel);
+
+            flyout.EmojiSelected += (s, args) =>
+            {
+                ViewModel.DoubleClickToReact = true;
+            };
+#endif
+        }
+    }
+}

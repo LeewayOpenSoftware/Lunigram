@@ -1,0 +1,79 @@
+﻿<controls:UserControlEx x:Class="Telegram.Controls.Stories.StoriesStrip"
+                        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                        xmlns:cells="using:Telegram.Controls.Cells"
+                        xmlns:controls="using:Telegram.Controls"
+                        xmlns:viewModels="using:Telegram.ViewModels.Stories"
+                        mc:Ignorable="d"
+                        d:DesignHeight="300"
+                        d:DesignWidth="400">
+
+    <Grid>
+        <ListView x:Name="ScrollingHost"
+                  ItemsSource="{x:Bind ViewModel.Items}"
+                  ChoosingItemContainer="OnChoosingItemContainer"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                  ScrollViewer.VerticalScrollMode="Disabled"
+                  ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                  ScrollViewer.HorizontalScrollMode="Auto"
+                  SizeChanged="OnSizeChanged"
+                  SelectionMode="None"
+                  IsItemClickEnabled="True"
+                  ItemClick="ScrollingHost_ItemClick"
+                  Padding="0,0,0,4">
+            <ListView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsStackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ListView.ItemsPanel>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="viewModels:ActiveStoriesViewModel">
+                    <cells:ActiveStoriesCell Trigger="{x:Bind Item, Mode=OneWay}" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem"
+                       BasedOn="{StaticResource DefaultListViewItemStyle}">
+                    <Setter Property="MinWidth"
+                            Value="0" />
+                    <!--
+                        Both no-ops on Windows, where App.xaml's DefaultListViewItemStyle already
+                        sets Padding to 0 and the cell is taller than the Fluent MinHeight. They
+                        are here for Linux, where Hubs/LinuxResources.xaml redefines that key as an
+                        empty Style: the container then falls back to Uno's Fluent ListViewItem
+                        template, whose 12px horizontal padding would widen every avatar slot in a
+                        strip whose whole cell is 72 wide.
+                    -->
+                    <Setter Property="Padding"
+                            Value="0" />
+                    <Setter Property="MinHeight"
+                            Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
+        </ListView>
+
+        <HyperlinkButton x:Name="Show"
+                         Click="Show_Click"
+                         IsTabStop="False"
+                         Height="32"
+                         Margin="10,20,0,0"
+                         CornerRadius="16"
+                         VerticalAlignment="Top"
+                         HorizontalAlignment="Left" />
+
+        <HyperlinkButton x:Name="Icon"
+                         Click="Icon_Click"
+                         Width="32"
+                         Height="32"
+                         Margin="10,20,0,0"
+                         VerticalAlignment="Top"
+                         HorizontalAlignment="Left"
+                         Style="{StaticResource EmptyHyperlinkButtonStyle}" />
+    </Grid>
+</controls:UserControlEx>

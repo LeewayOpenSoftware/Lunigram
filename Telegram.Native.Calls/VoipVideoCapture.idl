@@ -1,0 +1,26 @@
+import "Telegram.Native.Calls.idl";
+import "VoipVideoOutputSink.idl";
+
+namespace Telegram.Native.Calls
+{
+    [default_interface]
+    unsealed runtimeclass VoipCaptureBase
+    {
+        void SetState(VoipVideoState state);
+        void SetOutput(VoipVideoOutputSink sink);
+
+        void Stop();
+
+        event Windows.Foundation.TypedEventHandler<VoipCaptureBase, IInspectable> FatalErrorOccurred;
+    }
+
+
+    [default_interface]
+    runtimeclass VoipVideoCapture : VoipCaptureBase
+    {
+        VoipVideoCapture(String id);
+
+        void SwitchToDevice(String deviceId);
+        void SetPreferredAspectRatio(Single aspectRatio);
+    }
+} // namespace Telegram.Native.Calls

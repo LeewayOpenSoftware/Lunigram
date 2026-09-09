@@ -1,0 +1,39 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.ViewModels.Settings;
+using Windows.Security.Credentials;
+using Microsoft.UI.Xaml;
+
+namespace Telegram.Views.Settings
+{
+    public sealed partial class SettingsPasscodePage : HostedPage
+    {
+        public SettingsPasscodeViewModel ViewModel => DataContext as SettingsPasscodeViewModel;
+
+        public SettingsPasscodePage()
+        {
+            InitializeComponent();
+            Title = Strings.Passcode;
+        }
+
+        private
+#if !LINUX
+            async
+#endif
+            void OnLoaded(object sender, RoutedEventArgs e)
+        {
+#if LINUX
+            // Windows Hello has no Linux counterpart: the checkbox stays Collapsed, matching its
+            // XAML default. The passcode itself is unaffected, PasscodeService does the hashing.
+#else
+            Biometrics.Visibility = await KeyCredentialManager.IsSupportedAsync() ? Visibility.Visible : Visibility.Collapsed;
+#endif
+        }
+    }
+}

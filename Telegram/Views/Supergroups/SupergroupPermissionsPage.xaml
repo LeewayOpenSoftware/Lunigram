@@ -1,0 +1,293 @@
+<local:HostedPage x:Class="Telegram.Views.Supergroups.SupergroupPermissionsPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:local="using:Telegram.Views"
+                  xmlns:cells="using:Telegram.Controls.Cells"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  mc:Ignorable="d">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <local:HostedPage.Action>
+        <Button Content="{CustomResource Done}"
+                Click="{x:Bind ViewModel.Continue}"
+                Style="{StaticResource AccentButtonStyle}" />
+    </local:HostedPage.Action>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Members}"
+                                ItemClick="ListView_ItemClick"
+                                IsItemClickEnabled="True"
+                                ChoosingItemContainer="OnChoosingItemContainer"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                SelectionMode="None"
+                                Grid.Row="1">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <cells:ProfileCell />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Header>
+                <controls:SettingsPanel>
+                    <controls:HeaderedControl Header="{CustomResource ChannelPermissionsHeader}">
+                        <CheckBox IsChecked="{x:Bind ViewModel.CanSendBasicMessages, Mode=TwoWay}"
+                                  Content="{CustomResource UserRestrictionsSend}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+
+                        <controls:SettingsExpander>
+                            <controls:SettingsExpander.Header>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{x:Bind ViewModel.CanSendMediaMessages, Mode=TwoWay}"
+                                              Margin="2,-11,0,-12" />
+                                    <TextBlock Grid.Column="1">
+                                        <Run Text="{CustomResource UserRestrictionsSendMedia}" />
+                                        <Run Text="{x:Bind ConvertCanSendCount(ViewModel.CanSendCount), Mode=OneWay}"
+                                             FontWeight="SemiBold" />
+                                    </TextBlock>
+                                </Grid>
+
+                            </controls:SettingsExpander.Header>
+                            <StackPanel>
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendPhotos, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendPhotos}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendVideos, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendVideos}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendOtherMessages, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendStickers}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendAudios, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendMusic}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendDocuments, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendFiles}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendVoiceNotes, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendVoices}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendVideoNotes, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendRound}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSendPolls, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendPolls}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanAddLinkPreviews, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsEmbedLinks}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanReactToMessages, Mode=TwoWay}"
+                                          Content="{CustomResource UserRestrictionsSendReactions}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          CornerRadius="0" />
+                            </StackPanel>
+                        </controls:SettingsExpander>
+
+                        <CheckBox IsChecked="{x:Bind ViewModel.CanInviteUsers, Mode=TwoWay}"
+                                  Content="{CustomResource UserRestrictionsInviteUsers}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+
+                        <CheckBox x:Name="PinMessages"
+                                  IsChecked="{x:Bind ViewModel.CanPinMessages, Mode=TwoWay}"
+                                  Content="{CustomResource UserRestrictionsPinMessages}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+
+                        <CheckBox x:Name="EditOwnTags"
+                                  IsChecked="{x:Bind ViewModel.CanEditTag, Mode=TwoWay}"
+                                  Content="{CustomResource UserRestrictionsEditTags}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+
+                        <CheckBox x:Name="ChangeInfo"
+                                  IsChecked="{x:Bind ViewModel.CanChangeInfo, Mode=TwoWay}"
+                                  Content="{CustomResource UserRestrictionsChangeInfo}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+                    </controls:HeaderedControl>
+
+                    <controls:HeaderedControl x:Name="PaidMessagesPanel"
+                                              Footer="{CustomResource GroupMessagesChargePriceInfo}"
+                                              Visibility="Collapsed">
+                        <CheckBox IsChecked="{x:Bind ViewModel.ChargePerMessage, Mode=TwoWay}"
+                                  Content="{CustomResource GroupMessagesChargePrice}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+                    </controls:HeaderedControl>
+
+                    <controls:HeaderedControl x:Name="PaidMessagesPricePanel"
+                                              Visibility="{x:Bind ViewModel.ChargePerMessage, Mode=OneWay}"
+                                              Header="{CustomResource GroupMessagesPriceHeader}"
+                                              Footer="{x:Bind ConvertPriceFee(ViewModel.PaidMessageStarCount), Mode=OneWay}">
+                        <Grid x:Name="PriceTicks"
+                              Background="{ThemeResource SettingsItemBackground}"
+                              BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                              Padding="12,6,12,6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <controls:AnimatedTextBlock Text="{x:Bind ConvertPriceValue(ViewModel.PaidMessageStarCount), Mode=OneWay}"
+                                                        TextAlignment="Center"
+                                                        HorizontalAlignment="Center"
+                                                        Margin="0,0,0,-4"
+                                                        Grid.ColumnSpan="4" />
+
+                            <Slider x:Name="Price"
+                                    Value="{x:Bind ViewModel.PaidMessageStarCount, Mode=TwoWay}"
+                                    Maximum="9000"
+                                    Minimum="1"
+                                    SmallChange="1"
+                                    LargeChange="1"
+                                    StepFrequency="1"
+                                    IsThumbToolTipEnabled="False"
+                                    Grid.Row="1" />
+                        </Grid>
+                    </controls:HeaderedControl>
+
+                    <controls:HeaderedControl x:Name="SlowmodePanel"
+                                              Header="{CustomResource Slowmode}"
+                                              Footer="{x:Bind ConvertSlowModeFooter(ViewModel.SlowModeDelay), Mode=OneWay}">
+                        <Grid x:Name="SlowmodeTicks"
+                              Background="{ThemeResource SettingsItemBackground}"
+                              BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                              Padding="12,6,12,6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Slider x:Name="Slowmode"
+                                    Value="{x:Bind ConvertSlowMode(ViewModel.SlowModeDelay), Mode=TwoWay, BindBack=ConvertSlowModeBack}"
+                                    Maximum="6"
+                                    Minimum="0"
+                                    SmallChange="1"
+                                    LargeChange="1"
+                                    StepFrequency="1"
+                                    TickFrequency="1"
+                                    TickPlacement="Outside"
+                                    IsThumbToolTipEnabled="False"
+                                    Grid.Row="1" />
+                        </Grid>
+                    </controls:HeaderedControl>
+
+                    <controls:HeaderedControl x:Name="BoostersPanel"
+                                              Visibility="{x:Bind ViewModel.CanUnrestrictBoosters, Mode=OneWay}"
+                                              Footer="{x:Bind ConvertBoostersFooter(ViewModel.UnrestrictBoosters), Mode=OneWay}"
+                                              Background="{ThemeResource SettingsItemBackground}">
+                        <CheckBox IsChecked="{x:Bind ViewModel.UnrestrictBoosters, Mode=TwoWay}"
+                                  Content="{CustomResource GroupNotRestrictBoosters}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+                        <Grid x:Name="BoostersTicks"
+                              Visibility="{x:Bind ViewModel.UnrestrictBoosters, Mode=OneWay}"
+                              Background="{ThemeResource SettingsItemBackground}"
+                              BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                              Padding="12,6,12,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Slider x:Name="Boosters"
+                                    Value="{x:Bind ViewModel.UnrestrictBoostCount, Mode=TwoWay}"
+                                    Maximum="5"
+                                    Minimum="1"
+                                    SmallChange="1"
+                                    LargeChange="1"
+                                    StepFrequency="1"
+                                    TickFrequency="1"
+                                    TickPlacement="Outside"
+                                    IsThumbToolTipEnabled="False"
+                                    Grid.Row="1" />
+                        </Grid>
+                    </controls:HeaderedControl>
+
+                    <controls:HeaderedControl>
+                        <controls:SettingsButton x:Name="Blacklist"
+                                                 Content="{CustomResource ChannelBlacklist}"
+                                                 Click="{x:Bind ViewModel.Banned}"
+                                                 IsChevronVisible="True" />
+                    </controls:HeaderedControl>
+
+                    <Grid HorizontalAlignment="Left"
+                          Margin="24,16,24,0"
+                          Width="280">
+                        <TextBox x:Name="SearchField"
+                                 Text="{x:Bind ViewModel.Members.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="{CustomResource Search}"
+                                 PreventKeyboardDisplayOnProgrammaticFocus="True"
+                                 Padding="34,5,6,6"
+                                 InputScope="Search" />
+
+                        <controls:GlyphButton Glyph="&#xE721;"
+                                              FontSize="16"
+                                              Width="36"
+                                              Height="32"
+                                              IsTabStop="False"
+                                              AutomationProperties.AccessibilityView="Raw"
+                                              HorizontalAlignment="Left"
+                                              VerticalAlignment="Center" />
+                    </Grid>
+
+                    <controls:HeaderedControl x:Name="AddNew"
+                                              Header="{CustomResource NotificationsExceptions}"
+                                              Margin="0,-16,0,-30"
+                                              Visibility="Collapsed">
+                        <controls:SettingsButton Content="{CustomResource ChannelAddException}"
+                                                 Click="{x:Bind ViewModel.AddRestricted}"
+                                                 Glyph="&#xF166;" />
+                    </controls:HeaderedControl>
+                </controls:SettingsPanel>
+            </ListView.Header>
+            <ListView.Footer>
+                <controls:SettingsFooter x:Name="Footer"
+                                         Margin="24,6,24,32" />
+            </ListView.Footer>
+        </controls:TableListView>
+    </Grid>
+</local:HostedPage>

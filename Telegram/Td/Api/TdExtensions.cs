@@ -1,0 +1,5051 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Numerics;
+using System.Text;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Controls.Chats;
+using Telegram.Converters;
+using Telegram.Native;
+using Telegram.Native.Calls;
+using Telegram.Services;
+using Telegram.Services.Calls;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Telegram.ViewModels.Settings;
+using Windows.UI;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Colors = Microsoft.UI.Colors;
+
+namespace Telegram.Td.Api
+{
+    public static class TdExtensions
+    {
+        // A date-time entity is described by the same format string bots use:
+        //   r|w?[dD]?[tT]?
+        // r (relative) cannot be combined with anything else, w shows the weekday, d/D the
+        // date (short/long) and t/T the time (short/long). An empty format means the text
+        // is shown as-is. The URL below is the editor's carrier for it, so it stores the
+        // format verbatim rather than a translation of it.
+        private const string DateScheme = "tg-time://";
+
+        public static string ToUrl(this TextEntityTypeDateTime dateTime)
+        {
+            return ToDateUrl(dateTime.UnixTime, dateTime.ToFormat());
+        }
+
+        public static string ToDateUrl(int unixTime, string format)
+        {
+            return string.IsNullOrEmpty(format)
+                ? DateScheme + unixTime
+                : DateScheme + unixTime + "?" + format;
+        }
+
+        public static string ToFormat(this TextEntityTypeDateTime dateTime)
+        {
+            if (dateTime.FormattingType is DateTimeFormattingTypeRelative)
+            {
+                return "r";
+            }
+            else if (dateTime.FormattingType is DateTimeFormattingTypeAbsolute absolute)
+            {
+                // The grammar fixes the order: weekday, then date, then time.
+                var format = string.Empty;
+
+                if (absolute.ShowDayOfWeek)
+                {
+                    format += "w";
+                }
+
+                if (absolute.DatePrecision is DateTimePartPrecisionShort)
+                {
+                    format += "d";
+                }
+                else if (absolute.DatePrecision is DateTimePartPrecisionLong)
+                {
+                    format += "D";
+                }
+
+                if (absolute.TimePrecision is DateTimePartPrecisionShort)
+                {
+                    format += "t";
+                }
+                else if (absolute.TimePrecision is DateTimePartPrecisionLong)
+                {
+                    format += "T";
+                }
+
+                return format;
+            }
+
+            return string.Empty;
+        }
+
+        public static bool TryParseFormat(string format, out DateTimeFormattingType formattingType)
+        {
+            formattingType = null;
+
+            if (string.IsNullOrEmpty(format))
+            {
+                return true;
+            }
+
+            // Relative is the whole format or nothing, so 'r' is rejected by the loop below.
+            if (format is "r" or "R")
+            {
+                formattingType = new DateTimeFormattingTypeRelative();
+                return true;
+            }
+
+            var shortDate = false;
+            var longDate = false;
+            var shortTime = false;
+            var longTime = false;
+            var dayOfWeek = false;
+
+            foreach (var c in format)
+            {
+                switch (c)
+                {
+                    case 'd':
+                        shortDate = true;
+                        break;
+                    case 'D':
+                        longDate = true;
+                        break;
+                    case 't':
+                        shortTime = true;
+                        break;
+                    case 'T':
+                        longTime = true;
+                        break;
+                    case 'w':
+                    case 'W':
+                        dayOfWeek = true;
+                        break;
+                    default:
+                        return false;
+                }
+            }
+
+            // Order and duplicates are tolerated, as TDLib does; when a part is given twice
+            // the short form wins, again matching how TDLib maps its flags back to a type.
+            DateTimePartPrecision date = new DateTimePartPrecisionNone();
+            DateTimePartPrecision time = new DateTimePartPrecisionNone();
+
+            if (shortDate)
+            {
+                date = new DateTimePartPrecisionShort();
+            }
+            else if (longDate)
+            {
+                date = new DateTimePartPrecisionLong();
+            }
+
+            if (shortTime)
+            {
+                time = new DateTimePartPrecisionShort();
+            }
+            else if (longTime)
+            {
+                time = new DateTimePartPrecisionLong();
+            }
+
+            formattingType = new DateTimeFormattingTypeAbsolute(time, date, dayOfWeek);
+            return true;
+        }
+
+        public static bool TryParseDateTime(string url, out TextEntityTypeDateTime dateTime)
+        {
+            dateTime = null;
+
+            if (!url.StartsWith(DateScheme))
+            {
+                return false;
+            }
+
+            var value = url.Substring(DateScheme.Length);
+            var separator = value.IndexOf('?');
+
+            var format = separator < 0 ? string.Empty : value.Substring(separator + 1);
+            if (separator >= 0)
+            {
+                value = value.Substring(0, separator);
+            }
+
+            if (int.TryParse(value, out int unixTime) && TryParseFormat(format, out var formattingType))
+            {
+                dateTime = new TextEntityTypeDateTime(unixTime, formattingType);
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool ShowCaptionAboveMedia(this MessageViewModel message)
+        {
+            return message.Content switch
+            {
+                MessageAnimation animation => animation.ShowCaptionAboveMedia,
+                MessagePhoto photo => photo.ShowCaptionAboveMedia,
+                MessageVideo video => video.ShowCaptionAboveMedia,
+                MessageAlbum album => album.ShowCaptionAboveMedia,
+                MessagePaidAlbum paidAlbum => paidAlbum.ShowCaptionAboveMedia,
+                MessagePaidMedia paidMedia => paidMedia.ShowCaptionAboveMedia,
+                MessageRichMessage richMessage => richMessage.Message.Blocks[0] is not PageBlockAnimation and not PageBlockCollage and not PageBlockMap and not PageBlockPhoto and not PageBlockSlideshow and not PageBlockVideo,
+                _ => false
+            };
+        }
+
+        public static string ToText(this UpgradedGiftAttributeRarity rarity)
+        {
+            return rarity switch
+            {
+                UpgradedGiftAttributeRarityPerMille perMille => perMille.PerMille > 0 ? (perMille.PerMille / 10d).ToString("0.##") + "%" : "<0.1%",
+                UpgradedGiftAttributeRarityRare => Strings.GiftRarityRare,
+                UpgradedGiftAttributeRarityLegendary => Strings.GiftRarityLegendary,
+                UpgradedGiftAttributeRarityUncommon => Strings.GiftRarityUncommon,
+                UpgradedGiftAttributeRarityEpic => Strings.GiftRarityEpic,
+                _ => rarity.ToString()
+            };
+        }
+
+        public static void ToColor(this UpgradedGiftAttributeRarity rarity, Button button)
+        {
+            if (rarity is UpgradedGiftAttributeRarityRare)
+            {
+                button.Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0x11, 0xAA, 0xBE));
+                button.Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x11, 0xAA, 0xBE));
+            }
+            else if (rarity is UpgradedGiftAttributeRarityLegendary)
+            {
+                button.Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0xBF, 0x76, 0x00));
+                button.Background = new SolidColorBrush(Color.FromArgb(0xFF, 0xBF, 0x76, 0x00));
+            }
+            else if (rarity is UpgradedGiftAttributeRarityEpic)
+            {
+                button.Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0x95, 0x5C, 0xDB));
+                button.Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x95, 0x5C, 0xDB));
+            }
+            else if (rarity is UpgradedGiftAttributeRarityUncommon)
+            {
+                button.Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0x40, 0xA9, 0x20));
+                button.Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x40, 0xA9, 0x20));
+            }
+            else
+            {
+                button.ClearValue(Button.ForegroundProperty);
+                button.ClearValue(Button.BackgroundProperty);
+            }
+        }
+
+        public static CallProtocol ToTd(this VoipCallProtocol protocol)
+        {
+            return new CallProtocol(protocol.UdpP2p, protocol.UdpReflector, protocol.MinLayer, protocol.MaxLayer, protocol.LibraryVersions.ToVector());
+        }
+
+        public static long ToId(this MessageSender sender)
+        {
+            return sender switch
+            {
+                MessageSenderUser user => user.UserId,
+                MessageSenderChat chat => chat.ChatId,
+                _ => 0
+            };
+        }
+
+        public static IList<VoipVideoSourceGroup> ToCalls(this Vector<GroupCallVideoSourceGroup> groups)
+        {
+            var items = new List<VoipVideoSourceGroup>();
+
+            foreach (var group in groups)
+            {
+                items.Add(new VoipVideoSourceGroup(group.Semantics, group.SourceIds));
+            }
+
+            return items;
+        }
+
+        public static IList<VoipCallServer> ToCalls(this Vector<CallServer> servers)
+        {
+            static string ToHex(byte[] bytes)
+            {
+                char[] c = new char[bytes.Length * 2];
+                int b;
+
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    b = bytes[i] >> 4;
+                    c[i * 2] = (char)(55 + b + (((b - 10) >> 31) & -7));
+                    b = bytes[i] & 0xF;
+                    c[i * 2 + 1] = (char)(55 + b + (((b - 10) >> 31) & -7));
+                }
+
+                return new string(c);
+            }
+
+            var items = new List<VoipCallServer>(servers.Count);
+
+            foreach (var server in servers)
+            {
+                VoipCallServerType type;
+                if (server.Type is CallServerTypeTelegramReflector reflector)
+                {
+                    type = new VoipCallServerTypeTelegramReflector(ToHex(reflector.PeerTag), reflector.IsTcp);
+                }
+                else if (server.Type is CallServerTypeWebrtc webrtc)
+                {
+                    type = new VoipCallServerTypeWebrtc(webrtc.Username, webrtc.Password, webrtc.SupportsTurn, webrtc.SupportsStun);
+                }
+                else
+                {
+                    continue;
+                }
+
+                items.Add(new VoipCallServer(server.Id, server.IpAddress, server.Ipv6Address, server.Port, type));
+            }
+
+            return items;
+        }
+
+        // TODO: remove
+        public static int ForumTopicId(this Message message)
+        {
+            if (message?.TopicId is MessageTopicForum forum)
+            {
+                return forum.ForumTopicId;
+            }
+
+            return 0;
+        }
+
+        public static bool CanBeCalled(this User user, IClientService clientService)
+        {
+            if (user.Id == clientService.Options.MyId || user.IsSupport || user.Type is UserTypeBot or UserTypeDeleted)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public static bool IsPhoto(this MessageDocument document)
+        {
+            return Constants.PhotoTypes.Contains(System.IO.Path.GetExtension(document.Document.FileName.ToLower()));
+        }
+
+        public static bool IsPhoto(this Document document)
+        {
+            return Constants.PhotoTypes.Contains(System.IO.Path.GetExtension(document.FileName.ToLower()));
+        }
+
+        public static bool Is24x7(this BusinessOpeningHours hours)
+        {
+            if (hours == null || hours.OpeningHours.Empty())
+            {
+                return false;
+            }
+
+            int last = 0;
+
+            foreach (var period in hours.OpeningHours)
+            {
+                if (period.StartMinute > last + 1)
+                {
+                    return false;
+                }
+
+                last = period.EndMinute;
+            }
+
+            return last >= 24 * 60 * 7 - 1;
+        }
+
+        public static string ToValue(this SuggestedPostPrice price)
+        {
+            if (price is SuggestedPostPriceStar priceStar)
+            {
+                return string.Format(Strings.StarsCountX, priceStar.StarCount);
+            }
+            else if (price is SuggestedPostPriceGram priceGram)
+            {
+                return string.Format(Strings.TonCountX, priceGram.GramCentCount / 100d);
+            }
+
+            return string.Format(Strings.StarsCountX, 0);
+        }
+
+        public static string CommissionPercent(this AffiliateProgramParameters parameters)
+        {
+            return (parameters.CommissionPerMille / 10d).ToString("0.##") + "%";
+        }
+
+        public static string Duration(this AffiliateProgramParameters parameters)
+        {
+            return parameters.MonthCount > 0
+                ? parameters.MonthCount >= 12
+                ? Locale.Declension(Strings.R.Years, parameters.MonthCount / 12)
+                : Locale.Declension(Strings.R.Months, parameters.MonthCount)
+                : Strings.Lifetime;
+        }
+
+        public static bool IsHls(this MessageVideo video)
+        {
+            if (video.Video.Duration == 0 || video.AlternativeVideos.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var alternative in video.AlternativeVideos)
+            {
+                if (alternative.Width == 0 || alternative.Height == 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public static bool IsNegative(this StarAmount amount)
+        {
+            return amount?.StarCount < 0 || amount?.NanostarCount < 0;
+        }
+
+        public static bool IsPositive(this StarAmount amount)
+        {
+            return amount?.StarCount > 0 || amount?.NanostarCount > 0;
+        }
+
+        public static string ToValue(this StarAmount amount, bool transaction = false)
+        {
+            var integerAmount = amount.StarCount;
+            var decimalAmount = amount.NanostarCount;
+
+            var symbol = amount.StarCount < 0 || !transaction ? string.Empty : "+";
+
+            if (decimalAmount < 0 || integerAmount < 0)
+            {
+                symbol = "-";
+            }
+
+            integerAmount = Math.Abs(integerAmount);
+            decimalAmount = Math.Abs(decimalAmount);
+
+            var culture = new CultureInfo(NativeUtils.GetCurrentCulture());
+            var separator = culture.NumberFormat.NumberDecimalSeparator;
+
+            if (amount.NanostarCount != 0)
+            {
+                return symbol + string.Format(culture, "{0:N0}{2}{1}", integerAmount, decimalAmount, separator).TrimEnd('0');
+            }
+
+            return symbol + integerAmount.ToString("N0", culture);
+        }
+
+        public static string TotalText(this Gift gift)
+        {
+            return Formatter.ShortNumber(gift.OverallLimits.TotalCount);
+        }
+
+        public static string RemainingText(this Gift gift)
+        {
+            return Locale.Declension(Strings.R.Gift2Availability4Value, gift.OverallLimits.RemainingCount, gift.OverallLimits.TotalCount.ToString("N0"));
+        }
+
+        public static int CountUnread(this ChatActiveStories activeStories, out bool closeFriends, out bool live)
+        {
+            var count = 0;
+            closeFriends = false;
+            live = false;
+
+            foreach (var story in activeStories.Stories)
+            {
+                if (story.IsLive)
+                {
+                    live = true;
+                }
+
+                if (story.StoryId > activeStories.MaxReadStoryId)
+                {
+                    if (story.IsForCloseFriends)
+                    {
+                        closeFriends = true;
+                    }
+
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        public static ReplyMarkup ToReplyMarkup(this SuggestedPostInfo suggestedPostInfo, bool outgoing)
+        {
+            if (suggestedPostInfo is SuggestedPostInfo { State: SuggestedPostStatePending } && !outgoing)
+            {
+                return new ReplyMarkupInlineKeyboard(new MutableVector<Vector<InlineKeyboardButton>>
+                {
+                    new MutableVector<InlineKeyboardButton>
+                    {
+                        new(Strings.PostSuggestionsInlineDecline, 0, new ButtonStyleDefault(), new InlineKeyboardButtonTypeSuggestionDecline(suggestedPostInfo.CanBeDeclined)),
+                        new(Strings.PostSuggestionsInlineAccept, 0, new ButtonStyleDefault(), new InlineKeyboardButtonTypeSuggestionApprove(suggestedPostInfo.CanBeDeclined))
+                    },
+                    new MutableVector<InlineKeyboardButton>
+                    {
+                        new(Strings.PostSuggestionsInlineEdit, 0, new ButtonStyleDefault(), new InlineKeyboardButtonTypeSuggestionEdit())
+                    }
+                }, false);
+            }
+
+            return null;
+        }
+
+        public static InputChatTheme ToInput(this ChatTheme theme)
+        {
+            return theme switch
+            {
+                ChatThemeEmoji emoji => new InputChatThemeEmoji(emoji.Name),
+                ChatThemeGift gift => new InputChatThemeGift(gift.GiftTheme.Gift.Name),
+                _ => null
+            };
+        }
+
+        public static string ToCount(this GiftResalePrice resalePrice, long part = 100)
+        {
+            if (resalePrice is GiftResalePriceStar resalePriceStar)
+            {
+                return (resalePriceStar.StarCount * (part / 1000d)).ToString("N0");
+            }
+            else if (resalePrice is GiftResalePriceGram resalePriceGram)
+            {
+                return (resalePriceGram.GramCentCount * (part / 1000d)).ToString("N0");
+            }
+
+            return string.Empty;
+        }
+
+        public static int TotalReactions(this MessageInteractionInfo info)
+        {
+            if (info?.Reactions != null)
+            {
+                return info.Reactions.Reactions.Sum(x => x.TotalCount);
+            }
+
+            return 0;
+        }
+
+        public static bool AreTheSame(this ChatTheme x, ChatTheme y)
+        {
+            if (x == null || y == null)
+            {
+                return x == null && y == null;
+            }
+
+            if (x is ChatThemeEmoji xEmoji && y is ChatThemeEmoji yEmoji)
+            {
+                return xEmoji.Name == yEmoji.Name;
+            }
+            else if (x is ChatThemeGift xGift && y is ChatThemeGift yGift)
+            {
+                return xGift.GiftTheme.Gift.Id == yGift.GiftTheme.Gift.Id;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this ChatTheme x, ChatThemeViewModel y)
+        {
+            if (x == null || y == null)
+            {
+                return x == null && y == null;
+            }
+
+            if (x is ChatThemeEmoji xEmoji && y.Type is ChatThemeEmoji yEmoji)
+            {
+                return xEmoji.Name == yEmoji.Name;
+            }
+            else if (x is ChatThemeGift xGift && y.Type is ChatThemeGift yGift)
+            {
+                return xGift.GiftTheme.Gift.Id == yGift.GiftTheme.Gift.Id;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this ChatThemeViewModel x, ChatTheme y)
+        {
+            if (x == null || y == null)
+            {
+                return x == null && y == null;
+            }
+
+            if (x.Type is ChatThemeEmoji xEmoji && y is ChatThemeEmoji yEmoji)
+            {
+                return xEmoji.Name == yEmoji.Name;
+            }
+            else if (x.Type is ChatThemeGift xGift && y is ChatThemeGift yGift)
+            {
+                return xGift.GiftTheme.Gift.Id == yGift.GiftTheme.Gift.Id;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this ChatThemeViewModel x, EmojiChatTheme y)
+        {
+            if (x == null || y == null)
+            {
+                return x == null && y == null;
+            }
+
+            if (x.Type is ChatThemeEmoji xEmoji)
+            {
+                return xEmoji.Name == y.Name;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this Background prev, Background next)
+        {
+            if (prev == null || next == null)
+            {
+                return prev == next;
+            }
+
+            if (prev.Type is BackgroundTypeFill prevFill && next.Type is BackgroundTypeFill nextFill)
+            {
+                return AreTheSame(prevFill.Fill, nextFill.Fill);
+            }
+            else if (prev.Type is BackgroundTypePattern prevPattern && next.Type is BackgroundTypePattern nextPattern)
+            {
+                return prevPattern.IsInverted == nextPattern.IsInverted
+                    && prevPattern.Intensity == nextPattern.Intensity
+                    && prev.Document?.DocumentValue.Id == next.Document?.DocumentValue.Id
+                    && AreTheSame(prevPattern.Fill, nextPattern.Fill);
+            }
+            else if (prev.Type is BackgroundTypeWallpaper prevWallpaper && next.Type is BackgroundTypeWallpaper nextWallpaper)
+            {
+                return prevWallpaper.IsBlurred == nextWallpaper.IsBlurred
+                    && prev.Document?.DocumentValue.Id == next.Document?.DocumentValue.Id;
+            }
+            else if (prev.Type is BackgroundTypeChatTheme prevChatTheme && next.Type is BackgroundTypeChatTheme nextChatTheme)
+            {
+                return string.Equals(prevChatTheme.ThemeName, nextChatTheme.ThemeName);
+            }
+
+            return Equals(prev, next);
+        }
+
+        public static bool AreTheSame(this BackgroundFill prev, BackgroundFill next)
+        {
+            if (prev is BackgroundFillSolid prevSolid && next is BackgroundFillSolid nextSolid)
+            {
+                return prevSolid.Color == nextSolid.Color;
+            }
+            else if (prev is BackgroundFillGradient prevGradient && next is BackgroundFillGradient nextGradient)
+            {
+                return prevGradient.TopColor == nextGradient.TopColor
+                    && prevGradient.BottomColor == nextGradient.BottomColor
+                    && prevGradient.RotationAngle == nextGradient.RotationAngle;
+            }
+            else if (prev is BackgroundFillFreeformGradient prevFreeform && next is BackgroundFillFreeformGradient nextFreeform)
+            {
+                return prevFreeform.Colors.SequenceEqual(nextFreeform.Colors);
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this FormattedText x, FormattedText y)
+        {
+            return x == y;
+
+            if (x == null || y == null)
+            {
+                return x == null && y == null;
+            }
+
+            return string.Equals(x.ToString(), y.ToString());
+        }
+
+        public static bool AreTheSame(this SetChatDirectMessagesGroup x, SetChatDirectMessagesGroup y)
+        {
+            if (x == null || y == null)
+            {
+                return x == null && y == null;
+            }
+
+            return x.ChatId == y.ChatId
+                && x.IsEnabled == y.IsEnabled
+                && x.PaidMessageStarCount == y.PaidMessageStarCount;
+        }
+
+        public static long UserId(this ChatBoost boost)
+        {
+            return boost.Source switch
+            {
+                ChatBoostSourceGiftCode giftCode => giftCode.UserId,
+                ChatBoostSourceGiveaway giveaway => giveaway.UserId,
+                ChatBoostSourcePremium premium => premium.UserId,
+                _ => 0
+            };
+        }
+
+        public static Vector2 ToVector2(this Telegram.Td.Api.Point point)
+        {
+            return new Vector2((float)point.X, (float)point.Y);
+        }
+
+        public static Vector2 ToVector2(this Telegram.Td.Api.Point point, float scale)
+        {
+            return new Vector2((float)point.X * scale, (float)point.Y * scale);
+        }
+
+        public static ChatNotificationSettings Clone(this ChatNotificationSettings settings)
+        {
+            return new ChatNotificationSettings(
+                settings.UseDefaultMuteFor, settings.MuteFor,
+                settings.UseDefaultSound, settings.SoundId,
+                settings.UseDefaultShowPreview, settings.ShowPreview,
+                settings.UseDefaultMuteStories, settings.MuteStories,
+                settings.UseDefaultStorySound, settings.StorySoundId,
+                settings.UseDefaultShowStoryPoster, settings.ShowStoryPoster,
+                settings.UseDefaultDisablePinnedMessageNotifications, settings.DisablePinnedMessageNotifications,
+                settings.UseDefaultDisableMentionNotifications, settings.DisableMentionNotifications);
+        }
+
+        public static bool HasActiveUsername(this Supergroup supergroup)
+        {
+            return ActiveUsername(supergroup).Length > 0;
+        }
+
+        public static bool HasActiveUsername(this Supergroup supergroup, out string username)
+        {
+            username = ActiveUsername(supergroup);
+            return username.Length > 0;
+        }
+
+        public static string ActiveUsername(this Supergroup supergroup)
+        {
+            return supergroup?.Usernames?.ActiveUsernames.FirstOrDefault() ?? string.Empty;
+        }
+
+        public static string ActiveUsername(this Supergroup supergroup, string value)
+        {
+            return supergroup?.Usernames?.ActiveUsernames.FirstOrDefault(x => x.StartsWith(value)) ?? ActiveUsername(supergroup);
+        }
+
+        public static bool HasEditableUsername(this Supergroup supergroup)
+        {
+            return EditableUsername(supergroup).Length > 0;
+        }
+
+        public static string EditableUsername(this Supergroup supergroup)
+        {
+            return supergroup?.Usernames?.EditableUsername ?? string.Empty;
+        }
+
+        public static bool HasActiveUsername(this User user)
+        {
+            return ActiveUsername(user).Length > 0;
+        }
+
+        public static bool HasActiveUsername(this User user, out string username)
+        {
+            username = ActiveUsername(user);
+            return username.Length > 0;
+        }
+
+        public static bool HasActiveUsername(this User user, string value, out string username)
+        {
+            username = user?.Usernames?.ActiveUsernames.FirstOrDefault(x => x.StartsWith(value, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+            return username.Length > 0;
+        }
+
+        public static string ActiveUsername(this User user)
+        {
+            return user?.Usernames?.ActiveUsernames.FirstOrDefault() ?? string.Empty;
+        }
+
+        public static string ActiveUsername(this User user, string value)
+        {
+            return user?.Usernames?.ActiveUsernames.FirstOrDefault(x => x.StartsWith(value, StringComparison.OrdinalIgnoreCase)) ?? ActiveUsername(user);
+        }
+
+        public static string EditableUsername(this User user)
+        {
+            return user?.Usernames?.EditableUsername ?? string.Empty;
+        }
+
+        public static bool HasEditableUsername(this User user)
+        {
+            return EditableUsername(user).Length > 0;
+        }
+
+        public static bool IsValidState(this Call call)
+        {
+            if (call == null || call.State is CallStateDiscarded || call.State is CallStateError)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public static File InvalidFile()
+        {
+            return new File(0, 0, 0, new LocalFile(string.Empty, false, false, false, false, 0, 0, 0), new RemoteFile(string.Empty, string.Empty, false, false, 0));
+        }
+
+        public static bool Contains(this ChatAvailableReactions reactions, string value)
+        {
+            if (reactions is ChatAvailableReactionsSome some)
+            {
+                return some.Reactions.OfType<ReactionTypeEmoji>().Any(x => x.Emoji == value);
+            }
+
+            return true;
+        }
+
+        public static bool AreTheSame(this ReactionType x, ReactionType y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+            else if (x is ReactionTypeEmoji oldEmoji
+                && y is ReactionTypeEmoji newEmoji)
+            {
+                return oldEmoji.Emoji == newEmoji.Emoji;
+            }
+            else if (x is ReactionTypeCustomEmoji oldCustomEmoji
+                && y is ReactionTypeCustomEmoji newCustomEmoji)
+            {
+                return oldCustomEmoji.CustomEmojiId == newCustomEmoji.CustomEmojiId;
+            }
+
+            return x is ReactionTypePaid && y is ReactionTypePaid;
+        }
+
+        public static bool AreTheSame(this MessageTopic x, MessageTopic y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+            else if (x is MessageTopicForum oldForum
+                && y is MessageTopicForum newForum)
+            {
+                return oldForum.ForumTopicId == newForum.ForumTopicId;
+            }
+            else if (x is MessageTopicSavedMessages oldSavedMessages
+                && y is MessageTopicSavedMessages newSavedMessages)
+            {
+                return oldSavedMessages.SavedMessagesTopicId == newSavedMessages.SavedMessagesTopicId;
+            }
+            else if (x is MessageTopicDirectMessages oldDirectMessagesChat
+                && y is MessageTopicDirectMessages newDirectMessagesChat)
+            {
+                return oldDirectMessagesChat.DirectMessagesChatTopicId == newDirectMessagesChat.DirectMessagesChatTopicId;
+            }
+            else if (x is MessageTopicThread oldThread
+                && y is MessageTopicThread newThread)
+            {
+                return oldThread.MessageThreadId == newThread.MessageThreadId;
+            }
+
+            return false;
+        }
+
+        public static bool IsSavedMessages(this MessageTopic messageTopic, long savedMessagesTopicId)
+        {
+            return messageTopic is MessageTopicSavedMessages savedMessages && savedMessages.SavedMessagesTopicId == savedMessagesTopicId;
+        }
+
+        public static bool IsForum(this MessageTopic messageTopic, long forumTopicId)
+        {
+            return messageTopic is MessageTopicForum forum && forum.ForumTopicId == forumTopicId;
+        }
+
+        public static bool IsDirectMessagesChat(this MessageTopic messageTopic, long directMessagesChatTopicId)
+        {
+            return messageTopic is MessageTopicDirectMessages directMessagesChat && directMessagesChat.DirectMessagesChatTopicId == directMessagesChatTopicId;
+        }
+
+        public static bool IsThread(this MessageTopic messageTopic, long messageThreadId)
+        {
+            return messageTopic is MessageTopicThread thread && thread.MessageThreadId == messageThreadId;
+        }
+
+        public static MessageTopic TopicIdNotGeneral(this Message message)
+        {
+            if (message.TopicId is MessageTopicForum forum && forum.ForumTopicId == ForumTopicService.GeneralId)
+            {
+                return null;
+            }
+
+            return message.TopicId;
+        }
+
+        public static MessageTopic ToId(this ForumTopic topic)
+        {
+            return new MessageTopicForum(topic.Info.ForumTopicId);
+        }
+
+        public static MessageTopic ToId(this SavedMessagesTopic topic)
+        {
+            return new MessageTopicSavedMessages(topic.Id);
+        }
+
+        public static MessageTopic ToId(this DirectMessagesChatTopic topic)
+        {
+            return new MessageTopicDirectMessages(topic.Id);
+        }
+
+        public static bool AreTheSame(this MessageSelfDestructType x, MessageSelfDestructType y)
+        {
+            if (x is MessageSelfDestructTypeTimer oldTimer
+                && y is MessageSelfDestructTypeTimer newTimer)
+            {
+                return oldTimer.SelfDestructTime == newTimer.SelfDestructTime;
+            }
+            else if (x is MessageSelfDestructTypeImmediately
+                && y is MessageSelfDestructTypeImmediately)
+            {
+                return true;
+            }
+
+            return x == null && y == null;
+        }
+
+        public static bool AreTheSame(this ChatAvailableReactions x, ChatAvailableReactions y)
+        {
+            if (x is ChatAvailableReactionsAll xAll && y is ChatAvailableReactionsAll yAll)
+            {
+                return xAll.MaxReactionCount == yAll.MaxReactionCount;
+            }
+            else if (x is ChatAvailableReactionsSome xSome && y is ChatAvailableReactionsSome ySome)
+            {
+                if (xSome.Reactions?.Count != ySome.Reactions?.Count || xSome.MaxReactionCount != ySome.MaxReactionCount)
+                {
+                    return false;
+                }
+
+                HashSet<string> emojiHash = null;
+                HashSet<long> customHash = null;
+
+                for (int i = 0; i < xSome.Reactions.Count; i++)
+                {
+                    if (xSome.Reactions[i] is ReactionTypeEmoji emoji)
+                    {
+                        emojiHash ??= new HashSet<string>();
+                        emojiHash.Add(emoji.Emoji);
+                    }
+                    else if (xSome.Reactions[i] is ReactionTypeCustomEmoji custom)
+                    {
+                        customHash ??= new HashSet<long>();
+                        customHash.Add(custom.CustomEmojiId);
+                    }
+                }
+
+                for (int i = 0; i < ySome.Reactions.Count; i++)
+                {
+                    if (ySome.Reactions[i] is ReactionTypeEmoji emoji && (emojiHash == null || !emojiHash.Contains(emoji.Emoji)))
+                    {
+                        return false;
+                    }
+                    else if (ySome.Reactions[i] is ReactionTypeCustomEmoji custom && (customHash == null || !customHash.Contains(custom.CustomEmojiId)))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsUser(this Chat chat, out long userId)
+        {
+            if (chat.Type is ChatTypePrivate privata)
+            {
+                userId = privata.UserId;
+                return true;
+            }
+            else if (chat.Type is ChatTypeSecret secret)
+            {
+                userId = secret.UserId;
+                return true;
+            }
+
+            userId = 0;
+            return false;
+        }
+
+        public static bool IsUser(this Chat chat, long userId)
+        {
+            if (chat.Type is ChatTypePrivate privata)
+            {
+                return userId == privata.UserId;
+            }
+            else if (chat.Type is ChatTypeSecret secret)
+            {
+                return userId == secret.UserId;
+            }
+
+            return false;
+        }
+
+        public static bool IsBasicGroup(this Chat chat, out long basicGroupId)
+        {
+            if (chat.Type is ChatTypeBasicGroup basicGroup)
+            {
+                basicGroupId = basicGroup.BasicGroupId;
+                return true;
+            }
+
+            basicGroupId = 0;
+            return false;
+        }
+
+        public static bool IsSupergroup(this Chat chat, out long supergroupId, out bool isChannel)
+        {
+            if (chat.Type is ChatTypeSupergroup supergroup)
+            {
+                supergroupId = supergroup.SupergroupId;
+                isChannel = supergroup.IsChannel;
+                return true;
+            }
+
+            supergroupId = 0;
+            isChannel = false;
+            return false;
+        }
+
+        #region Json
+
+        public static bool GetNamedBoolean(this JsonValueObject json, string key, bool defaultValue)
+        {
+            var member = json.GetNamedValue(key);
+            if (member?.Value is JsonValueBoolean value)
+            {
+                return value.Value;
+            }
+
+            return defaultValue;
+        }
+
+        public static float GetNamedNumber(this JsonValueObject json, string key, float defaultValue)
+        {
+            var member = json.GetNamedValue(key);
+            if (member?.Value is JsonValueNumber value)
+            {
+                return (float)value.Value;
+            }
+
+            return defaultValue;
+        }
+
+        public static string GetNamedString(this JsonValueObject json, string key, string defaultValue)
+        {
+            var member = json.GetNamedValue(key);
+            if (member?.Value is JsonValueString value)
+            {
+                return value.Value;
+            }
+
+            return defaultValue;
+        }
+
+        public static JsonValueObject GetNamedObject(this JsonValueObject json, string key)
+        {
+            var member = json.GetNamedValue(key);
+            if (member?.Value is JsonValueObject value)
+            {
+                return value;
+            }
+
+            return null;
+        }
+
+        public static JsonValueArray GetNamedArray(this JsonValueObject json, string key)
+        {
+            var member = json.GetNamedValue(key);
+            if (member?.Value is JsonValueArray value)
+            {
+                return value;
+            }
+
+            return null;
+        }
+
+        public static JsonObjectMember GetNamedValue(this JsonValueObject json, string key)
+        {
+            if (json == null)
+            {
+                return null;
+            }
+
+            return json.Members.FirstOrDefault(x => string.Equals(key, x.Key, StringComparison.OrdinalIgnoreCase));
+        }
+
+        #endregion
+
+        public static string ToOutcomeText(this MessageCall call, bool outgoing)
+        {
+            var missed = call.DiscardReason is CallDiscardReasonMissed or CallDiscardReasonDeclined;
+
+            if (call.IsVideo)
+            {
+                return missed ? (outgoing ? Strings.CallMessageVideoOutgoingMissed : Strings.CallMessageVideoIncomingMissed) : (outgoing ? Strings.CallMessageVideoOutgoing : Strings.CallMessageVideoIncoming);
+            }
+            else
+            {
+                return missed ? (outgoing ? Strings.CallMessageOutgoingMissed : Strings.CallMessageIncomingMissed) : (outgoing ? Strings.CallMessageOutgoing : Strings.CallMessageIncoming);
+            }
+        }
+
+        public static string ToOutcomeText(this MessageGroupCall groupCall, bool outgoing)
+        {
+            if (outgoing)
+            {
+                return Strings.ConferenceCallOutgoing;
+            }
+            else if (groupCall.WasMissed)
+            {
+                return Strings.ConferenceCallMissed;
+            }
+            else
+            {
+                return Strings.ConferenceCallIncoming;
+            }
+        }
+
+        public static bool IsMoving(this Background background)
+        {
+            if (background?.Type is BackgroundTypePattern pattern)
+            {
+                return pattern.IsMoving;
+            }
+            else if (background?.Type is BackgroundTypeWallpaper wallpaper)
+            {
+                return wallpaper.IsMoving;
+            }
+
+            return false;
+        }
+
+        public static Color GetForeground(this BackgroundTypePattern pattern)
+        {
+            if (pattern.Fill is BackgroundFillSolid solid)
+            {
+                return ColorEx.GetPatternColor(solid.Color.ToColor());
+            }
+            else if (pattern.Fill is BackgroundFillGradient gradient)
+            {
+                return ColorEx.GetPatternColor(ColorEx.GetAverageColor(gradient.TopColor, gradient.BottomColor));
+            }
+            else if (pattern.Fill is BackgroundFillFreeformGradient freeform)
+            {
+                var averageColor = ColorEx.GetAverageColor(freeform.Colors[2], ColorEx.GetAverageColor(freeform.Colors[0], freeform.Colors[1]));
+                if (freeform.Colors.Count > 3)
+                {
+                    averageColor = ColorEx.GetAverageColor(freeform.Colors[3], averageColor);
+                }
+
+                return ColorEx.GetPatternColor(averageColor, true);
+            }
+
+            return Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF);
+        }
+
+        public static Brush ToBrush(this BackgroundTypeFill fill, int offset = 0)
+        {
+            return fill.Fill.ToBrush(offset);
+        }
+
+        public static Brush ToBrush(this BackgroundTypePattern pattern, int offset = 0)
+        {
+            return pattern.Fill.ToBrush(offset);
+        }
+
+        public static Brush ToBrush(this BackgroundFill fill, int offset = 0)
+        {
+            if (fill is BackgroundFillSolid solid)
+            {
+                return new SolidColorBrush(solid.Color.ToColor());
+            }
+            else if (fill is BackgroundFillGradient gradient)
+            {
+                return TdBackground.GetGradient(gradient.TopColor, gradient.BottomColor, gradient.RotationAngle);
+            }
+            else if (fill is BackgroundFillFreeformGradient freeformGradient)
+            {
+                // PERF: ChatBackgroundFreeform.Create is not the fastest,
+                // would be better to execute it asynchronously.
+                //
+                // On Linux this is NOT the Win2D ChatBackgroundFreeform of ChatBackgroundControl.cs
+                // (that one is under #if !LINUX because it paints into WriteableBitmap.Buffer):
+                // Telegram.Linux/Xaml/ChatBackgroundFreeform.Linux.cs provides the same static
+                // Create, rasterizing the four-point mesh with ChatBackgroundRenderer and handing
+                // it over as a BitmapImage. It was written for the call page and this is its third
+                // caller. The two-stop stand-in that used to be here took the first and the last
+                // colour of the palette at angle 0, so a four-colour freeform lost two of its
+                // colours and all of its rotation.
+                return new ImageBrush
+                {
+                    ImageSource = ChatBackgroundFreeform.Create(freeformGradient, offset),
+                    Stretch = Stretch.UniformToFill
+                };
+            }
+
+            return null;
+        }
+
+        public static bool IsFreeformGradient(this Background background)
+        {
+            if (background?.Type is BackgroundTypeFill typeFill)
+            {
+                return typeFill.Fill is BackgroundFillFreeformGradient;
+            }
+            else if (background?.Type is BackgroundTypePattern typePattern)
+            {
+                return typePattern.Fill is BackgroundFillFreeformGradient;
+            }
+
+            return false;
+        }
+
+        public static Color[] GetColors(this BackgroundFillFreeformGradient freeform)
+        {
+            return freeform.Colors.Select(x => x.ToColor()).ToArray();
+        }
+
+        public static bool AreTheSame(this ChatList x, ChatList y, bool allowNull = true)
+        {
+            if ((x is ChatListMain || x == null) && (y is ChatListMain || (y == null && allowNull)))
+            {
+                return true;
+            }
+            if (x is ChatListArchive && y is ChatListArchive)
+            {
+                return true;
+            }
+            else if (x is ChatListFolder folderX && y is ChatListFolder folderY)
+            {
+                return folderX.ChatFolderId == folderY.ChatFolderId;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this StoryList x, StoryList y)
+        {
+            if (x is StoryListMain)
+            {
+                return y is StoryListMain;
+            }
+            else if (x is StoryListArchive)
+            {
+                return y is StoryListArchive;
+            }
+
+            return false;
+        }
+
+        public static bool CodeEquals(this Error error, ErrorCode code)
+        {
+            if (error == null)
+            {
+                return false;
+            }
+
+            if (Enum.IsDefined(typeof(ErrorCode), error.Code))
+            {
+                return (ErrorCode)error.Code == code;
+            }
+
+            return false;
+        }
+
+        public static bool MessageEquals(this Error error, ErrorType type)
+        {
+            if (error == null || error.Message == null)
+            {
+                return false;
+            }
+
+            var strings = error.Message.Split(':');
+            var typeString = strings[0];
+            if (Enum.IsDefined(typeof(ErrorType), typeString))
+            {
+                var value = (ErrorType)Enum.Parse(typeof(ErrorType), typeString, true);
+
+                return value == type;
+            }
+
+            return false;
+        }
+
+        public static bool NeedInfo(this Invoice invoice)
+        {
+            return invoice.NeedShippingAddress || invoice.NeedPhoneNumber || invoice.NeedName || invoice.NeedEmailAddress;
+        }
+
+        public static bool HasVideoInfo(this GroupCallParticipant participant)
+        {
+            return participant.ScreenSharingVideoInfo != null || participant.VideoInfo != null;
+        }
+
+        public static IEnumerable<GroupCallParticipantVideoInfo> GetVideoInfo(this GroupCallParticipant participant)
+        {
+            if (participant.ScreenSharingVideoInfo != null)
+            {
+                yield return participant.ScreenSharingVideoInfo;
+            }
+
+            if (participant.VideoInfo != null)
+            {
+                yield return participant.VideoInfo;
+            }
+        }
+
+        public static InputThumbnail ToInputThumbnail(this PhotoSize photo)
+        {
+            if (photo == null)
+            {
+                return null;
+            }
+
+            return new InputThumbnail(new InputFileId(photo.Photo.Id), photo.Width, photo.Height);
+        }
+
+        public static Thumbnail GetThumbnail(this Photo photo)
+        {
+            var small = photo?.GetSmall();
+            return small?.ToThumbnail();
+        }
+
+        public static Thumbnail ToThumbnail(this PhotoSize photo)
+        {
+            if (photo == null)
+            {
+                return null;
+            }
+
+            return new Thumbnail(new ThumbnailFormatJpeg(), photo.Width, photo.Height, photo.Photo);
+        }
+
+        public static InputThumbnail ToInput(this Thumbnail thumbnail)
+        {
+            if (thumbnail == null)
+            {
+                return null;
+            }
+
+            return new InputThumbnail(new InputFileId(thumbnail.File.Id), thumbnail.Width, thumbnail.Height);
+        }
+
+        public static bool AreTheSame(this Message x, Message y)
+        {
+            if (x == null || y == null)
+            {
+                return false;
+            }
+
+            return x.Id == y.Id && x.ChatId == y.ChatId;
+        }
+
+        public static bool AreTheSame(this Message x, MessageWithOwner y)
+        {
+            if (x == null || y == null)
+            {
+                return false;
+            }
+
+            return x.Id == y.Id && x.ChatId == y.ChatId;
+        }
+
+        public static bool AreTheSame(this MessageWithOwner x, Message y)
+        {
+            if (x == null || y == null)
+            {
+                return false;
+            }
+
+            return x.Id == y.Id && x.ChatId == y.ChatId;
+        }
+
+        public static bool AreTheSame(this MessageWithOwner x, MessageWithOwner y)
+        {
+            if (x == null || y == null)
+            {
+                return false;
+            }
+
+            return x.Id == y.Id && x.ChatId == y.ChatId;
+        }
+
+        public static bool AreTheSame(this MessageWithOwner x, PlaybackItem y)
+        {
+            if (x == null || y is not PlaybackItemMessage yMessage)
+            {
+                return false;
+            }
+
+            return x.Id == yMessage.Id && x.ChatId == yMessage.ChatId;
+        }
+
+        public static bool AreTheSame(this AudioWithOwner x, PlaybackItem y)
+        {
+            if (x == null || y is not PlaybackItemProfileAudio yProfileAudio)
+            {
+                return false;
+            }
+
+            return x.AudioValue.Id == yProfileAudio.Id && x.UserId == yProfileAudio.UserId;
+        }
+
+        public static bool AreTheSame(this PlaybackItem x, PlaybackItem y)
+        {
+            if (x == null || y == null)
+            {
+                return false;
+            }
+
+            if (x is PlaybackItemMessage xMessage && y is PlaybackItemMessage yMessage)
+            {
+                return xMessage.ChatId == yMessage.ChatId
+                    && xMessage.Id == yMessage.Id
+                    && xMessage.TopicId.AreTheSame(yMessage.TopicId);
+            }
+            else if (x is PlaybackItemProfileAudio xProfileAudio && y is PlaybackItemProfileAudio yProfileAudio)
+            {
+                return xProfileAudio.UserId == yProfileAudio.UserId
+                    && xProfileAudio.Id == yProfileAudio.Id;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this SuggestedPostPrice x, SuggestedPostPrice y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            if (x is SuggestedPostPriceStar xStar && y is SuggestedPostPriceStar yStar)
+            {
+                return xStar.StarCount == yStar.StarCount;
+            }
+            else if (x is SuggestedPostPriceGram xGram && y is SuggestedPostPriceGram yGram)
+            {
+                return xGram.GramCentCount == yGram.GramCentCount;
+            }
+
+            return false;
+        }
+
+        public static IEnumerable<FormattedText> Split(this FormattedText text, long maxLength)
+        {
+            int count = (int)Math.Ceiling(text.Text.Length / (double)maxLength);
+            for (int a = 0; a < count; a++)
+            {
+                yield return text.Substring(a * maxLength, maxLength);
+            }
+        }
+
+        public static FormattedText Concat(params FormattedText[] text)
+        {
+            var builder = new StringBuilder();
+            var entities = new MutableVector<TextEntity>();
+
+            foreach (var part in text)
+            {
+                foreach (var entity in part.Entities)
+                {
+                    entities.Add(new TextEntity(builder.Length + entity.Offset, entity.Length, entity.Type));
+                }
+
+                builder.Append(part.Text);
+            }
+
+            return new FormattedText(builder.ToString(), entities);
+        }
+
+        public static FormattedText Substring(this FormattedText text, long startIndex, long length)
+        {
+            return Substring(text, (int)startIndex, (int)length);
+        }
+
+        public static FormattedText Substring(this FormattedText text, int startIndex, int length)
+        {
+            if (text.Text.Length < length)
+            {
+                return text;
+            }
+
+            var message = text.Text.Substring(startIndex, Math.Min(text.Text.Length - startIndex, length));
+            MutableVector<TextEntity> sub = null;
+
+            foreach (var entity in text.Entities)
+            {
+                if (TextStyleRun.GetRelativeRange(entity.Offset, entity.Length, startIndex, length, out int newOffset, out int newLength))
+                {
+                    sub ??= new MutableVector<TextEntity>();
+                    sub.Add(new TextEntity
+                    {
+                        Offset = newOffset,
+                        Length = newLength,
+                        Type = entity.Type
+                    });
+                }
+            }
+
+            return new FormattedText(message, sub ?? Array.Empty<TextEntity>());
+        }
+
+        public static (string Text, Vector<TextEntity> Entities) Substring(this string text, Vector<TextEntity> entities, int startIndex, int length)
+        {
+            if (text.Length < length)
+            {
+                return (text, entities);
+            }
+
+            var message = text.Substring(startIndex, Math.Min(text.Length - startIndex, length));
+            MutableVector<TextEntity> sub = null;
+
+            foreach (var entity in entities)
+            {
+                if (TextStyleRun.GetRelativeRange(entity.Offset, entity.Length, startIndex, length, out int newOffset, out int newLength))
+                {
+                    sub ??= new MutableVector<TextEntity>();
+                    sub.Add(new TextEntity
+                    {
+                        Offset = newOffset,
+                        Length = newLength,
+                        Type = entity.Type
+                    });
+                }
+            }
+
+            return (message, sub ?? Array.Empty<TextEntity>());
+        }
+
+        public static bool Intersect(this TextEntity x, TextEntity y)
+        {
+            return TextStyleRun.GetRelativeRange(x.Offset, x.Length, y.Offset, y.Length, out _, out _);
+        }
+
+        public static FormattedText ToFormattedText(this PageBlockCaption caption)
+        {
+            return caption.Text.ToFormattedText();
+        }
+
+        public static string ToPlainText(this PageBlockCaption caption)
+        {
+            return caption.Text.ToPlainText();
+        }
+
+        public static string ToPlainText(this RichText text)
+        {
+            switch (text)
+            {
+                case RichTextPlain plainText:
+                    return plainText.Text;
+                case RichTexts concatText:
+                    var builder = new StringBuilder();
+                    foreach (var concat in concatText.Texts)
+                    {
+                        builder.Append(ToPlainText(concat));
+                    }
+                    return builder.ToString();
+                case RichTextAnchorLink anchorLink:
+                    return ToPlainText(anchorLink.Text);
+                case RichTextBold boldText:
+                    return ToPlainText(boldText.Text);
+                case RichTextEmailAddress emailText:
+                    return ToPlainText(emailText.Text);
+                case RichTextFixed fixedText:
+                    return ToPlainText(fixedText.Text);
+                case RichTextItalic italicText:
+                    return ToPlainText(italicText.Text);
+                case RichTextStrikethrough strikeText:
+                    return ToPlainText(strikeText.Text);
+                case RichTextUnderline underlineText:
+                    return ToPlainText(underlineText.Text);
+                case RichTextUrl urlText:
+                    return ToPlainText(urlText.Text);
+#if !LINUX
+                case RichTextButton button:
+                    return ToPlainText(button.Button.Text);
+#endif
+                default:
+                    return null;
+            }
+        }
+
+        public static bool IsNullOrEmpty(this RichText text)
+        {
+            if (text == null)
+            {
+                return true;
+            }
+
+            return string.IsNullOrEmpty(text.ToPlainText());
+        }
+
+        public static bool IsEditable(this TextEntity entity)
+        {
+            switch (entity.Type)
+            {
+                case TextEntityTypeBold:
+                case TextEntityTypeItalic:
+                case TextEntityTypeStrikethrough:
+                case TextEntityTypeUnderline:
+                case TextEntityTypeSpoiler:
+                case TextEntityTypeBlockQuote:
+                case TextEntityTypeExpandableBlockQuote:
+                case TextEntityTypeCustomEmoji:
+                case TextEntityTypeCode:
+                case TextEntityTypePre:
+                case TextEntityTypePreCode:
+                case TextEntityTypeTextUrl:
+                case TextEntityTypeMentionName:
+                case TextEntityTypeDateTime:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public static Photo GetPhoto(this MessageContent content)
+        {
+            switch (content)
+            {
+                case MessageGame game:
+                    return game.Game.Photo;
+                case MessageInvoice invoice:
+                    return invoice.ProductInfo.Photo;
+                case MessagePhoto photo:
+                    return photo.Photo;
+                case MessageText text:
+                    return text.LinkPreview?.Type switch
+                    {
+                        LinkPreviewTypeAlbum album => album.Media[0] switch
+                        {
+                            LinkPreviewAlbumMediaPhoto albumPhoto => albumPhoto.Photo,
+                            _ => null
+                        },
+                        LinkPreviewTypePhoto photo => photo.Photo,
+                        LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Thumbnail,
+                        LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Thumbnail,
+                        LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Thumbnail,
+                        LinkPreviewTypeApp app => app.Photo,
+                        LinkPreviewTypeArticle article => article.Photo,
+                        LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo.ToPhoto(),
+                        LinkPreviewTypeChat chat => chat.Photo.ToPhoto(),
+                        LinkPreviewTypeDirectMessagesChat directMessagesChat => directMessagesChat.Photo.ToPhoto(),
+                        LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo.ToPhoto(),
+                        LinkPreviewTypeUser user => user.Photo.ToPhoto(),
+                        LinkPreviewTypeVideoChat videoChat => videoChat.Photo.ToPhoto(),
+                        LinkPreviewTypeWebApp webApp => webApp.Photo,
+                        _ => null
+                    };
+                case MessagePoll poll:
+                    return poll.Media?.GetPhoto();
+                case MessageChatChangePhoto chatChangePhoto:
+                    return chatChangePhoto.Photo.ToPhoto();
+                default:
+                    return null;
+            }
+        }
+
+        public static Photo GetPhoto(this PollMedia content)
+        {
+            switch (content)
+            {
+                case PollMediaPhoto photo:
+                    return photo.Photo;
+                case PollMediaLink text:
+                    return text.LinkPreview?.Type switch
+                    {
+                        LinkPreviewTypeAlbum album => album.Media[0] switch
+                        {
+                            LinkPreviewAlbumMediaPhoto albumPhoto => albumPhoto.Photo,
+                            _ => null
+                        },
+                        LinkPreviewTypePhoto photo => photo.Photo,
+                        LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Thumbnail,
+                        LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Thumbnail,
+                        LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Thumbnail,
+                        LinkPreviewTypeApp app => app.Photo,
+                        LinkPreviewTypeArticle article => article.Photo,
+                        LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo.ToPhoto(),
+                        LinkPreviewTypeChat chat => chat.Photo.ToPhoto(),
+                        LinkPreviewTypeDirectMessagesChat directMessagesChat => directMessagesChat.Photo.ToPhoto(),
+                        LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo.ToPhoto(),
+                        LinkPreviewTypeUser user => user.Photo.ToPhoto(),
+                        LinkPreviewTypeVideoChat videoChat => videoChat.Photo.ToPhoto(),
+                        LinkPreviewTypeWebApp webApp => webApp.Photo,
+                        _ => null
+                    };
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// What the button on a file has to show while the file is being transferred, or
+        /// <see cref="MessageContentState.None"/> when it isn't: the caller then shows
+        /// whatever its own content is, a play button, a document glyph, a photo.
+        /// </summary>
+        public static MessageContentState GetFileState(this File file, IClientService clientService)
+        {
+            return GetFileState(file, clientService, null, null);
+        }
+
+        /// <param name="content">
+        /// The content the file belongs to, passed by callers that want auto-download
+        /// applied to it: the file is then downloaded here if the settings allow it, and
+        /// reported as downloading right away rather than one update later.
+        /// </param>
+        public static MessageContentState GetFileState(this File file, MessageWithOwner message, object content = null)
+        {
+            return GetFileState(file, message.ClientService, message, content);
+        }
+
+        private static MessageContentState GetFileState(File file, IClientService clientService, MessageWithOwner message, object content)
+        {
+            // A download that exists only to feed a reader is not one of these buttons'
+            // business, and following it would make them flicker for as long as the media
+            // plays: see IClientService.IsDownloadFileImplicit.
+            if (file.Local.IsDownloadingActive && !clientService.IsDownloadFileImplicit(file.Id))
+            {
+                return MessageContentState.Downloading;
+            }
+            else if (file.Remote.IsUploadingActive
+                || message?.SendingState is MessageSendingStateFailed
+                || (message?.SendingState is MessageSendingStatePending && !file.Remote.IsUploadingCompleted))
+            {
+                return MessageContentState.Uploading;
+            }
+            else if (file.Local.CanBeDownloaded && !file.Local.IsDownloadingCompleted)
+            {
+                // Asked of the file rather than of the state above: a file that is being
+                // read is downloading as far as TDLib is concerned, and asking for it
+                // again on every update it sends would be pointless.
+                if (content != null
+                    && !file.Local.IsDownloadingActive
+                    && message is MessageViewModel viewModel
+                    && viewModel.Delegate.CanBeDownloaded(content, file))
+                {
+                    clientService.DownloadFile(file.Id, 32);
+                    return MessageContentState.Downloading;
+                }
+
+                return MessageContentState.Download;
+            }
+
+            return MessageContentState.None;
+        }
+
+        public static (File File, Thumbnail Thumbnail, string FileName) GetFileAndThumbnailAndName(this MessageWithOwner message)
+        {
+            return GetFileAndThumbnailAndName(message.Content);
+        }
+
+        public static (File File, Thumbnail Thumbnail, string FileName) GetFileAndThumbnailAndName(this MessageContent content)
+        {
+            switch (content)
+            {
+                case MessageAnimation animation:
+                    return (animation.Animation.AnimationValue, animation.Animation.Thumbnail, animation.Animation.FileName);
+                case MessageAudio audio:
+                    return (audio.Audio.AudioValue, audio.Audio.AlbumCoverThumbnail, audio.Audio.FileName);
+                case MessageDocument document:
+                    return (document.Document.DocumentValue, document.Document.Thumbnail, document.Document.FileName);
+                case MessageGame game:
+                    if (game.Game.Animation != null)
+                    {
+                        return (game.Game.Animation.AnimationValue, game.Game.Animation.Thumbnail, game.Game.Animation.FileName);
+                    }
+                    else if (game.Game.Photo != null)
+                    {
+                        var big = game.Game.Photo.GetBig();
+                        if (big != null)
+                        {
+                            return (big.Photo, null, null);
+                        }
+                    }
+                    break;
+                case MessagePhoto photo:
+                    {
+                        var big = photo.Photo.GetBig();
+                        if (big != null)
+                        {
+                            return (big.Photo, null, null);
+                        }
+                    }
+                    break;
+                case MessageSticker sticker:
+                    return (sticker.Sticker.StickerValue, null, null);
+                case MessageAnimatedEmoji animatedEmoji:
+                    return (animatedEmoji.AnimatedEmoji.Sticker?.StickerValue, null, null);
+                case MessageText text:
+                    return text.LinkPreview?.Type switch
+                    {
+                        LinkPreviewTypeAlbum album => album.Media[0] switch
+                        {
+                            LinkPreviewAlbumMediaPhoto albumPhoto => (albumPhoto.Photo.GetBig()?.Photo, null, null),
+                            LinkPreviewAlbumMediaVideo albumVideo => (albumVideo.Video.VideoValue, albumVideo.Video.Thumbnail, albumVideo.Video.FileName),
+                            _ => (null, null, null)
+                        },
+                        LinkPreviewTypeAnimation animation => (animation.Animation.AnimationValue, animation.Animation.Thumbnail, animation.Animation.FileName),
+                        LinkPreviewTypeAudio audio => (audio.Audio.AudioValue, audio.Audio.AlbumCoverThumbnail, audio.Audio.FileName),
+                        LinkPreviewTypeBackground background => (background.Document?.DocumentValue, background.Document?.Thumbnail, background.Document?.FileName),
+                        LinkPreviewTypeDirectMessagesChat directMessagesChat => (directMessagesChat.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeDocument document => (document.Document.DocumentValue, document.Document.Thumbnail, document.Document.FileName),
+                        LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => (embeddedAudioPlayer.Thumbnail?.GetFile(), null, null),
+                        LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => (embeddedAnimationPlayer.Thumbnail?.GetFile(), null, null),
+                        LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => (embeddedVideoPlayer.Thumbnail?.GetFile(), null, null),
+                        LinkPreviewTypeSticker sticker => (sticker.Sticker.StickerValue, sticker.Sticker.Thumbnail, null),
+                        LinkPreviewTypeVideo video => (video.Video.VideoValue, video.Video.Thumbnail, video.Video.FileName),
+                        LinkPreviewTypeVideoNote videoNote => (videoNote.VideoNote.Video, videoNote.VideoNote.Thumbnail, null),
+                        LinkPreviewTypePhoto photo => (photo.Photo.GetFile(), null, null),
+                        LinkPreviewTypeApp app => (app.Photo.GetFile(), null, null),
+                        LinkPreviewTypeArticle article => (article.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeChannelBoost channelBoost => (channelBoost.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeChat chat => (chat.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeSupergroupBoost supergroupBoost => (supergroupBoost.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeUser user => (user.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeVideoChat videoChat => (videoChat.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeWebApp webApp => (webApp.Photo?.GetFile(), null, null),
+                        _ => (null, null, null)
+                    };
+                case MessageVideo video:
+                    return (video.Video.VideoValue, video.Video.Thumbnail, video.Video.FileName);
+                case MessageVideoNote videoNote:
+                    return (videoNote.VideoNote.Video, videoNote.VideoNote.Thumbnail, null);
+                case MessageVoiceNote voiceNote:
+                    return (voiceNote.VoiceNote.Voice, null, null);
+                case MessagePoll poll:
+                    return poll.Media.GetFileAndThumbnailAndName();
+            }
+
+            return (null, null, null);
+        }
+
+        public static (File File, Thumbnail Thumbnail, string FileName) GetFileAndThumbnailAndName(this PollMedia content)
+        {
+            switch (content)
+            {
+                case PollMediaAnimation animation:
+                    return (animation.Animation.AnimationValue, animation.Animation.Thumbnail, animation.Animation.FileName);
+                case PollMediaAudio audio:
+                    return (audio.Audio.AudioValue, audio.Audio.AlbumCoverThumbnail, audio.Audio.FileName);
+                case PollMediaDocument document:
+                    return (document.Document.DocumentValue, document.Document.Thumbnail, document.Document.FileName);
+                case PollMediaPhoto photo:
+                    {
+                        var big = photo.Photo.GetBig();
+                        if (big != null)
+                        {
+                            return (big.Photo, null, null);
+                        }
+                    }
+                    break;
+                case PollMediaSticker sticker:
+                    return (sticker.Sticker.StickerValue, null, null);
+                case PollMediaLink text:
+                    return text.LinkPreview?.Type switch
+                    {
+                        LinkPreviewTypeAlbum album => album.Media[0] switch
+                        {
+                            LinkPreviewAlbumMediaPhoto albumPhoto => (albumPhoto.Photo.GetBig()?.Photo, null, null),
+                            LinkPreviewAlbumMediaVideo albumVideo => (albumVideo.Video.VideoValue, albumVideo.Video.Thumbnail, albumVideo.Video.FileName),
+                            _ => (null, null, null)
+                        },
+                        LinkPreviewTypeAnimation animation => (animation.Animation.AnimationValue, animation.Animation.Thumbnail, animation.Animation.FileName),
+                        LinkPreviewTypeAudio audio => (audio.Audio.AudioValue, audio.Audio.AlbumCoverThumbnail, audio.Audio.FileName),
+                        LinkPreviewTypeBackground background => (background.Document?.DocumentValue, background.Document?.Thumbnail, background.Document?.FileName),
+                        LinkPreviewTypeDirectMessagesChat directMessagesChat => (directMessagesChat.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeDocument document => (document.Document.DocumentValue, document.Document.Thumbnail, document.Document.FileName),
+                        LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => (embeddedAudioPlayer.Thumbnail?.GetFile(), null, null),
+                        LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => (embeddedAnimationPlayer.Thumbnail?.GetFile(), null, null),
+                        LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => (embeddedVideoPlayer.Thumbnail?.GetFile(), null, null),
+                        LinkPreviewTypeSticker sticker => (sticker.Sticker.StickerValue, sticker.Sticker.Thumbnail, null),
+                        LinkPreviewTypeVideo video => (video.Video.VideoValue, video.Video.Thumbnail, video.Video.FileName),
+                        LinkPreviewTypeVideoNote videoNote => (videoNote.VideoNote.Video, videoNote.VideoNote.Thumbnail, null),
+                        LinkPreviewTypePhoto photo => (photo.Photo.GetFile(), null, null),
+                        LinkPreviewTypeApp app => (app.Photo.GetFile(), null, null),
+                        LinkPreviewTypeArticle article => (article.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeChannelBoost channelBoost => (channelBoost.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeChat chat => (chat.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeSupergroupBoost supergroupBoost => (supergroupBoost.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeUser user => (user.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeVideoChat videoChat => (videoChat.Photo?.GetFile(), null, null),
+                        LinkPreviewTypeWebApp webApp => (webApp.Photo?.GetFile(), null, null),
+                        _ => (null, null, null)
+                    };
+                case PollMediaVideo video:
+                    return (video.Video.VideoValue, video.Video.Thumbnail, video.Video.FileName);
+            }
+
+            return (null, null, null);
+        }
+
+        public static Minithumbnail GetMinithumbnail(this LinkPreview linkPreview)
+        {
+            return linkPreview?.Type switch
+            {
+                LinkPreviewTypeAlbum album => album.Media[0] switch
+                {
+                    LinkPreviewAlbumMediaPhoto albumPhoto => albumPhoto.Photo.Minithumbnail,
+                    LinkPreviewAlbumMediaVideo albumVideo => albumVideo.Video.Minithumbnail,
+                    _ => null
+                },
+                LinkPreviewTypeAnimation animation => animation.Animation.Minithumbnail,
+                LinkPreviewTypeAudio audio => audio.Audio.AlbumCoverMinithumbnail,
+                LinkPreviewTypeBackground background => background.Document?.Minithumbnail,
+                LinkPreviewTypeDirectMessagesChat directMessagesChat => directMessagesChat.Photo?.Minithumbnail,
+                LinkPreviewTypeDocument document => document.Document.Minithumbnail,
+                LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Thumbnail?.Minithumbnail,
+                LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Thumbnail?.Minithumbnail,
+                LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Thumbnail?.Minithumbnail,
+                LinkPreviewTypeStoryAlbum storyAlbum => storyAlbum.VideoIcon?.Minithumbnail ?? storyAlbum.PhotoIcon?.Minithumbnail,
+                LinkPreviewTypeVideo video => video.Cover?.Minithumbnail ?? video.Video.Minithumbnail,
+                LinkPreviewTypeVideoNote videoNote => videoNote.VideoNote.Minithumbnail,
+                LinkPreviewTypePhoto photo => photo.Photo.Minithumbnail,
+                LinkPreviewTypeApp app => app.Photo.Minithumbnail,
+                LinkPreviewTypeArticle article => article.Photo?.Minithumbnail,
+                LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo?.Minithumbnail,
+                LinkPreviewTypeChat chat => chat.Photo?.Minithumbnail,
+                LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo?.Minithumbnail,
+                LinkPreviewTypeUser user => user.Photo?.Minithumbnail,
+                LinkPreviewTypeVideoChat videoChat => videoChat.Photo?.Minithumbnail,
+                LinkPreviewTypeWebApp webApp => webApp.Photo?.Minithumbnail,
+                _ => null
+            };
+        }
+
+        public static Thumbnail GetThumbnail(this LinkPreview linkPreview)
+        {
+            return linkPreview?.Type switch
+            {
+                LinkPreviewTypeAlbum album => album.Media[0] switch
+                {
+                    LinkPreviewAlbumMediaPhoto albumPhoto => albumPhoto.Photo.GetThumbnail(),
+                    LinkPreviewAlbumMediaVideo albumVideo => albumVideo.Video.Thumbnail,
+                    _ => null
+                },
+                LinkPreviewTypeAnimation animation => animation.Animation.Thumbnail,
+                LinkPreviewTypeAudio audio => audio.Audio.AlbumCoverThumbnail,
+                LinkPreviewTypeBackground background => background.Document?.Thumbnail,
+                LinkPreviewTypeDirectMessagesChat directMessagesChat => directMessagesChat.Photo?.GetThumbnail(),
+                LinkPreviewTypeDocument document => document.Document.Thumbnail,
+                LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Thumbnail?.GetThumbnail(),
+                LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Thumbnail?.GetThumbnail(),
+                LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Thumbnail?.GetThumbnail(),
+                LinkPreviewTypeSticker sticker => sticker.Sticker.Thumbnail,
+                LinkPreviewTypeStoryAlbum storyAlbum => storyAlbum.VideoIcon?.Thumbnail ?? storyAlbum.PhotoIcon?.GetThumbnail(),
+                LinkPreviewTypeVideo video => video.Cover?.GetThumbnail() ?? video.Video.Thumbnail,
+                LinkPreviewTypeVideoNote videoNote => videoNote.VideoNote.Thumbnail,
+                LinkPreviewTypePhoto photo => photo.Photo.GetThumbnail(),
+                LinkPreviewTypeApp app => app.Photo.GetThumbnail(),
+                LinkPreviewTypeArticle article => article.Photo?.GetThumbnail(),
+                LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo?.GetThumbnail(),
+                LinkPreviewTypeChat chat => chat.Photo?.GetThumbnail(),
+                LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo?.GetThumbnail(),
+                LinkPreviewTypeUser user => user.Photo?.GetThumbnail(),
+                LinkPreviewTypeVideoChat videoChat => videoChat.Photo?.GetThumbnail(),
+                LinkPreviewTypeWebApp webApp => webApp.Photo?.GetThumbnail(),
+                _ => null
+            };
+        }
+
+        public static bool HasThumbnail(this LinkPreview linkPreview)
+        {
+            if (linkPreview.Type is LinkPreviewTypeAlbum album)
+            {
+                return album.Media[0] switch
+                {
+                    LinkPreviewAlbumMediaPhoto albumPhoto => true,
+                    LinkPreviewAlbumMediaVideo albumVideo => albumVideo.Video.Thumbnail != null,
+                    _ => false
+                };
+            }
+
+            return linkPreview.Type is LinkPreviewTypeAnimation { Animation.Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeAudio { Audio.AlbumCoverThumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeBackground { Document.Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeDirectMessagesChat { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeDocument { Document.Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeEmbeddedAudioPlayer { Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeEmbeddedAnimationPlayer { Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeEmbeddedVideoPlayer { Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeGiftCollection
+                || linkPreview.Type is LinkPreviewTypeTextCompositionStyle
+                || linkPreview.Type is LinkPreviewTypeSticker { Sticker.Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeStickerSet
+                || linkPreview.Type is LinkPreviewTypeStoryAlbum { PhotoIcon: not null }
+                || linkPreview.Type is LinkPreviewTypeStoryAlbum { VideoIcon: not null }
+                || linkPreview.Type is LinkPreviewTypeVideo { Cover: not null }
+                || linkPreview.Type is LinkPreviewTypeVideo { Video.Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeVideoNote { VideoNote.Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypePhoto
+                || linkPreview.Type is LinkPreviewTypeApp { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeArticle { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeChannelBoost { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeChat { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeSupergroupBoost { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeUser { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeVideoChat { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeWebApp { Photo: not null };
+        }
+
+        public static File GetFile(this MessageWithOwner message)
+        {
+            if (message is MessageViewModel viewModel)
+            {
+                return GetFile(viewModel.GeneratedContent ?? message.Content);
+            }
+
+            return GetFile(message?.Content);
+        }
+
+        public static File GetFile(this Message message)
+        {
+            return GetFile(message?.Content);
+        }
+
+        public static File GetFile(this MessageContent content)
+        {
+            switch (content)
+            {
+                case MessageAnimation animation:
+                    return animation.Animation.AnimationValue;
+                case MessageAudio audio:
+                    return audio.Audio.AudioValue;
+                case MessageDocument document:
+                    return document.Document.DocumentValue;
+                case MessageGame game:
+                    if (game.Game.Animation != null)
+                    {
+                        return game.Game.Animation.AnimationValue;
+                    }
+                    else if (game.Game.Photo != null)
+                    {
+                        return game.Game.Photo.GetBig()?.Photo;
+                    }
+                    break;
+                case MessagePhoto photo:
+                    return photo.Photo.GetBig()?.Photo;
+                case MessageSticker sticker:
+                    return sticker.Sticker.StickerValue;
+                case MessageAnimatedEmoji animatedEmoji:
+                    return animatedEmoji.AnimatedEmoji.Sticker?.StickerValue;
+                case MessageText text:
+                    return text.LinkPreview?.Type switch
+                    {
+                        LinkPreviewTypeAlbum album => album.Media[0] switch
+                        {
+                            LinkPreviewAlbumMediaPhoto albumPhoto => albumPhoto.Photo.GetBig()?.Photo,
+                            LinkPreviewAlbumMediaVideo albumVideo => albumVideo.Video.VideoValue,
+                            _ => null
+                        },
+                        LinkPreviewTypeAnimation animation => animation.Animation.AnimationValue,
+                        LinkPreviewTypeAudio audio => audio.Audio.AudioValue,
+                        LinkPreviewTypeBackground background => background.Document?.DocumentValue,
+                        LinkPreviewTypeDirectMessagesChat directMessagesChat => directMessagesChat.Photo?.GetFile(),
+                        LinkPreviewTypeDocument document => document.Document.DocumentValue,
+                        LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Audio?.AudioValue ?? embeddedAudioPlayer.Thumbnail?.GetFile(),
+                        LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Animation?.AnimationValue ?? embeddedAnimationPlayer.Thumbnail?.GetFile(),
+                        LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Video?.VideoValue ?? embeddedVideoPlayer.Thumbnail?.GetFile(),
+                        LinkPreviewTypeSticker sticker => sticker.Sticker.StickerValue,
+                        LinkPreviewTypeVideo video => video.Video.VideoValue,
+                        LinkPreviewTypeVideoNote videoNote => videoNote.VideoNote.Video,
+                        LinkPreviewTypePhoto photo => photo.Photo.GetFile(),
+                        LinkPreviewTypeApp app => app.Photo.GetFile(),
+                        LinkPreviewTypeArticle article => article.Photo?.GetFile(),
+                        LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo?.GetFile(),
+                        LinkPreviewTypeChat chat => chat.Photo?.GetFile(),
+                        LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo?.GetFile(),
+                        LinkPreviewTypeUser user => user.Photo?.GetFile(),
+                        LinkPreviewTypeVideoChat videoChat => videoChat.Photo?.GetFile(),
+                        LinkPreviewTypeWebApp webApp => webApp.Photo?.GetFile(),
+                        _ => null
+                    };
+                case MessageVideo video:
+                    return video.Video.VideoValue;
+                case MessageVideoNote videoNote:
+                    return videoNote.VideoNote.Video;
+                case MessageVoiceNote voiceNote:
+                    return voiceNote.VoiceNote.Voice;
+                case MessageInvoice invoice:
+                    return invoice.PaidMedia switch
+                    {
+                        PaidMediaPhoto photo => photo.Photo.GetFile(),
+                        PaidMediaVideo video => video.Video.VideoValue,
+                        _ => invoice.ProductInfo.Photo?.GetFile()
+                    };
+                case MessagePoll poll:
+                    return poll.Media?.GetFile();
+                case MessageSponsored sponsored:
+                    return sponsored.Content switch
+                    {
+                        MessageAnimation sponsoredAnimation => sponsoredAnimation.Animation.AnimationValue,
+                        MessagePhoto sponsoredPhoto => sponsoredPhoto.Photo.GetFile(),
+                        MessageVideo sponsoredVideo => sponsoredVideo.Video.VideoValue,
+                        _ => null
+                    };
+            }
+
+            return null;
+        }
+
+        public static File GetFile(this PollMedia content)
+        {
+            switch (content)
+            {
+                case PollMediaAnimation animation:
+                    return animation.Animation.AnimationValue;
+                case PollMediaAudio audio:
+                    return audio.Audio.AudioValue;
+                case PollMediaDocument document:
+                    return document.Document.DocumentValue;
+                case PollMediaPhoto photo:
+                    return photo.Photo.GetBig()?.Photo;
+                case PollMediaSticker sticker:
+                    return sticker.Sticker.StickerValue;
+                case PollMediaLink text:
+                    return text.LinkPreview?.Type switch
+                    {
+                        LinkPreviewTypeAlbum album => album.Media[0] switch
+                        {
+                            LinkPreviewAlbumMediaPhoto albumPhoto => albumPhoto.Photo.GetBig()?.Photo,
+                            LinkPreviewAlbumMediaVideo albumVideo => albumVideo.Video.VideoValue,
+                            _ => null
+                        },
+                        LinkPreviewTypeAnimation animation => animation.Animation.AnimationValue,
+                        LinkPreviewTypeAudio audio => audio.Audio.AudioValue,
+                        LinkPreviewTypeBackground background => background.Document?.DocumentValue,
+                        LinkPreviewTypeDirectMessagesChat directMessagesChat => directMessagesChat.Photo?.GetFile(),
+                        LinkPreviewTypeDocument document => document.Document.DocumentValue,
+                        LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Audio?.AudioValue ?? embeddedAudioPlayer.Thumbnail?.GetFile(),
+                        LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Animation?.AnimationValue ?? embeddedAnimationPlayer.Thumbnail?.GetFile(),
+                        LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Video?.VideoValue ?? embeddedVideoPlayer.Thumbnail?.GetFile(),
+                        LinkPreviewTypeSticker sticker => sticker.Sticker.StickerValue,
+                        LinkPreviewTypeVideo video => video.Video.VideoValue,
+                        LinkPreviewTypeVideoNote videoNote => videoNote.VideoNote.Video,
+                        LinkPreviewTypePhoto photo => photo.Photo.GetFile(),
+                        LinkPreviewTypeApp app => app.Photo.GetFile(),
+                        LinkPreviewTypeArticle article => article.Photo?.GetFile(),
+                        LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo?.GetFile(),
+                        LinkPreviewTypeChat chat => chat.Photo?.GetFile(),
+                        LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo?.GetFile(),
+                        LinkPreviewTypeUser user => user.Photo?.GetFile(),
+                        LinkPreviewTypeVideoChat videoChat => videoChat.Photo?.GetFile(),
+                        LinkPreviewTypeWebApp webApp => webApp.Photo?.GetFile(),
+                        _ => null
+                    };
+                case PollMediaVideo video:
+                    return video.Video.VideoValue;
+            }
+
+            return null;
+        }
+
+        public static bool IsAnimatedContentDownloadCompleted(this MessageViewModel message)
+        {
+            var content = message.GeneratedContent ?? message.Content;
+            switch (content)
+            {
+                case MessageAnimation animation:
+                    return animation.Animation.AnimationValue.Local.IsDownloadingCompleted;
+                case MessageSticker sticker:
+                    return sticker.Sticker.Format is StickerFormatTgs or StickerFormatWebm && sticker.Sticker.StickerValue.Local.IsDownloadingCompleted;
+                case MessageAnimatedEmoji animatedEmoji:
+                    return animatedEmoji.AnimatedEmoji.Sticker?.Format is StickerFormatTgs or StickerFormatWebm && animatedEmoji.AnimatedEmoji.Sticker.StickerValue.Local.IsDownloadingCompleted;
+                case MessageVideoNote videoNote:
+                    return videoNote.VideoNote.Video.Local.IsDownloadingCompleted;
+                case MessageGame game:
+                    if (game.Game.Animation != null)
+                    {
+                        return game.Game.Animation.AnimationValue.Local.IsDownloadingCompleted;
+                    }
+                    return false;
+                case MessagePoll poll when poll.Media is PollMediaAnimation pollAnimation:
+                    return pollAnimation.Animation.AnimationValue.Local.IsDownloadingCompleted;
+                case MessagePoll poll when poll.Media is PollMediaVideo:
+                    return true;
+                case MessageText text:
+                    if (text.LinkPreview?.Type is LinkPreviewTypeAnimation previewAnimation)
+                    {
+                        return previewAnimation.Animation.AnimationValue.Local.IsDownloadingCompleted;
+                    }
+                    else if (text.LinkPreview?.Type is LinkPreviewTypeSticker previewSticker)
+                    {
+                        return previewSticker.Sticker.Format is StickerFormatTgs or StickerFormatWebm && previewSticker.Sticker.StickerValue.Local.IsDownloadingCompleted;
+                    }
+                    else if (text.LinkPreview?.Type is LinkPreviewTypeVideoNote previewVideoNote)
+                    {
+                        return previewVideoNote.VideoNote.Video.Local.IsDownloadingCompleted;
+                    }
+                    else if (text.LinkPreview?.Type is LinkPreviewTypeEmbeddedAnimationPlayer previewTypeEmbeddedAnimationPlayer)
+                    {
+                        return previewTypeEmbeddedAnimationPlayer.Animation != null &&
+                            previewTypeEmbeddedAnimationPlayer.Animation.AnimationValue.Local.IsDownloadingCompleted;
+                    }
+                    else if (text.LinkPreview?.Type is LinkPreviewTypeVideo)
+                    {
+                        // Videos are streamed
+                        return true;
+                    }
+                    return false;
+                case MessageDice dice:
+                    {
+                        var state = dice.InitialState;
+                        if (state is DiceStickersRegular regular)
+                        {
+                            return regular.Sticker.StickerValue.Local.IsDownloadingCompleted;
+                        }
+                        else if (state is DiceStickersSlotMachine slotMachine)
+                        {
+                            return slotMachine.Background.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.LeftReel.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.CenterReel.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.RightReel.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.Lever.StickerValue.Local.IsDownloadingCompleted;
+                        }
+
+                        return false;
+                    }
+                case MessageStakeDice stakeDice:
+                    {
+                        var state = stakeDice.InitialState;
+                        if (state is DiceStickersRegular regular)
+                        {
+                            return regular.Sticker.StickerValue.Local.IsDownloadingCompleted;
+                        }
+                        else if (state is DiceStickersSlotMachine slotMachine)
+                        {
+                            return slotMachine.Background.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.LeftReel.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.CenterReel.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.RightReel.StickerValue.Local.IsDownloadingCompleted
+                                && slotMachine.Lever.StickerValue.Local.IsDownloadingCompleted;
+                        }
+
+                        return false;
+                    }
+                case MessageVideo:
+                case MessageSponsored:
+                    // Videos are streamed
+                    return true;
+                case MessageInvoice invoice:
+                    return invoice.PaidMedia is PaidMediaVideo;
+                default:
+                    return false;
+            }
+        }
+
+        public static bool IsInitialState(this MessageDice dice)
+        {
+            var state = dice.FinalState;
+            if (state == null || !state.IsDownloadingCompleted())
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsInitialState(this MessageStakeDice dice)
+        {
+            var state = dice.FinalState;
+            if (state == null || !state.IsDownloadingCompleted())
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsFinalState(this MessageDice dice)
+        {
+            var state = dice.FinalState;
+            if (state == null || !state.IsDownloadingCompleted())
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public static bool IsFinalState(this MessageStakeDice dice)
+        {
+            var state = dice.FinalState;
+            if (state == null || !state.IsDownloadingCompleted())
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public static DiceStickers GetState(this MessageDice dice)
+        {
+            var state = dice.FinalState;
+            if (state == null || !state.IsDownloadingCompleted())
+            {
+                state = dice.InitialState;
+            }
+
+            return state;
+        }
+
+        public static DiceStickers GetState(this MessageStakeDice dice)
+        {
+            var state = dice.FinalState;
+            if (state == null || !state.IsDownloadingCompleted())
+            {
+                state = dice.InitialState;
+            }
+
+            return state;
+        }
+
+        public static bool IsDownloadingCompleted(this DiceStickers state)
+        {
+            if (state is DiceStickersRegular regular)
+            {
+                return regular.Sticker.StickerValue.Local.IsDownloadingCompleted;
+            }
+            else if (state is DiceStickersSlotMachine slotMachine)
+            {
+                return slotMachine.Background.StickerValue.Local.IsDownloadingCompleted
+                    && slotMachine.LeftReel.StickerValue.Local.IsDownloadingCompleted
+                    && slotMachine.CenterReel.StickerValue.Local.IsDownloadingCompleted
+                    && slotMachine.RightReel.StickerValue.Local.IsDownloadingCompleted
+                    && slotMachine.Lever.StickerValue.Local.IsDownloadingCompleted;
+            }
+
+            return false;
+        }
+
+        public static Thumbnail GetThumbnail(this Message message)
+        {
+            return GetThumbnail(message.Content);
+        }
+
+        public static Thumbnail GetThumbnail(this MessageContent content)
+        {
+            return content switch
+            {
+                MessageAnimation animation => animation.Animation.Thumbnail,
+                MessageAudio audio => audio.Audio.AlbumCoverThumbnail,
+                MessageDocument document => document.Document.Thumbnail,
+                MessageGame game => game.Game.Animation?.Thumbnail,
+                MessageSticker sticker => sticker.Sticker.Thumbnail,
+                MessageAnimatedEmoji animatedEmoji => animatedEmoji.AnimatedEmoji.Sticker?.Thumbnail,
+                MessageText text => text.LinkPreview?.GetThumbnail(),
+                MessageVideo video => video.Video.Thumbnail,
+                MessageVideoNote videoNote => videoNote.VideoNote.Thumbnail,
+                MessagePoll poll => poll.Media?.GetThumbnail(),
+                MessageSponsored sponsored => sponsored.Content switch
+                {
+                    MessageAnimation sponsoredAnimation => sponsoredAnimation.Animation.Thumbnail,
+                    MessagePhoto sponsoredPhoto => sponsoredPhoto.Photo.GetThumbnail(),
+                    MessageVideo sponsoredVideo => sponsoredVideo.Video.Thumbnail,
+                    _ => null
+                },
+                _ => null,
+            };
+        }
+
+        public static Thumbnail GetThumbnail(this PollMedia content)
+        {
+            return content switch
+            {
+                PollMediaAnimation animation => animation.Animation.Thumbnail,
+                PollMediaAudio audio => audio.Audio.AlbumCoverThumbnail,
+                PollMediaDocument document => document.Document.Thumbnail,
+                PollMediaSticker sticker => sticker.Sticker.Thumbnail,
+                PollMediaLink text => text.LinkPreview?.GetThumbnail(),
+                PollMediaVideo video => video.Video.Thumbnail,
+                _ => null,
+            };
+        }
+
+        public static Minithumbnail GetMinithumbnail(this Message message, bool secret = false)
+        {
+            return GetMinithumbnail(message.Content);
+        }
+
+        public static Minithumbnail GetMinithumbnail(this MessageContent content, bool secret = false)
+        {
+            return content switch
+            {
+                MessagePhoto photo => photo.IsSecret && !secret ? null : photo.Photo.Minithumbnail,
+                MessageAnimation animation => animation.IsSecret && !secret ? null : animation.Animation.Minithumbnail,
+                MessageAudio audio => audio.Audio.AlbumCoverMinithumbnail,
+                MessageDocument document => document.Document.Minithumbnail,
+                MessageGame game => game.Game.Animation?.Minithumbnail,
+                MessageText text => text.LinkPreview?.GetMinithumbnail(),
+                MessageVideo video => video.IsSecret && !secret ? null : (video.Cover?.Minithumbnail ?? video.Video.Minithumbnail),
+                MessageVideoNote videoNote => videoNote.IsSecret && !secret ? null : videoNote.VideoNote.Minithumbnail,
+                MessagePoll poll => poll.Media?.GetMinithumbnail(),
+                MessageSponsored sponsored => sponsored.Content switch
+                {
+                    MessageAnimation sponsoredAnimation => sponsoredAnimation.Animation.Minithumbnail,
+                    MessagePhoto sponsoredPhoto => sponsoredPhoto.Photo.Minithumbnail,
+                    MessageVideo sponsoredVideo => sponsoredVideo.Video.Minithumbnail,
+                    _ => null
+                },
+                _ => null,
+            };
+        }
+
+        public static Minithumbnail GetMinithumbnail(this PollMedia content)
+        {
+            return content switch
+            {
+                PollMediaPhoto photo => photo.Photo.Minithumbnail,
+                PollMediaAnimation animation => animation.Animation.Minithumbnail,
+                PollMediaAudio audio => audio.Audio.AlbumCoverMinithumbnail,
+                PollMediaDocument document => document.Document.Minithumbnail,
+                PollMediaLink text => text.LinkPreview?.GetMinithumbnail(),
+                PollMediaVideo video => (video.Cover?.Minithumbnail ?? video.Video.Minithumbnail),
+                _ => null,
+            };
+        }
+
+        public static FormattedText GetTranslatableText(this MessageWithOwner message)
+        {
+            return message.Content.GetTranslatableText();
+        }
+
+        public static FormattedText GetTranslatableText(this Message message)
+        {
+            return message.Content.GetTranslatableText();
+        }
+
+        public static FormattedText GetTranslatableText(this MessageContent content)
+        {
+            var caption = content.GetCaption();
+            if (content is MessageVoiceNote { VoiceNote.SpeechRecognitionResult: SpeechRecognitionResultText speechVoiceText })
+            {
+                if (caption?.Text.Length > 0 && speechVoiceText.Text.Length > 0)
+                {
+                    return ClientEx.Format("{0}\n{1}", speechVoiceText.Text, caption.Text);
+                }
+                else if (speechVoiceText.Text.Length > 0)
+                {
+                    return speechVoiceText.Text.AsFormattedText();
+                }
+            }
+            else if (content is MessageVideoNote { VideoNote.SpeechRecognitionResult: SpeechRecognitionResultText speechVideoText })
+            {
+                if (caption?.Text.Length > 0 && speechVideoText.Text.Length > 0)
+                {
+                    return ClientEx.Format("{0}\n{1}", speechVideoText.Text, caption.Text);
+                }
+                else if (speechVideoText.Text.Length > 0)
+                {
+                    return speechVideoText.Text.AsFormattedText();
+                }
+            }
+
+            return caption;
+        }
+
+        public static FormattedText GetCaption(this MessageWithOwner message)
+        {
+            return message.Content.GetCaption();
+        }
+
+        public static FormattedText GetCaption(this Message message)
+        {
+            return message.Content.GetCaption();
+        }
+
+        public static FormattedText GetCaption(this MessageContent content)
+        {
+            return content switch
+            {
+                MessageAlbum album => album.Caption,
+                MessageAnimation animation => animation.Caption,
+                MessageAudio audio => audio.Caption,
+                MessageDocument document => document.Caption,
+                MessagePhoto photo => photo.Caption,
+                MessageVideo video => video.Caption,
+                MessageVoiceNote voiceNote => voiceNote.Caption,
+                MessageBigEmoji bigEmoji => bigEmoji.Text,
+                MessageText text => text.Text,
+                MessageAnimatedEmoji animatedEmoji => animatedEmoji.AnimatedEmoji.Sticker?.FullType switch
+                {
+                    StickerFullTypeCustomEmoji customEmoji => ClientEx.CustomEmoji(animatedEmoji.Emoji, customEmoji.CustomEmojiId),
+                    _ => animatedEmoji.Emoji.AsFormattedText()
+                },
+                MessageInvoice invoice => invoice.PaidMediaCaption,
+                MessagePaidAlbum paidAlbum => paidAlbum.Caption,
+                MessagePaidMedia paidMedia => paidMedia.Caption,
+                _ => null,
+            };
+        }
+
+        public static FormattedText Clone(this FormattedText text)
+        {
+            return new FormattedText(text.Text, text.Entities.ToVector());
+        }
+
+        public static FormattedText ReplaceSpoilers(this FormattedText text, bool singleLine = true)
+        {
+            if (text.Entities?.Count > 0)
+            {
+                StringBuilder rep = null;
+                MutableVector<TextEntity> ent = null;
+
+                var chars = "⠁⠂⠄⠈⠐⠠⡀⢀⠃⠅⠆⠉⠊⠌⠑⠒⠔⠘⠡⠢⠤⠨⠰⡁⡂⡄⡈⡐⡠⢁⢂⢄⢈⢐⢠⣀⠇⠋⠍⠎⠓⠕⠖⠙⠚⠜⠣⠥⠦⠩⠪⠬⠱⠲⠴⠸⡃⡅⡆⡉⡊⡌⡑⡒⡔⡘⡡⡢⡤⡨⡰⢃⢅⢆⢉⢊⢌⢑⢒⢔⢘⢡⢢⢤⢨⢰⣁⣂⣄⣈⣐⣠⠏⠗⠛⠝⠞⠧⠫⠭⠮⠳⠵⠶⠹⠺⠼⡇⡋⡍⡎⡓⡕⡖⡙⡚⡜⡣⡥⡦⡩⡪⡬⡱⡲⡴⡸⢇⢋⢍⢎⢓⢕⢖⢙⢚⢜⢣⢥⢦⢩⢪⢬⢱⢲⢴⢸⣃⣅⣆⣉⣊⣌⣑⣒⣔⣘⣡⣢⣤⣨⣰⠟⠯⠷⠻⠽⠾⡏⡗⡛⡝⡞⡧⡫⡭⡮⡳⡵⡶⡹⡺⡼⢏⢗⢛⢝⢞⢧⢫⢭⢮⢳⢵⢶⢹⢺⢼⣇⣋⣍⣎⣓⣕⣖⣙⣚⣜⣣⣥⣦⣩⣪⣬⣱⣲⣴⣸⠿⡟⡯⡷⡻⡽⡾⢟⢯⢷⢻⢽⢾⣏⣗⣛⣝⣞⣧⣫⣭⣮⣳⣵⣶⣹⣺⣼⡿⢿⣟⣯⣷⣻⣽⣾⣿";
+
+                foreach (var entity in text.Entities)
+                {
+                    if (entity.Type is TextEntityTypeSpoiler)
+                    {
+                        rep ??= new StringBuilder(text.Text);
+                        ent ??= text.Entities.ToMutableVector();
+
+                        for (int i = 0; i < entity.Length; i++)
+                        {
+                            rep[entity.Offset + i] = chars[text.Text[entity.Offset + i] % chars.Length];
+                        }
+
+                        ent.RemoveAll(x => x.Intersect(entity));
+                    }
+                }
+
+                if (rep != null && ent != null)
+                {
+                    if (singleLine)
+                    {
+                        return new FormattedText(rep.Replace('\n', ' ').ToString(), ent);
+                    }
+
+                    return new FormattedText(rep.ToString(), ent);
+                }
+            }
+
+            if (singleLine)
+            {
+                return new FormattedText(text.Text.Replace('\n', ' '), text.Entities);
+            }
+
+            return text;
+        }
+
+        public static FormattedText ToFormattedText(this Sticker sticker)
+        {
+            if (sticker.FullType is StickerFullTypeCustomEmoji customEmoji)
+            {
+                return ClientEx.CustomEmoji(sticker.Emoji, customEmoji.CustomEmojiId);
+            }
+
+            return sticker.Emoji.AsFormattedText();
+        }
+
+        public static string ToPlainText(this RichMessage message)
+        {
+            var text = PageBlockHelper.GetRichText(message.Blocks);
+            return text.ToPlainText();
+        }
+
+        public static FormattedText ToFormattedText(this RichMessage message)
+        {
+            var text = PageBlockHelper.GetRichText(message.Blocks);
+            return text.ToFormattedText();
+        }
+
+// The trimmed PageBlockHelper that used to live here as a private nested class has moved to
+// Telegram.Linux/Hubs/PageBlockHelper.cs, public and in namespace Telegram.Common, because the
+// profile's shared-media and shared-links tabs need the same projection plus GetLinks and
+// FindFirstMedia. One copy, one place to fix. Upstream's Common/PageBlockHelper.cs stays out:
+// it is written against a newer TDLib schema than this port vendors (PORTING.md rule 8).
+
+        // ----------------------------------------------------------------
+        // RichText -> FormattedText
+        // ----------------------------------------------------------------
+
+        public static FormattedText ToFormattedText(this RichText richText)
+        {
+            var sb = new StringBuilder();
+            var entities = new MutableVector<TextEntity>();
+            if (richText != null)
+            {
+                Append(richText, sb, entities);
+            }
+            return new FormattedText { Text = sb.ToString(), Entities = entities };
+        }
+
+        private static void Append(RichText rt, StringBuilder sb, MutableVector<TextEntity> entities)
+        {
+            switch (rt)
+            {
+                case null:
+                    return;
+
+                case RichTextPlain p:
+                    if (!string.IsNullOrEmpty(p.Text)) sb.Append(p.Text);
+                    return;
+
+                case RichTexts rs:
+                    if (rs.Texts != null)
+                    {
+                        foreach (var t in rs.Texts) Append(t, sb, entities);
+                    }
+                    return;
+
+                case RichTextBold b:
+                    AppendWrapped(b.Text, sb, entities, new TextEntityTypeBold());
+                    return;
+
+                case RichTextItalic i:
+                    AppendWrapped(i.Text, sb, entities, new TextEntityTypeItalic());
+                    return;
+
+                case RichTextUnderline u:
+                    AppendWrapped(u.Text, sb, entities, new TextEntityTypeUnderline());
+                    return;
+
+                case RichTextStrikethrough s:
+                    AppendWrapped(s.Text, sb, entities, new TextEntityTypeStrikethrough());
+                    return;
+
+                case RichTextFixed f:
+                    AppendWrapped(f.Text, sb, entities, new TextEntityTypeCode());
+                    return;
+
+                case RichTextUrl url:
+                    AppendWrapped(url.Text, sb, entities, new TextEntityTypeTextUrl { Url = url.Url ?? "" });
+                    return;
+
+                case RichTextEmailAddress e:
+                    AppendWrapped(e.Text, sb, entities, new TextEntityTypeEmailAddress());
+                    return;
+
+                case RichTextPhoneNumber phone:
+                    AppendWrapped(phone.Text, sb, entities, new TextEntityTypePhoneNumber());
+                    return;
+
+                case RichTextReference r:
+                    Append(r.Text, sb, entities);
+                    return;
+
+                case RichTextReferenceLink r:
+                    AppendWrapped(r.Text, sb, entities, new TextEntityTypeTextUrl { Url = r.Url ?? "" });
+                    return;
+
+                case RichTextAnchorLink al:
+                    AppendWrapped(al.Text, sb, entities, new TextEntityTypeTextUrl { Url = al.Url ?? "" });
+                    return;
+
+                case RichTextMarked m:
+                    Append(m.Text, sb, entities);
+                    return;
+
+                case RichTextSubscript sub:
+                    Append(sub.Text, sb, entities);
+                    return;
+
+                case RichTextSuperscript sup:
+                    Append(sup.Text, sb, entities);
+                    return;
+
+                case RichTextMathematicalExpression math:
+                    if (!string.IsNullOrEmpty(math.Expression))
+                    {
+                        int start = sb.Length;
+                        sb.Append(math.Expression);
+                        if (sb.Length > start)
+                        {
+                            entities.Add(new TextEntity
+                            {
+                                Offset = start,
+                                Length = sb.Length - start,
+                                Type = new TextEntityTypeCode()
+                            });
+                        }
+                    }
+                    return;
+
+#if !LINUX
+                // Unlike PageBlockHelper.Flatten there is no button entity to compete
+                // with here, so the label keeps whatever formatting it carries.
+                case RichTextButton button:
+                    Append(button.Button.Text, sb, entities);
+                    return;
+#endif
+
+                case RichTextAnchor _:
+                case RichTextIcon _:
+                    // No visible text content.
+                    return;
+            }
+        }
+
+        private static void AppendWrapped(RichText inner, StringBuilder sb, MutableVector<TextEntity> entities, TextEntityType type)
+        {
+            int start = sb.Length;
+            Append(inner, sb, entities);
+            int len = sb.Length - start;
+            if (len > 0)
+            {
+                entities.Add(new TextEntity { Offset = start, Length = len, Type = type });
+            }
+        }
+
+        public static bool HasCaption(this Message message)
+        {
+            var caption = message.Content.GetCaption();
+            return caption != null && !string.IsNullOrEmpty(caption.Text);
+        }
+
+        public static bool HasCaption(this MessageWithOwner message)
+        {
+            var caption = message.Content.GetCaption();
+            return caption != null && !string.IsNullOrEmpty(caption.Text);
+        }
+
+        public static bool HasCaption(this MessageContent content)
+        {
+            if (content is MessageRichMessage richMessage)
+            {
+                return richMessage.Message.Blocks[0] is not PageBlockAnimation and not PageBlockCollage and not PageBlockMap and not PageBlockPhoto and not PageBlockSlideshow and not PageBlockVideo;
+            }
+
+            var caption = content.GetCaption();
+            return caption != null && !string.IsNullOrEmpty(caption.Text);
+        }
+
+        public static Photo ToPhoto(this ChatPhotoInfo chatPhoto)
+        {
+            return new Photo(false, null, new PhotoSize[] { new("t", chatPhoto.Small, 160, 160, Array.Empty<int>()), new("i", chatPhoto.Big, 640, 640, Array.Empty<int>()) });
+        }
+
+        public static Photo ToPhoto(this ChatPhoto chatPhoto)
+        {
+            return new Photo(false, chatPhoto.Minithumbnail, chatPhoto.Sizes);
+        }
+
+        public static bool HasText(this LinkPreview linkPreview)
+        {
+            if (!string.IsNullOrWhiteSpace(linkPreview.SiteName))
+            {
+                return true;
+
+            }
+
+            if (!string.IsNullOrWhiteSpace(linkPreview.Title))
+            {
+                return true;
+            }
+            else if (!string.IsNullOrEmpty(linkPreview.Author))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(linkPreview.Description?.Text))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool HasMedia(this LinkPreview linkPreview)
+        {
+            return linkPreview.Type is
+                LinkPreviewTypeAlbum or
+                LinkPreviewTypeAnimation or
+                LinkPreviewTypeAudio or
+                LinkPreviewTypeBackground or
+                LinkPreviewTypeDocument or
+                LinkPreviewTypeGiftCollection or
+                LinkPreviewTypeSticker or
+                LinkPreviewTypeStickerSet or
+                LinkPreviewTypeUpgradedGift or
+                LinkPreviewTypeVideo or
+                LinkPreviewTypeVideoNote or
+                LinkPreviewTypeVoiceNote or
+                LinkPreviewTypeTextCompositionStyle or
+                LinkPreviewTypeEmbeddedAnimationPlayer { Animation: not null } or
+                LinkPreviewTypeEmbeddedAudioPlayer { Audio: not null } or
+                LinkPreviewTypeEmbeddedVideoPlayer { Video: not null } or
+                LinkPreviewTypeStoryAlbum { VideoIcon: not null } || linkPreview.HasPhoto();
+        }
+
+        public static bool HasPhoto(this LinkPreview linkPreview)
+        {
+            if (linkPreview.Type is LinkPreviewTypeAlbum album)
+            {
+                return album.Media[0] is LinkPreviewAlbumMediaPhoto;
+            }
+
+            return linkPreview.Type is LinkPreviewTypePhoto
+                || linkPreview.Type is LinkPreviewTypeEmbeddedAudioPlayer { Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeEmbeddedAnimationPlayer { Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeEmbeddedVideoPlayer { Thumbnail: not null }
+                || linkPreview.Type is LinkPreviewTypeApp { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeArticle { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeChannelBoost { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeChat { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeDirectMessagesChat { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeStoryAlbum { PhotoIcon: not null }
+                || linkPreview.Type is LinkPreviewTypeSupergroupBoost { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeUser { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeVideoChat { Photo: not null }
+                || linkPreview.Type is LinkPreviewTypeWebApp { Photo: not null };
+        }
+
+        public static bool CanBeSmall(this LinkPreview linkPreview)
+        {
+            if (linkPreview.Type is LinkPreviewTypeAudio or LinkPreviewTypeDocument or LinkPreviewTypeVoiceNote)
+            {
+                return false;
+            }
+
+            return linkPreview.SiteName.Length > 0 || linkPreview.Title.Length > 0 || linkPreview.Author.Length > 0 || linkPreview.Description?.Text.Length > 0;
+        }
+
+        public static bool IsService(this MessageContent content)
+        {
+            switch (content)
+            {
+                case MessageAlbum:
+                case MessageAnimatedEmoji:
+                case MessageAnimation:
+                case MessageAudio:
+                case MessageBigEmoji:
+                case MessageCall:
+                case MessageGroupCall:
+                case MessageChecklist:
+                case MessageContact:
+                case MessageDice:
+                case MessageStakeDice:
+                case MessageDocument:
+                case MessageGame:
+                case MessageGiveaway:
+                case MessageGiveawayWinners:
+                case MessageInvoice:
+                case MessageLiveLocation:
+                case MessageLocation:
+                case MessagePaidAlbum:
+                case MessagePaidMedia:
+                case MessagePhoto:
+                case MessagePoll:
+                case MessageRichMessage:
+                case MessageSticker:
+                case MessageText:
+                case MessageUnsupported:
+                case MessageVenue:
+                case MessageVideo:
+                case MessageVideoNote:
+                case MessageVoiceNote:
+                case MessageSponsored:
+                    return false;
+                case MessageAsyncStory asyncStory:
+                    return asyncStory.ViaMention;
+                case MessageStory story:
+                    return story.ViaMention;
+                default:
+                    return true;
+            }
+        }
+
+        public static bool IsPhoto(this PaidMedia media)
+        {
+            return media is PaidMediaPhoto or PaidMediaPreview { Duration: 0 };
+        }
+
+        public static bool IsVideo(this PaidMedia media)
+        {
+            return media is PaidMediaVideo or PaidMediaPreview { Duration: > 0 };
+        }
+
+        public static bool IsMedia(this InlineQueryResult result)
+        {
+            switch (result)
+            {
+                case InlineQueryResultAnimation:
+                case InlineQueryResultPhoto:
+                    return true;
+                case InlineQueryResultVideo video:
+                    return string.IsNullOrEmpty(video.Title);
+                default:
+                    return false;
+            }
+        }
+
+        public static string GetId(this InlineQueryResult result)
+        {
+            switch (result)
+            {
+                case InlineQueryResultAnimation animation:
+                    return animation.Id;
+                case InlineQueryResultArticle article:
+                    return article.Id;
+                case InlineQueryResultAudio audio:
+                    return audio.Id;
+                case InlineQueryResultContact contact:
+                    return contact.Id;
+                case InlineQueryResultDocument document:
+                    return document.Id;
+                case InlineQueryResultGame game:
+                    return game.Id;
+                case InlineQueryResultLocation location:
+                    return location.Id;
+                case InlineQueryResultPhoto photo:
+                    return photo.Id;
+                case InlineQueryResultSticker sticker:
+                    return sticker.Id;
+                case InlineQueryResultVenue venue:
+                    return venue.Id;
+                case InlineQueryResultVideo video:
+                    return video.Id;
+                case InlineQueryResultVoiceNote voiceNote:
+                    return voiceNote.Id;
+                default:
+                    return null;
+            }
+        }
+
+        public static bool AreOnTheSameDay(this MessageViewModel x, MessageViewModel y)
+        {
+            var xdate = Formatter.ToLocalTime(x.GetDate());
+            var ydate = Formatter.ToLocalTime(y.GetDate());
+
+            return xdate.Date == ydate.Date;
+        }
+
+        public static int GetDate(this MessageWithOwner item)
+        {
+            if (item.SchedulingState is MessageSchedulingStateSendAtDate sendAtDate)
+            {
+                return sendAtDate.SendDate;
+            }
+            else if (item.SchedulingState is MessageSchedulingStateSendWhenVideoProcessed sendWhenVideoProcessed)
+            {
+                return sendWhenVideoProcessed.SendDate;
+            }
+            else if (item.SchedulingState is MessageSchedulingStateSendWhenOnline)
+            {
+                return int.MinValue;
+            }
+
+            return item.Date;
+        }
+
+        public static bool IsUnread(this Chat chat)
+        {
+            if (chat.IsMarkedAsUnread)
+            {
+                return true;
+            }
+
+            return chat.UnreadCount > 0 || chat.UnreadMentionCount > 0 || chat.UnreadReactionCount > 0;
+        }
+
+        public static bool IsForever(this ChatMemberStatusRestricted restricted)
+        {
+            return restricted.RestrictedUntilDate == 0 || Math.Abs((restricted.RestrictedUntilDate - DateTime.Now.ToUnixTimeSeconds()) / 1000) > 5 * 365 * 24 * 60 * 60;
+        }
+
+        public static bool IsForever(this ChatMemberStatusBanned banned)
+        {
+            return banned.BannedUntilDate == 0 || Math.Abs((banned.BannedUntilDate - DateTime.Now.ToUnixTimeSeconds()) / 1000) > 5 * 365 * 24 * 60 * 60;
+        }
+
+
+        public static string GetTitle(this Audio audio)
+        {
+            if (string.IsNullOrEmpty(audio.Title))
+            {
+                return audio.FileName;
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(audio.Performer))
+                {
+                    return audio.Title;
+                }
+
+                return $"{audio.Title} - {audio.Performer}";
+            }
+        }
+
+        public static string GetTitle(this AudioWithOwner audio)
+        {
+            if (string.IsNullOrEmpty(audio.Title))
+            {
+                return audio.FileName;
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(audio.Performer))
+                {
+                    return audio.Title;
+                }
+
+                return $"{audio.Title} - {audio.Performer}";
+            }
+        }
+
+        public static ChatPosition GetPosition(this Chat chat, ChatList chatList)
+        {
+            if (chat == null)
+            {
+                return null;
+            }
+
+            lock (chat)
+            {
+                for (int i = 0; i < chat.Positions.Count; i++)
+                {
+                    if (chat.Positions[i].List.AreTheSame(chatList))
+                    {
+                        return chat.Positions[i];
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        public static long GetOrder(this Chat chat, ChatList chatList)
+        {
+            if (chat == null)
+            {
+                return 0;
+            }
+
+            lock (chat)
+            {
+                for (int i = 0; i < chat.Positions.Count; i++)
+                {
+                    if (chat.Positions[i].List.AreTheSame(chatList))
+                    {
+                        return chat.Positions[i].Order;
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        public static int ToYears(this Birthdate birthdate)
+        {
+            if (birthdate.Year == 0)
+            {
+                return 0;
+            }
+
+            var startDate = new DateTime(birthdate.Year, birthdate.Month, birthdate.Day);
+            var endDate = DateTime.Today;
+
+            //Excel documentation says "COMPLETE calendar years in between dates"
+            int years = endDate.Year - startDate.Year;
+
+            if (startDate.Month == endDate.Month &&// if the start month and the end month are the same
+                endDate.Day < startDate.Day// AND the end day is less than the start day
+                || endDate.Month < startDate.Month)// OR if the end month is less than the start month
+            {
+                years--;
+            }
+
+            return years;
+        }
+
+        public static Sticker GetSticker(this ReceivedGift gift)
+        {
+            if (gift.Gift is SentGiftRegular regular)
+            {
+                return regular.Gift.Sticker;
+            }
+            else if (gift.Gift is SentGiftUpgraded upgraded)
+            {
+                return upgraded.Gift.Model.Sticker;
+            }
+
+            return null;
+        }
+
+        public static MessageSender ToMessageSender(this Chat chat)
+        {
+            return chat.Type switch
+            {
+                ChatTypePrivate privata => new MessageSenderUser(privata.UserId),
+                ChatTypeSecret secret => new MessageSenderUser(secret.UserId),
+                _ => new MessageSenderChat(chat.Id)
+            };
+        }
+
+        public static string ToName(this UpgradedGift gift)
+        {
+            return string.Format("{0} #{1}", gift.Title, gift.Number.ToString("N0"));
+        }
+
+        public static bool IsFalse(this VerificationStatus status)
+        {
+            if (status == null)
+            {
+                return true;
+            }
+
+            return !status.IsFake && !status.IsScam;
+        }
+
+        public static TextEntityType ToTextEntityType(this MessageSender sender)
+        {
+            if (sender is MessageSenderUser user)
+            {
+                return new TextEntityTypeMentionName(user.UserId);
+            }
+            else if (sender is MessageSenderChat chat)
+            {
+                return new TextEntityTypeTextUrl("tg-chat://" + chat.ChatId);
+            }
+
+            return null;
+        }
+
+        public static bool AreTheSame(this NewChatPrivacySettings x, NewChatPrivacySettings y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.AllowNewChatsFromUnknownUsers == y.AllowNewChatsFromUnknownUsers
+                && x.IncomingPaidMessageStarCount == y.IncomingPaidMessageStarCount;
+        }
+
+        public static bool AreTheSame(this UserPrivacySettingRules x, UserPrivacySettingRules y)
+        {
+            return (x, y) switch
+            {
+                (null, null) => true,
+                (null, _) or (_, null) => false,
+                _ when IsEmptyOrSingleDisallowAll(x) && IsEmptyOrSingleDisallowAll(y) => true,
+                _ => x.Rules.Count == y.Rules.Count &&
+                     CompareOrderedRules(x.Rules, y.Rules)
+            };
+        }
+
+        private static bool IsEmptyOrSingleDisallowAll(UserPrivacySettingRules rules)
+        {
+            return rules.Rules.Count == 0 ||
+                   (rules.Rules.Count == 1 && rules.Rules[0] is UserPrivacySettingRuleRestrictAll);
+        }
+
+        private static bool CompareOrderedRules(Vector<UserPrivacySettingRule> xRules, Vector<UserPrivacySettingRule> yRules)
+        {
+            var xSorted = GetOrderedRules(xRules);
+            var ySorted = GetOrderedRules(yRules);
+
+            for (int i = 0; i < xSorted.Count; i++)
+            {
+                if (!xSorted[i].AreTheSame(ySorted[i]))
+                    return false;
+            }
+            return true;
+        }
+
+        private static IList<UserPrivacySettingRule> GetOrderedRules(Vector<UserPrivacySettingRule> rules)
+        {
+            return rules.OrderBy(x => x switch
+            {
+                UserPrivacySettingRuleAllowAll => 0,
+                UserPrivacySettingRuleAllowBots => 1,
+                UserPrivacySettingRuleAllowChatMembers => 2,
+                UserPrivacySettingRuleAllowContacts => 3,
+                UserPrivacySettingRuleAllowPremiumUsers => 4,
+                UserPrivacySettingRuleAllowUsers => 5,
+                UserPrivacySettingRuleRestrictAll => 6,
+                UserPrivacySettingRuleRestrictBots => 7,
+                UserPrivacySettingRuleRestrictChatMembers => 8,
+                UserPrivacySettingRuleRestrictContacts => 9,
+                UserPrivacySettingRuleRestrictUsers => 10,
+                _ => -1
+            }).ToArray();
+        }
+
+        public static bool AreTheSame(this UserPrivacySettingRule x, UserPrivacySettingRule y)
+        {
+            return (x, y) switch
+            {
+                (UserPrivacySettingRuleAllowAll, UserPrivacySettingRuleAllowAll) => true,
+                (UserPrivacySettingRuleAllowBots, UserPrivacySettingRuleAllowBots) => true,
+                (UserPrivacySettingRuleAllowContacts, UserPrivacySettingRuleAllowContacts) => true,
+                (UserPrivacySettingRuleAllowPremiumUsers, UserPrivacySettingRuleAllowPremiumUsers) => true,
+                (UserPrivacySettingRuleRestrictAll, UserPrivacySettingRuleRestrictAll) => true,
+                (UserPrivacySettingRuleRestrictBots, UserPrivacySettingRuleRestrictBots) => true,
+                (UserPrivacySettingRuleRestrictContacts, UserPrivacySettingRuleRestrictContacts) => true,
+
+                (UserPrivacySettingRuleAllowChatMembers xAllow, UserPrivacySettingRuleAllowChatMembers yAllow)
+                    => xAllow.ChatIds.OrderBy(x => x).SequenceEqual(yAllow.ChatIds.OrderBy(x => x)),
+                (UserPrivacySettingRuleRestrictChatMembers xRestrict, UserPrivacySettingRuleRestrictChatMembers yRestrict)
+                    => xRestrict.ChatIds.OrderBy(x => x).SequenceEqual(yRestrict.ChatIds.OrderBy(x => x)),
+
+                (UserPrivacySettingRuleAllowUsers xAllow, UserPrivacySettingRuleAllowUsers yAllow)
+                    => xAllow.UserIds.OrderBy(x => x).SequenceEqual(yAllow.UserIds.OrderBy(x => x)),
+                (UserPrivacySettingRuleRestrictUsers xRestrict, UserPrivacySettingRuleRestrictUsers yRestrict)
+                    => xRestrict.UserIds.OrderBy(x => x).SequenceEqual(yRestrict.UserIds.OrderBy(x => x)),
+
+                _ => false
+            };
+        }
+
+        public static bool AreTheSame(this EmojiStatus x, EmojiStatus y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.ExpirationDate == y.ExpirationDate
+                && x.Type.AreTheSame(y.Type);
+        }
+
+        public static bool AreTheSame(this EmojiStatusType x, EmojiStatusType y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+            else if (x is EmojiStatusTypeCustomEmoji xCustomEmoji && y is EmojiStatusTypeCustomEmoji yCustomEmoji)
+            {
+                return xCustomEmoji.CustomEmojiId == yCustomEmoji.CustomEmojiId;
+            }
+            else if (x is EmojiStatusTypeUpgradedGift xUpgradedGift && y is EmojiStatusTypeUpgradedGift yUpgradedGift)
+            {
+                return xUpgradedGift.GiftName == yUpgradedGift.GiftName
+                    && xUpgradedGift.GiftTitle == yUpgradedGift.GiftTitle
+                    && xUpgradedGift.ModelCustomEmojiId == yUpgradedGift.ModelCustomEmojiId
+                    && xUpgradedGift.SymbolCustomEmojiId == yUpgradedGift.SymbolCustomEmojiId
+                    && xUpgradedGift.UpgradedGiftId == yUpgradedGift.UpgradedGiftId
+                    && xUpgradedGift.BackdropColors.AreTheSame(yUpgradedGift.BackdropColors);
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this UpgradedGiftBackdropColors x, UpgradedGiftBackdropColors y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.CenterColor == y.CenterColor
+                && x.EdgeColor == y.EdgeColor
+                && x.SymbolColor == y.SymbolColor
+                && x.TextColor == y.TextColor;
+        }
+
+        public static bool AreTheSame(this ChatFolder x, ChatFolder y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.ColorId == y.ColorId
+                && x.Icon.AreTheSame(y.Icon)
+                && x.Name.AreTheSame(y.Name)
+                //&& x.IsShareable == y.IsShareable
+                && x.ExcludeArchived == y.ExcludeArchived
+                && x.ExcludeMuted == y.ExcludeMuted
+                && x.ExcludeRead == y.ExcludeRead
+                && x.IncludeBots == y.IncludeBots
+                && x.IncludeChannels == y.IncludeChannels
+                && x.IncludeContacts == y.IncludeContacts
+                && x.IncludeGroups == y.IncludeGroups
+                && x.IncludeNonContacts == y.IncludeNonContacts
+                && x.ExcludedChatIds.SequenceEqual(y.ExcludedChatIds)
+                && x.IncludedChatIds.SequenceEqual(y.IncludedChatIds)
+                && x.PinnedChatIds.SequenceEqual(y.PinnedChatIds);
+        }
+
+        public static bool AreTheSame(this ChatFolderName x, ChatFolderName y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.AnimateCustomEmoji == y.AnimateCustomEmoji
+                && x.Text.AreTheSame(y.Text);
+        }
+
+        public static bool AreTheSame(this ChatFolderIcon x, ChatFolderIcon y)
+        {
+            var xName = x?.Name ?? string.Empty;
+            var yName = y?.Name ?? string.Empty;
+
+            return xName == yName;
+        }
+
+        public static InputBusinessStartPage ToInput(this BusinessStartPage x)
+        {
+            if (x == null)
+            {
+                return null;
+            }
+
+            return new InputBusinessStartPage(x.Title, x.Message, x.Sticker == null ? null : new InputFileId(x.Sticker.StickerValue.Id));
+        }
+
+        public static bool AreTheSame(this InputBusinessStartPage x, InputBusinessStartPage y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            if (x.Sticker is InputFileId xId && y.Sticker is InputFileId yId)
+            {
+                return string.Equals(x.Title, y.Title)
+                    && string.Equals(x.Message, y.Message)
+                    && xId.Id == yId.Id;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this BusinessLocation x, BusinessLocation y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            if (string.Equals(x.Address, y.Address))
+            {
+                return x.Location?.Latitude == y.Location?.Latitude
+                    && x.Location?.Longitude == y.Location?.Longitude
+                    && x.Location?.HorizontalAccuracy == y.Location?.HorizontalAccuracy;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this BusinessOpeningHours x, BusinessOpeningHours y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            if (string.Equals(x.TimeZoneId, y.TimeZoneId) && x.OpeningHours.Count == y.OpeningHours.Count)
+            {
+                for (int i = 0; i < x.OpeningHours.Count; i++)
+                {
+                    if (x.OpeningHours[i].StartMinute != y.OpeningHours[i].StartMinute
+                        || x.OpeningHours[i].EndMinute != y.OpeningHours[i].EndMinute)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this BusinessGreetingMessageSettings x, BusinessGreetingMessageSettings y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.ShortcutId == y.ShortcutId
+                && x.InactivityDays == y.InactivityDays
+                && x.Recipients.AreTheSame(y.Recipients);
+        }
+
+        public static bool AreTheSame(this BusinessAwayMessageSettings x, BusinessAwayMessageSettings y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.ShortcutId == y.ShortcutId
+                && x.OfflineOnly == y.OfflineOnly
+                && x.Schedule.AreTheSame(y.Schedule)
+                && x.Recipients.AreTheSame(y.Recipients);
+        }
+
+        public static bool AreTheSame(this BusinessConnectedBot x, BusinessConnectedBot y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.BotUserId == y.BotUserId
+                && x.Rights.AreTheSame(y.Rights)
+                && x.Recipients.AreTheSame(y.Recipients);
+        }
+
+        private static bool AreTheSame(this BusinessBotRights x, BusinessBotRights y)
+        {
+            return x.CanChangeGiftSettings == y.CanChangeGiftSettings
+                && x.CanDeleteAllMessages == y.CanDeleteAllMessages
+                && x.CanDeleteSentMessages == y.CanDeleteSentMessages
+                && x.CanEditBio == y.CanEditBio
+                && x.CanEditName == y.CanEditName
+                && x.CanEditProfilePhoto == y.CanEditProfilePhoto
+                && x.CanEditUsername == y.CanEditUsername
+                && x.CanManageStories == y.CanManageStories
+                && x.CanReadMessages == y.CanReadMessages
+                && x.CanReply == y.CanReply
+                && x.CanSellGifts == y.CanSellGifts
+                && x.CanTransferAndUpgradeGifts == y.CanTransferAndUpgradeGifts
+                && x.CanTransferStars == y.CanTransferStars
+                && x.CanViewGiftsAndStars == y.CanViewGiftsAndStars;
+        }
+
+        public static bool AreTheSame(this GiftSettings x, GiftSettings y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.AcceptedGiftTypes.LimitedGifts == y.AcceptedGiftTypes.LimitedGifts
+                && x.AcceptedGiftTypes.PremiumSubscription == y.AcceptedGiftTypes.PremiumSubscription
+                && x.AcceptedGiftTypes.UnlimitedGifts == y.AcceptedGiftTypes.UnlimitedGifts
+                && x.AcceptedGiftTypes.UpgradedGifts == y.AcceptedGiftTypes.UpgradedGifts
+                && x.AcceptedGiftTypes.GiftsFromChannels == y.AcceptedGiftTypes.GiftsFromChannels
+                && x.ShowGiftButton == y.ShowGiftButton;
+        }
+
+        public static bool AreTheSame(this BusinessAwayMessageSchedule x, BusinessAwayMessageSchedule y)
+        {
+            if (x is BusinessAwayMessageScheduleAlways)
+            {
+                return y is BusinessAwayMessageScheduleAlways;
+            }
+            else if (x is BusinessAwayMessageScheduleOutsideOfOpeningHours)
+            {
+                return y is BusinessAwayMessageScheduleOutsideOfOpeningHours;
+            }
+            else if (x is BusinessAwayMessageScheduleCustom xcustom && y is BusinessAwayMessageScheduleCustom ycustom)
+            {
+                return xcustom.StartDate == ycustom.StartDate
+                    && xcustom.EndDate == ycustom.EndDate;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this BusinessRecipients x, BusinessRecipients y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            if (x.ExcludeSelected == y.ExcludeSelected
+                && x.SelectContacts == y.SelectContacts
+                && x.SelectNonContacts == y.SelectNonContacts
+                && x.SelectNewChats == y.SelectNewChats
+                && x.SelectExistingChats == y.SelectExistingChats
+                && x.ChatIds.Count == y.ChatIds.Count
+                && x.ExcludedChatIds.Count == y.ExcludedChatIds.Count)
+            {
+                return x.ChatIds.All(k => y.ChatIds.Contains(k))
+                    && x.ExcludedChatIds.All(k => y.ExcludedChatIds.Contains(k));
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this MessageSender sender, MessageSender compare)
+        {
+            if (sender is MessageSenderUser user1 && compare is MessageSenderUser user2)
+            {
+                return user1.UserId == user2.UserId;
+            }
+            else if (sender is MessageSenderChat chat1 && compare is MessageSenderChat chat2)
+            {
+                return chat1.ChatId == chat2.ChatId;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this AffiliateType sender, AffiliateType compare)
+        {
+            if (sender is AffiliateTypeBot bot1 && compare is AffiliateTypeBot bot2)
+            {
+                return bot1.UserId == bot2.UserId;
+            }
+            else if (sender is AffiliateTypeChannel channel1 && compare is AffiliateTypeChannel channel2)
+            {
+                return channel1.ChatId == channel2.ChatId;
+            }
+            else if (sender is AffiliateTypeCurrentUser && compare is AffiliateTypeCurrentUser)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool AreTheSame(this GroupCallParticipant sender, GroupCallParticipant compare)
+        {
+            if (sender.IsCurrentUser && compare.IsCurrentUser)
+            {
+                return true;
+            }
+
+            return sender.ParticipantId.AreTheSame(compare.ParticipantId);
+        }
+
+        public static bool AreTheSame(this ChatNotificationSettings x, ChatNotificationSettings y)
+        {
+            if (x == null || y == null)
+            {
+                return x == y;
+            }
+
+            return x.DisableMentionNotifications == y.DisableMentionNotifications
+                && x.DisablePinnedMessageNotifications == y.DisablePinnedMessageNotifications
+                && x.MuteFor == y.MuteFor
+                && x.MuteStories == y.MuteStories
+                && x.ShowPreview == y.ShowPreview
+                && x.ShowStoryPoster == y.ShowStoryPoster
+                && x.SoundId == y.SoundId
+                && x.StorySoundId == y.StorySoundId
+                && x.UseDefaultDisableMentionNotifications == y.UseDefaultDisableMentionNotifications
+                && x.UseDefaultDisablePinnedMessageNotifications == y.UseDefaultDisablePinnedMessageNotifications
+                && x.UseDefaultMuteFor == y.UseDefaultMuteFor
+                && x.UseDefaultMuteStories == y.UseDefaultMuteStories
+                && x.UseDefaultShowPreview == y.UseDefaultShowPreview
+                && x.UseDefaultShowStoryPoster == y.UseDefaultShowStoryPoster
+                && x.UseDefaultSound == y.UseDefaultSound
+                && x.UseDefaultStorySound == y.UseDefaultStorySound;
+        }
+
+        public static bool IsUser(this MessageSender sender, long userId)
+        {
+            return sender is MessageSenderUser user && user.UserId == userId;
+        }
+
+        public static bool IsChat(this MessageSender sender, long chatId)
+        {
+            return sender is MessageSenderChat chat && chat.ChatId == chatId;
+        }
+
+        public static long ComparaTo(this MessageSender sender, MessageSender compare)
+        {
+            if (sender is MessageSenderUser user1 && compare is MessageSenderUser user2)
+            {
+                return user1.UserId - user2.UserId;
+            }
+            else if (sender is MessageSenderChat chat1 && compare is MessageSenderChat chat2)
+            {
+                return chat1.ChatId - chat2.ChatId;
+            }
+
+            return -1;
+        }
+
+        public static bool IsSaved(this Message message, long savedMessagesId)
+        {
+            if (message.ForwardInfo?.Origin is MessageOriginUser)
+            {
+                return message.ForwardInfo.Source != null;
+            }
+            else if (message.ForwardInfo?.Origin is MessageOriginChat)
+            {
+                return message.ForwardInfo.Source != null;
+            }
+            else if (message.ForwardInfo?.Origin is MessageOriginChannel originChannel)
+            {
+                // TODO: not fully correct
+                if (message.ChatId == savedMessagesId)
+                {
+                    return message.ForwardInfo.Source != null;
+                }
+
+                return message.ForwardInfo.Source != null
+                    && message.ForwardInfo.Source.ChatId == originChannel.ChatId
+                    && message.ForwardInfo.Source.MessageId == originChannel.MessageId;
+            }
+            else if (message.ForwardInfo?.Origin is MessageOriginHiddenUser)
+            {
+                return message.ChatId == savedMessagesId;
+            }
+            else if (message.ImportInfo != null)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsSaved(this MessageViewModel message, long savedMessagesId)
+        {
+            if (message.ForwardInfo?.Origin is MessageOriginUser)
+            {
+                return message.ForwardInfo.Source != null;
+            }
+            else if (message.ForwardInfo?.Origin is MessageOriginChat)
+            {
+                return message.ForwardInfo.Source != null;
+            }
+            else if (message.ForwardInfo?.Origin is MessageOriginChannel originChannel)
+            {
+                // TODO: not fully correct
+                if (message.ChatId == savedMessagesId)
+                {
+                    return message.ForwardInfo.Source != null;
+                }
+
+                return message.ForwardInfo.Source != null
+                    && message.ForwardInfo.Source.ChatId == originChannel.ChatId
+                    && message.ForwardInfo.Source.MessageId == originChannel.MessageId;
+            }
+            else if (message.ForwardInfo?.Origin is MessageOriginHiddenUser)
+            {
+                return message.ChatId == savedMessagesId;
+            }
+            else if (message.ImportInfo != null)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        // TODO: not fully correct
+        public static bool HasSameOrigin(this MessageForwardInfo forwardInfo)
+        {
+            if (forwardInfo == null)
+            {
+                return true;
+            }
+
+            if (forwardInfo?.Origin is MessageOriginChannel originChannel)
+            {
+                return forwardInfo.Source != null
+                    && forwardInfo.Source.ChatId == originChannel.ChatId
+                    && forwardInfo.Source.MessageId == originChannel.MessageId;
+            }
+
+            return true;
+        }
+
+        public static string FullName(this User user, bool firstName = false)
+        {
+            if (user == null || user.Type is UserTypeDeleted)
+            {
+                return Strings.HiddenName;
+            }
+
+            if (user.FirstName.Length > 0 && user.LastName.Length > 0 && !firstName)
+            {
+                return $"{user.FirstName} {user.LastName}";
+            }
+            else if (user.FirstName.Length > 0)
+            {
+                return user.FirstName;
+            }
+
+            return user.LastName;
+        }
+
+        public static string GetFullName(this Contact user)
+        {
+            if (user.FirstName.Length > 0 && user.LastName.Length > 0)
+            {
+                return $"{user.FirstName} {user.LastName}";
+            }
+            else if (user.FirstName.Length > 0)
+            {
+                return user.FirstName;
+            }
+
+            return user.LastName;
+        }
+
+        public static PhotoSize GetSize(this Photo photo, bool thumbnail)
+        {
+            return thumbnail ? photo.GetSmall() : photo.GetBig();
+        }
+
+        public static PhotoSize GetSmall(this Photo photo)
+        {
+            //var local = photo.Sizes.FirstOrDefault(x => string.Equals(x.Type, "t"));
+            //if (local != null && (local.Photo.Local.IsDownloadingCompleted || local.Photo.Local.CanBeDownloaded))
+            //{
+            //    return local;
+            //}
+
+            return photo.Sizes.FirstOrDefault(x => x.Photo.Local.IsDownloadingCompleted || x.Photo.Local.CanBeDownloaded);
+        }
+
+        public static File GetFile(this Photo photo)
+        {
+            return photo.GetBig()?.Photo;
+        }
+
+        public static PhotoSize GetBig(this Photo photo)
+        {
+            //var local = photo.Sizes.LastOrDefault(x => string.Equals(x.Type, "i"));
+            //if (local != null && (local.Photo.Local.IsDownloadingCompleted || local.Photo.Local.CanBeDownloaded))
+            //{
+            //    return local;
+            //}
+
+            return photo.Sizes.LastOrDefault(x => x.Photo.Local.IsDownloadingCompleted || x.Photo.Local.CanBeDownloaded);
+        }
+
+        public static File GetFile(this ChatPhoto photo)
+        {
+            return photo.GetBig()?.Photo;
+        }
+
+        public static Thumbnail GetThumbnail(this ChatPhoto photo)
+        {
+            var small = photo.GetSmall();
+            if (small != null)
+            {
+                return small.ToThumbnail();
+            }
+
+            return null;
+        }
+
+        public static PhotoSize GetSmall(this ChatPhoto photo)
+        {
+            //var local = photo.Sizes.FirstOrDefault(x => string.Equals(x.Type, "t"));
+            //if (local != null && (local.Photo.Local.IsDownloadingCompleted || local.Photo.Local.CanBeDownloaded))
+            //{
+            //    return local;
+            //}
+
+            return photo.Sizes.FirstOrDefault(x => x.Photo.Local.IsDownloadingCompleted || x.Photo.Local.CanBeDownloaded);
+        }
+
+        public static PhotoSize GetBig(this ChatPhoto photo)
+        {
+            //var local = photo.Sizes.LastOrDefault(x => string.Equals(x.Type, "i"));
+            //if (local != null && (local.Photo.Local.IsDownloadingCompleted || local.Photo.Local.CanBeDownloaded))
+            //{
+            //    return local;
+            //}
+
+            return photo.Sizes.LastOrDefault(x => x.Photo.Local.IsDownloadingCompleted || x.Photo.Local.CanBeDownloaded);
+        }
+
+        public static bool Empty(this ChatFolder folder)
+        {
+            return folder.IncludedChatIds.Empty()
+                && !folder.IncludeBots
+                && !folder.IncludeGroups
+                && !folder.IncludeContacts
+                && !folder.IncludeNonContacts
+                && !folder.IncludeChannels;
+        }
+
+        public static bool Any(this ChatFolder folder, long exclude)
+        {
+            return folder.IncludedChatIds.Any(x => x != exclude)
+                || folder.IncludeBots
+                || folder.IncludeGroups
+                || folder.IncludeContacts
+                || folder.IncludeNonContacts
+                || folder.IncludeChannels;
+        }
+
+        public static StickerSetInfo ToInfo(this StickerSet set)
+        {
+            return new StickerSetInfo(set.Id, set.Title, set.Name, set.Thumbnail, set.ThumbnailOutline, set.IsOwned, set.IsInstalled, set.IsArchived, set.IsOfficial, set.StickerType, set.NeedsRepainting, set.IsAllowedAsChatEmojiStatus, set.IsViewed, set.Stickers.Count, set.Stickers);
+        }
+
+        public static string GetStartsAt(this MessageVideoChatScheduled messageVideoChatScheduled)
+        {
+            return Converters.Formatter.DateAt(messageVideoChatScheduled.StartDate);
+        }
+
+        // u-groupcall-compile-clean: un-gated. These were #if !LINUX from a phase when
+        // VoipGroupCall was not in the Linux subset. Kevin's Phase 1 put it in, and both
+        // GroupCallWindow and LiveStreamWindow call these with a VoipGroupCall receiver,
+        // which is why the compiler was offering the GroupCall overload and failing.
+        public static string GetStartsAt(this VoipGroupCall groupCall)
+        {
+            var date = Converters.Formatter.ToLocalTime(groupCall.ScheduledStartDate);
+            if (date.Date == DateTime.Today)
+            {
+                return string.Format(Strings.TodayAtFormattedWithToday, Converters.Formatter.Time(date));
+            }
+            else if (date.Date.AddDays(1) == DateTime.Today)
+            {
+                return string.Format(Strings.YesterdayAtFormatted, Converters.Formatter.Time(date));
+            }
+
+            return Converters.Formatter.DateAt(date);
+        }
+
+        public static void Discern(this IEnumerable<ReactionType> reactions, out bool paid, out HashSet<string> emoji, out HashSet<long> customEmoji)
+        {
+            paid = false;
+            emoji = null;
+            customEmoji = null;
+
+            foreach (var reaction in reactions)
+            {
+                Discern(reaction, ref paid, ref emoji, ref customEmoji);
+            }
+        }
+
+        /// <summary>
+        /// Overload over the unread list itself, so callers holding one need not project
+        /// it through Select.
+        ///
+        /// Indexed rather than enumerated: this runs for every message carrying
+        /// reactions, and the list is usually empty, so the enumerator would be the only
+        /// allocation on the common path.
+        /// </summary>
+        public static void Discern(this Vector<UnreadReaction> reactions, out bool paid, out HashSet<string> emoji, out HashSet<long> customEmoji)
+        {
+            paid = false;
+            emoji = null;
+            customEmoji = null;
+
+            for (int i = 0; i < reactions.Count; i++)
+            {
+                Discern(reactions[i].Type, ref paid, ref emoji, ref customEmoji);
+            }
+        }
+
+        private static void Discern(ReactionType reaction, ref bool paid, ref HashSet<string> emoji, ref HashSet<long> customEmoji)
+        {
+            if (reaction is ReactionTypeEmoji emojiItem)
+            {
+                emoji ??= new HashSet<string>();
+                emoji.Add(emojiItem.Emoji);
+            }
+            else if (reaction is ReactionTypeCustomEmoji customEmojiItem)
+            {
+                customEmoji ??= new HashSet<long>();
+                customEmoji.Add(customEmojiItem.CustomEmojiId);
+            }
+            else if (reaction is ReactionTypePaid)
+            {
+                paid = true;
+            }
+        }
+
+        public static bool IsChosen(this MessageReactions reactions, ReactionType type)
+        {
+            if (reactions == null)
+            {
+                return false;
+            }
+
+            return reactions.Reactions.Where(x => x.IsChosen)
+                .Select(x => x.Type)
+                .Any(x => x.AreTheSame(type));
+        }
+
+        public static bool IsExpired(this LiveLocation location, int expiresIn, long date)
+        {
+            if (location.LivePeriod > 0)
+            {
+                if (expiresIn == 0)
+                {
+                    return true;
+                }
+                else if (location.LivePeriod == int.MaxValue)
+                {
+                    return false;
+                }
+
+                return date + location.LivePeriod < DateTime.Now.ToUnixTimeSeconds();
+            }
+
+            return false;
+        }
+
+        public static string GetStartsIn(this GroupCall groupCall)
+        {
+            var date = Converters.Formatter.ToLocalTime(groupCall.ScheduledStartDate);
+            var duration = date - DateTime.Now;
+
+            if (Math.Abs(duration.TotalDays) >= 7)
+            {
+                return Locale.Declension(Strings.R.Weeks, 1);
+            }
+            if (Math.Abs(duration.TotalDays) >= 1)
+            {
+                return Locale.Declension(Strings.R.Days, (int)Math.Round(duration.TotalSeconds / (24 * 60 * 60.0f)));
+            }
+            else if (Math.Abs(duration.TotalHours) >= 1)
+            {
+                return (duration.TotalSeconds < 0 ? "-" : "") + duration.ToString("h\\:mm\\:ss");
+            }
+            else
+            {
+                return (duration.TotalSeconds < 0 ? "-" : "") + duration.ToString("mm\\:ss");
+            }
+        }
+
+        // u-groupcall-compile-clean: un-gated. These were #if !LINUX from a phase when
+        // VoipGroupCall was not in the Linux subset. Kevin's Phase 1 put it in, and both
+        // GroupCallWindow and LiveStreamWindow call these with a VoipGroupCall receiver,
+        // which is why the compiler was offering the GroupCall overload and failing.
+        public static string GetStartsIn(this VoipGroupCall groupCall)
+        {
+            var date = Converters.Formatter.ToLocalTime(groupCall.ScheduledStartDate);
+            var duration = date - DateTime.Now;
+
+            if (Math.Abs(duration.TotalDays) >= 7)
+            {
+                return Locale.Declension(Strings.R.Weeks, 1);
+            }
+            if (Math.Abs(duration.TotalDays) >= 1)
+            {
+                return Locale.Declension(Strings.R.Days, (int)Math.Round(duration.TotalSeconds / (24 * 60 * 60.0f)));
+            }
+            else if (Math.Abs(duration.TotalHours) >= 1)
+            {
+                return (duration.TotalSeconds < 0 ? "-" : "") + duration.ToString("h\\:mm\\:ss");
+            }
+            else
+            {
+                return (duration.TotalSeconds < 0 ? "-" : "") + duration.ToString("mm\\:ss");
+            }
+        }
+
+        public static string GetDuration(this MessageVideoChatEnded videoChatEnded)
+        {
+            var duration = TimeSpan.FromSeconds(videoChatEnded.Duration);
+            if (duration.TotalDays >= 1)
+            {
+                return Locale.Declension(Strings.R.Days, (int)duration.TotalDays);
+            }
+            else if (duration.TotalHours >= 1)
+            {
+                return duration.ToString("h\\:mm\\:ss");
+            }
+            else
+            {
+                return duration.ToString("mm\\:ss");
+            }
+        }
+
+        public static string GetDuration(this PaidMediaPreview preview)
+        {
+            return ToDuration(preview.Duration);
+        }
+
+        public static string GetDuration(this Video video)
+        {
+            return ToDuration(video.Duration);
+        }
+
+        public static string GetDuration(this StoryVideo video)
+        {
+            return ToDuration(video.Duration);
+        }
+
+        public static string GetDuration(this Audio audio)
+        {
+            return ToDuration(audio.Duration);
+        }
+
+        public static string GetDuration(this VoiceNote voiceNote)
+        {
+            return ToDuration(voiceNote.Duration);
+        }
+
+        public static string GetDuration(this VideoNote videoNote)
+        {
+            return ToDuration(videoNote.Duration);
+        }
+
+        public static string ToDuration(this int totalSeconds)
+        {
+            var duration = TimeSpan.FromSeconds(totalSeconds);
+            if (duration.TotalHours >= 1)
+            {
+                return duration.ToString("h\\:mm\\:ss");
+            }
+            else
+            {
+                return duration.ToString("mm\\:ss");
+            }
+        }
+
+        public static string ToDuration(this double totalSeconds)
+        {
+            var duration = TimeSpan.FromSeconds(totalSeconds);
+            if (duration.TotalHours >= 1)
+            {
+                return duration.ToString("h\\:mm\\:ss");
+            }
+            else
+            {
+                return duration.ToString("mm\\:ss");
+            }
+        }
+
+
+
+
+
+
+        public static bool IsMember(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or
+                ChatMemberStatusAdministrator or
+                ChatMemberStatusMember or
+                ChatMemberStatusRestricted;
+        }
+
+        public static int Count(this ChatPermissions permissions)
+        {
+            var count = 0;
+            if (permissions.CanSendBasicMessages)
+            {
+                count++;
+            }
+            if (permissions.CanSendAudios)
+            {
+                count++;
+            }
+            if (permissions.CanSendDocuments)
+            {
+                count++;
+            }
+            if (permissions.CanSendPhotos)
+            {
+                count++;
+            }
+            if (permissions.CanSendVideos)
+            {
+                count++;
+            }
+            if (permissions.CanSendVideoNotes)
+            {
+                count++;
+            }
+            if (permissions.CanSendVoiceNotes)
+            {
+                count++;
+            }
+            if (permissions.CanSendPolls)
+            {
+                count++;
+            }
+            if (permissions.CanSendOtherMessages)
+            {
+                count++;
+            }
+            if (permissions.CanAddLinkPreviews)
+            {
+                count++;
+            }
+            if (permissions.CanEditTag)
+            {
+                count++;
+            }
+            if (permissions.CanChangeInfo)
+            {
+                count++;
+            }
+            if (permissions.CanInviteUsers)
+            {
+                count++;
+            }
+            if (permissions.CanPinMessages)
+            {
+                count++;
+            }
+            //if (permissions.CanCreateTopics)
+            //{
+            //    count++;
+            //}
+
+            return count;
+        }
+
+        public static int Total(this ChatPermissions permissions)
+        {
+            return 14;
+        }
+
+        public static bool CanCreateTopics(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null || channel)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanCreateTopics;
+            }
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanManageTopics: true }
+                or ChatMemberStatusRestricted { Permissions.CanCreateTopics: true };
+        }
+
+        public static bool CanEditStories(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanEditStories: true };
+        }
+
+        public static bool CanManageTopics(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null || channel)
+            {
+                return false;
+            }
+            else if (channel)
+            {
+                return false;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanManageTopics: true };
+        }
+
+        public static bool CanPinMessages(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out _);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanPinMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanPinMessages: true }
+                or ChatMemberStatusRestricted { Permissions.CanPinMessages: true };
+        }
+
+        public static bool CanInviteUsers(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out _);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanInviteUsers;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanInviteUsers: true }
+                or ChatMemberStatusRestricted { Permissions.CanInviteUsers: true };
+        }
+
+        public static bool CanChangeInfo(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out _);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanChangeInfo;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanChangeInfo: true }
+                or ChatMemberStatusRestricted { Permissions.CanChangeInfo: true };
+        }
+
+        public static bool CanAddLinkPreviews(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanAddLinkPreviews;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanAddLinkPreviews: true };
+        }
+
+        // Currently used only by ChatTextBox, if used somewhere TODO should be fixed
+        public static bool CanSendOtherMessages(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            // TODO: check if group is accessible of Left?
+            else if (status is ChatMemberStatusMember or ChatMemberStatusLeft)
+            {
+                return chat.Permissions.CanSendOtherMessages;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendOtherMessages: true };
+        }
+
+        public static bool CanSendPolls(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendPolls;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendPolls: true };
+        }
+
+        // TODO: remove once exposed by TDLib
+        public static bool IsDirectMessagesChatAdministrator(this Chat chat, IClientService clientService)
+        {
+            if (clientService.TryGetSupergroup(chat, out Supergroup supergroup) && clientService.TryGetSupergroupFull(chat, out SupergroupFullInfo fullInfo))
+            {
+                if (supergroup.IsDirectMessagesGroup && clientService.TryGetChat(fullInfo.DirectMessagesChatId, out chat))
+                {
+                    clientService.TryGetChat(fullInfo.DirectMessagesChatId, out chat);
+                }
+
+                var status = clientService.GetChatMemberStatus(chat, out bool channel);
+                if (status is ChatMemberStatusAdministrator administrator)
+                {
+                    return administrator.Rights.CanPostMessages;
+                }
+            }
+
+            return false;
+        }
+
+        public static bool HasForumTabs(this Chat chat, IClientService clientService, out bool isForum)
+        {
+            if (clientService.TryGetSupergroup(chat, out Supergroup supergroup))
+            {
+                if (supergroup.HasForumTabs || (supergroup.IsForum && !chat.ViewAsTopics && AppSettings.Diagnostics.ForumTabsDebug))
+                {
+                    isForum = true;
+                    return true;
+                }
+
+                if (supergroup.IsDirectMessagesGroup)
+                {
+                    isForum = false;
+                    return supergroup.IsAdministeredDirectMessagesGroup;
+                }
+            }
+            else if (clientService.TryGetUser(chat, out User user))
+            {
+                if (user.Type is UserTypeBot { HasTopics: true })
+                {
+                    isForum = true;
+                    return true;
+                }
+            }
+
+            isForum = false;
+            return false;
+        }
+
+        public static bool CanSendVoiceNotes(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendVoiceNotes;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendVoiceNotes: true };
+        }
+
+        public static bool CanSendVideoNotes(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendVideoNotes;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendVideoNotes: true };
+        }
+
+        public static bool CanSendVideos(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendVideos;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendVideos: true };
+        }
+
+        public static bool CanSendPhotos(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendPhotos;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendPhotos: true };
+        }
+
+        public static bool CanSendDocuments(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendDocuments;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendDocuments: true };
+        }
+
+        public static bool CanSendAudios(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendAudios;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendAudios: true };
+        }
+
+        public static bool CanSendBasicMessages(this Chat chat, IClientService clientService)
+        {
+            var status = clientService.GetChatMemberStatus(chat, out bool channel);
+            if (status == null)
+            {
+                return false;
+            }
+            else if (status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanSendBasicMessages;
+            }
+            else if (channel && status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.Rights.CanPostMessages;
+            }
+
+            return status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator
+                or ChatMemberStatusRestricted { Permissions.CanSendBasicMessages: true };
+        }
+
+        public static bool CanDeleteMessages(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanDeleteMessages: true };
+        }
+
+        public static bool CanDeleteMessages(this BasicGroup basicGroup)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanDeleteMessages: true };
+        }
+
+        public static bool CanChangeInfo(this BasicGroup basicGroup, Chat chat)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+            else if (basicGroup.Status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanChangeInfo;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanChangeInfo: true }
+                or ChatMemberStatusRestricted { Permissions.CanChangeInfo: true };
+        }
+
+        public static bool CanChangeInfo(this Supergroup supergroup, Chat chat)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+            else if (supergroup.Status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanChangeInfo;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator
+                or ChatMemberStatusAdministrator { Rights.CanChangeInfo: true }
+                or ChatMemberStatusRestricted { Permissions.CanChangeInfo: true };
+        }
+
+        public static bool CanManageVideoChats(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanManageVideoChats: true };
+        }
+
+        public static bool CanSendWelcomeMessages(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanSendWelcomeMessages: true };
+        }
+
+        public static bool CanSendWelcomeMessages(this BasicGroup basicGroup)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanSendWelcomeMessages: true };
+        }
+
+        public static bool CanManageTopics(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanManageTopics: true };
+        }
+
+        public static bool CanManageVideoChats(this BasicGroup basicGroup)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanManageVideoChats: true };
+        }
+
+        public static bool CanPostMessages(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            if (supergroup.IsChannel)
+            {
+                return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanPostMessages: true };
+            }
+            else
+            {
+                return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator or ChatMemberStatusMember or ChatMemberStatusRestricted { Permissions.CanSendBasicMessages: true };
+            }
+        }
+
+        public static bool CanEditStories(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            if (supergroup.IsChannel)
+            {
+                return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanEditStories: true };
+            }
+
+            return false;
+        }
+
+        public static bool CanDeleteStories(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            if (supergroup.IsChannel)
+            {
+                return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanDeleteStories: true };
+            }
+
+            return false;
+        }
+
+        public static bool CanRestrictMembers(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanRestrictMembers: true };
+        }
+
+        public static bool CanRestrictMembers(this BasicGroup basicGroup)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanRestrictMembers: true };
+        }
+
+        public static bool CanPromoteMembers(this Supergroup supergroup)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanPromoteMembers: true };
+        }
+
+        public static bool CanPromoteMembers(this BasicGroup basicGroup)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator;
+        }
+
+        public static bool CanEditTag(this Supergroup supergroup, Chat chat, ChatMember member, long myId)
+        {
+            var can_manage_ranks = supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanManageTags: true };
+            var can_edit_rank = supergroup.Status is ChatMemberStatusRestricted { Permissions.CanEditTag: true } || chat.Permissions.CanEditTag;
+
+            if (member.MemberId.IsUser(myId))
+            {
+                return can_manage_ranks || can_edit_rank;
+            }
+            else if (member.Status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.CanBeEdited;
+            }
+
+            return can_manage_ranks;
+        }
+
+        public static bool CanEditTag(this BasicGroup basicGroup, Chat chat, ChatMember member, long myId)
+        {
+            var can_manage_ranks = basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanManageTags: true };
+            var can_edit_rank = basicGroup.Status is ChatMemberStatusRestricted { Permissions.CanEditTag: true } || chat.Permissions.CanEditTag;
+
+            if (member.MemberId.IsUser(myId))
+            {
+                return can_manage_ranks || can_edit_rank;
+            }
+            else if (member.Status is ChatMemberStatusAdministrator administrator)
+            {
+                return administrator.CanBeEdited;
+            }
+
+            return can_manage_ranks;
+        }
+
+        public static string GetTag(this ChatMember member)
+        {
+            return member.Status switch
+            {
+                ChatMemberStatusCreator => string.IsNullOrEmpty(member.Tag) ? Strings.ChatTagOwner : member.Tag,
+                ChatMemberStatusAdministrator => string.IsNullOrEmpty(member.Tag) ? Strings.ChatTagAdmin : member.Tag,
+                _ => member.Tag
+            };
+        }
+
+        public static bool CanInviteUsers(this Supergroup supergroup, Chat chat)
+        {
+            if (supergroup.Status == null)
+            {
+                return false;
+            }
+
+            if (supergroup.IsChannel && supergroup.MemberCount > 200)
+            {
+                return false;
+            }
+            else if (supergroup.Status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanInviteUsers;
+            }
+
+            return supergroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanInviteUsers: true };
+        }
+
+        public static bool CanInviteUsers(this BasicGroup basicGroup, Chat chat)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+            else if (basicGroup.Status is ChatMemberStatusMember)
+            {
+                return chat.Permissions.CanInviteUsers;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator { Rights.CanInviteUsers: true };
+        }
+
+        public static bool CanPostMessages(this BasicGroup basicGroup)
+        {
+            if (basicGroup.Status == null)
+            {
+                return false;
+            }
+
+            return basicGroup.Status is ChatMemberStatusCreator or ChatMemberStatusAdministrator or ChatMemberStatusMember;
+        }
+
+        public static bool IsPublic(this Supergroup group)
+        {
+            if (group.IsChannel || group.IsBroadcastGroup)
+            {
+                return group.HasActiveUsername();
+            }
+
+            return group.HasActiveUsername()
+                || group.HasLocation
+                || group.HasLinkedChat;
+        }
+
+        public static bool CanJoin(this Supergroup group)
+        {
+            if (group.IsChannel || group.IsBroadcastGroup)
+            {
+                if ((group.Status is ChatMemberStatusLeft && (group.HasActiveUsername() /*|| ViewModel.ClientService.IsChatAccessible(chat)*/)) || (group.Status is ChatMemberStatusCreator creator && !creator.IsMember))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                if ((group.Status is ChatMemberStatusLeft && (group.HasActiveUsername() || group.HasLocation || group.HasLinkedChat /*|| ViewModel.ClientService.IsChatAccessible(chat)*/)) || (group.Status is ChatMemberStatusCreator creator && !creator.IsMember))
+                {
+                    return true;
+                }
+                else if (group.Status is ChatMemberStatusCreator || group.Status is ChatMemberStatusAdministrator administrator)
+                {
+                    return false;
+                }
+                else if (group.Status is ChatMemberStatusRestricted restrictedSend)
+                {
+                    if (!restrictedSend.IsMember && group.HasActiveUsername())
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public static File GetLocalFile(string path, string uniqueId = "")
+        {
+#if LINUX
+            // Two halves of the same assumption do not hold off Windows: there is no package to ask
+            // for an install location, and the separator in the literals ("Assets\\Background.tgv")
+            // is a legal file name character here, so Path.Combine would hand back one file called
+            // "Assets\Background.tgv". Anchor on the directory of Unigram.dll -- where the csproj
+            // copies Assets -- and translate the separator; see Telegram.Linux/Native/NativeAssets.cs
+            // for the same rule on the native side.
+            var full = System.IO.Path.Combine(AppContext.BaseDirectory, path.Replace('\\', System.IO.Path.DirectorySeparatorChar));
+            return new File(0, 0, 0, new LocalFile(full, false, false, false, true, 0, 0, 0), new RemoteFile(string.Empty, uniqueId, false, false, 0));
+#else
+            return new File(0, 0, 0, new LocalFile(System.IO.Path.Combine(Windows.ApplicationModel.Package.Current.InstalledLocation.Path, path), false, false, false, true, 0, 0, 0), new RemoteFile(string.Empty, uniqueId, false, false, 0));
+#endif
+        }
+    }
+
+    public static class TdBackground
+    {
+        public static BackgroundFill FromString(string slug)
+        {
+            var split = slug.Split('?');
+            var query = slug.ParseQueryString();
+
+            if (TryGetColors(split[0], '-', 1, 2, out int[] linear))
+            {
+                if (linear.Length > 1)
+                {
+                    query.TryGetValue("rotation", out string rotationKey);
+                    int.TryParse(rotationKey ?? string.Empty, out int rotation);
+
+                    return new BackgroundFillGradient(linear[0], linear[1], rotation);
+                }
+
+                return new BackgroundFillSolid(linear[0]);
+            }
+            else if (TryGetColors(split[0], '~', 3, 4, out int[] freeform))
+            {
+                return new BackgroundFillFreeformGradient(freeform);
+            }
+
+            return null;
+        }
+
+        public static string ToString(BackgroundFill fill)
+        {
+            if (fill is BackgroundFillSolid solid)
+            {
+                return string.Format("{0:X6}", solid.Color);
+            }
+            else if (fill is BackgroundFillGradient gradient)
+            {
+                return string.Format("{0:X6}-{1:X6}?rotation={2}", gradient.TopColor, gradient.BottomColor, gradient.RotationAngle);
+            }
+            else if (fill is BackgroundFillFreeformGradient freeformGradient)
+            {
+                return string.Join('~', freeformGradient.Colors.Select(x => x.ToString("X6")));
+            }
+
+            return null;
+        }
+
+        public static BackgroundType FromUri(Uri uri)
+        {
+            var slug = uri.Segments.Last();
+            var query = uri.Query.ParseQueryString();
+
+            if (TryGetColors(slug, '-', 1, 2, out int[] linear))
+            {
+                if (linear.Length > 1)
+                {
+                    query.TryGetValue("rotation", out string rotationKey);
+                    int.TryParse(rotationKey ?? string.Empty, out int rotation);
+
+                    return new BackgroundTypeFill(new BackgroundFillGradient(linear[0], linear[1], rotation));
+                }
+
+                return new BackgroundTypeFill(new BackgroundFillSolid(linear[0]));
+            }
+            else if (TryGetColors(slug, '~', 3, 4, out int[] freeform))
+            {
+                return new BackgroundTypeFill(new BackgroundFillFreeformGradient(freeform));
+            }
+            else
+            {
+                query.TryGetValue("mode", out string modeKey);
+                query.TryGetValue("bg_color", out string bg_colorKey);
+
+                var modeSplit = modeKey?.ToLower().Split('+') ?? Array.Empty<string>();
+
+                BackgroundFill fill = null;
+                if (bg_colorKey != null && TryGetColors(bg_colorKey, '-', 1, 2, out int[] patternLinear))
+                {
+                    if (patternLinear.Length > 1)
+                    {
+                        query.TryGetValue("rotation", out string rotationKey);
+                        int.TryParse(rotationKey ?? string.Empty, out int rotation);
+
+                        fill = new BackgroundFillGradient(patternLinear[0], patternLinear[1], rotation);
+                    }
+                    else
+                    {
+                        fill = new BackgroundFillSolid(patternLinear[0]);
+                    }
+                }
+                else if (bg_colorKey != null && TryGetColors(bg_colorKey, '~', 3, 4, out int[] patternFreeform))
+                {
+                    fill = new BackgroundFillFreeformGradient(patternFreeform);
+                }
+
+                if (fill != null)
+                {
+                    query.TryGetValue("intensity", out string intensityKey);
+                    int.TryParse(intensityKey, out int intensity);
+
+                    return new BackgroundTypePattern(fill, Math.Abs(intensity), intensity < 0, modeSplit.Contains("motion"));
+                }
+                else
+                {
+                    return new BackgroundTypeWallpaper(modeSplit.Contains("blur"), modeSplit.Contains("motion"));
+                }
+            }
+        }
+
+        private static bool TryGetColors(string slug, char separator, int minimum, int maximum, out int[] colors)
+        {
+            var split = slug?.Split(separator);
+            if (split != null && split.Length >= minimum && split.Length <= maximum)
+            {
+                colors = new int[split.Length];
+
+                for (int i = 0; i < split.Length; i++)
+                {
+                    if (int.TryParse(split[i], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int color))
+                    {
+                        colors[i] = color;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            colors = null;
+            return false;
+        }
+
+        public static LinearGradientBrush GetGradient(int topColor, int bottomColor, int angle)
+        {
+            return GetGradient(topColor.ToColor(), bottomColor.ToColor(), angle);
+        }
+
+        public static LinearGradientBrush GetGradient(Color topColor, Color bottomColor, int angle)
+        {
+            Windows.Foundation.Point topPoint;
+            Windows.Foundation.Point bottomPoint;
+
+            switch (angle)
+            {
+                case 0:
+                case 360:
+                    topPoint = new Windows.Foundation.Point(0.5, 0);
+                    bottomPoint = new Windows.Foundation.Point(0.5, 1);
+                    break;
+                case 45:
+                default:
+                    topPoint = new Windows.Foundation.Point(1, 0);
+                    bottomPoint = new Windows.Foundation.Point(0, 1);
+                    break;
+                case 90:
+                    topPoint = new Windows.Foundation.Point(1, 0.5);
+                    bottomPoint = new Windows.Foundation.Point(0, 0.5);
+                    break;
+                case 135:
+                    topPoint = new Windows.Foundation.Point(1, 1);
+                    bottomPoint = new Windows.Foundation.Point(0, 0);
+                    break;
+                case 180:
+                    topPoint = new Windows.Foundation.Point(0.5, 1);
+                    bottomPoint = new Windows.Foundation.Point(0.5, 0);
+                    break;
+                case 225:
+                    topPoint = new Windows.Foundation.Point(0, 1);
+                    bottomPoint = new Windows.Foundation.Point(1, 0);
+                    break;
+                case 270:
+                    topPoint = new Windows.Foundation.Point(0, 0.5);
+                    bottomPoint = new Windows.Foundation.Point(1, 0.5);
+                    break;
+                case 315:
+                    topPoint = new Windows.Foundation.Point(0, 0);
+                    bottomPoint = new Windows.Foundation.Point(1, 1);
+                    break;
+            }
+
+            var brush = new LinearGradientBrush();
+            brush.GradientStops.Add(new GradientStop { Color = topColor, Offset = 0 });
+            brush.GradientStops.Add(new GradientStop { Color = bottomColor, Offset = 1 });
+            brush.StartPoint = topPoint;
+            brush.EndPoint = bottomPoint;
+
+            return brush;
+        }
+
+
+        public static CompositionLinearGradientBrush GetGradient(Compositor compositor, int topColor, int bottomColor, int angle)
+        {
+            return GetGradient(compositor, topColor.ToColor(), bottomColor.ToColor(), angle);
+        }
+
+        public static CompositionLinearGradientBrush GetGradient(Compositor compositor, Color topColor, Color bottomColor, int angle)
+        {
+            Vector2 topPoint;
+            Vector2 bottomPoint;
+
+            switch (angle)
+            {
+                case 0:
+                case 360:
+                    topPoint = new Vector2(0.5f, 0);
+                    bottomPoint = new Vector2(0.5f, 1);
+                    break;
+                case 45:
+                default:
+                    topPoint = new Vector2(1, 0);
+                    bottomPoint = new Vector2(0, 1);
+                    break;
+                case 90:
+                    topPoint = new Vector2(1, 0.5f);
+                    bottomPoint = new Vector2(0, 0.5f);
+                    break;
+                case 135:
+                    topPoint = new Vector2(1, 1);
+                    bottomPoint = new Vector2(0, 0);
+                    break;
+                case 180:
+                    topPoint = new Vector2(0.5f, 1);
+                    bottomPoint = new Vector2(0.5f, 0);
+                    break;
+                case 225:
+                    topPoint = new Vector2(0, 1);
+                    bottomPoint = new Vector2(1, 0);
+                    break;
+                case 270:
+                    topPoint = new Vector2(0, 0.5f);
+                    bottomPoint = new Vector2(1, 0.5f);
+                    break;
+                case 315:
+                    topPoint = new Vector2(0, 0);
+                    bottomPoint = new Vector2(1, 1);
+                    break;
+            }
+
+            var brush = compositor.CreateLinearGradientBrush();
+            brush.ColorStops.Add(compositor.CreateColorGradientStop(0, topColor));
+            brush.ColorStops.Add(compositor.CreateColorGradientStop(1, bottomColor));
+            brush.StartPoint = topPoint;
+            brush.EndPoint = bottomPoint;
+
+            return brush;
+        }
+    }
+}

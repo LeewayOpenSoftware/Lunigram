@@ -1,0 +1,277 @@
+﻿<controls:ContentPopup x:Class="Telegram.Views.Stars.Popups.SendGiftPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:local="using:Telegram.Views.Business.Popups"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:chats="using:Telegram.Controls.Chats"
+                       xmlns:messages="using:Telegram.Controls.Messages"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:drawers="using:Telegram.Controls.Drawers"
+                       xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+                       mc:Ignorable="d"
+                       IsDismissButtonVisible="True"
+                       Padding="0,24,0,0"
+                       PrimaryButtonClick="ContentDialog_PrimaryButtonClick"
+                       ButtonsLayout="Vertical">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer x:Name="ScrollingHost"
+                      VerticalScrollMode="Auto"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Grid x:Name="LimitedRoot"
+                      SizeChanged="LimitedRoot_SizeChanged"
+                      Margin="24,0,24,12"
+                      CornerRadius="4"
+                      Visibility="Collapsed"
+                      Grid.Row="1">
+                    <Grid x:Name="PrevLimitRoot"
+                          Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
+                          Padding="8,4">
+                        <TextBlock x:Name="PrevLimit"
+                                   Style="{StaticResource InfoBodyTextBlockStyle}"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Right" />
+                        <TextBlock x:Name="NextLimitBelow"
+                                   Style="{StaticResource InfoBodyTextBlockStyle}"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Left" />
+                    </Grid>
+                    <Grid x:Name="NextPanel"
+                          Background="{StaticResource PremiumLinearGradientBrush}"
+                          Padding="8,4">
+                        <TextBlock x:Name="PrevLimitAbove"
+                                   Foreground="#FFFFFF"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Right" />
+                        <TextBlock x:Name="NextLimit"
+                                   Foreground="#FFFFFF"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Left" />
+                    </Grid>
+
+                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4" />
+                </Grid>
+
+                <Button x:Name="ResaleButton"
+                        Click="Resale_Click"
+                        HorizontalAlignment="Stretch"
+                        Margin="24,0,24,12"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="Resale" />
+                </Button>
+
+                <Grid>
+                    <chats:ChatBackgroundControl x:Name="BackgroundControl" />
+
+                    <Grid Padding="24,12">
+                        <messages:MessageService x:Name="Message">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <ContentPresenter HorizontalContentAlignment="Stretch"
+                                                      VerticalContentAlignment="Stretch" />
+                                </ControlTemplate>
+                            </Button.Template>
+                            <StackPanel>
+                                <messages:MessageService Padding="12,2,12,0"
+                                                         MaxWidth="480">
+                                    <controls:FormattedTextBlock x:Name="Text"
+                                                                 Foreground="#FFFFFF"
+                                                                 TextAlignment="Center"
+                                                                 Style="{StaticResource CaptionFormattedTextBlockStyle}"
+                                                                 FontFamily="{StaticResource EmojiThemeFontFamilyWithSymbols}"
+                                                                 AutoFontSize="False"
+                                                                 IsTextSelectionEnabled="False"
+                                                                 HyperlinkStyle="None"
+                                                                 HyperlinkForeground="#FFFFFF"
+                                                                 HyperlinkFontWeight="SemiBold"
+                                                                 Padding="0,0,0,4" />
+                                </messages:MessageService>
+
+                                <Grid Width="216">
+                                    <messages:MessageService Margin="0,4,0,0"
+                                                             Padding="12,2,12,0"
+                                                             Width="216">
+                                        <StackPanel>
+                                            <controls:AnimatedImage x:Name="Animation"
+                                                                    Width="120"
+                                                                    Height="120"
+                                                                    FrameSize="120,120"
+                                                                    DecodeFrameType="Logical"
+                                                                    IsViewportAware="True"
+                                                                    LoopCount="1"
+                                                                    Margin="0,-20,0,12" />
+
+                                            <TextBlock x:Name="Title"
+                                                       Foreground="#FFFFFF"
+                                                       Text="{CustomResource BoostingCongratulations}"
+                                                       TextAlignment="Center"
+                                                       Style="{StaticResource SubtitleTextBlockStyle}"
+                                                       FontSize="16" />
+
+                                            <Border x:Name="Publisher"
+                                                    Background="{ThemeResource MessageServiceBackgroundBrush}"
+                                                    CornerRadius="12"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="8,2,8,3"
+                                                    Margin="0,4,0,4"
+                                                    Visibility="Collapsed">
+                                                <TextBlock x:Name="PublisherLabel"
+                                                           Foreground="#DDFFFFFF"
+                                                           TextAlignment="Center"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           TextWrapping="NoWrap" />
+                                            </Border>
+
+                                            <controls:FormattedTextBlock x:Name="Subtitle"
+                                                                         Foreground="#FFFFFF"
+                                                                         TextAlignment="Center"
+                                                                         Style="{StaticResource CaptionFormattedTextBlockStyle}"
+                                                                         FontFamily="{StaticResource EmojiThemeFontFamilyWithSymbols}"
+                                                                         AutoFontSize="False"
+                                                                         IsTextSelectionEnabled="False"
+                                                                         Padding="0,0,0,4"
+                                                                         Margin="0,0,0,8" />
+
+                                            <Border x:Name="View"
+                                                    Background="{ThemeResource MessageServiceBackgroundBrush}"
+                                                    CornerRadius="14"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="12,3,12,5"
+                                                    Margin="0,0,0,12">
+                                                <TextBlock x:Name="ViewLabel"
+                                                           Text="{CustomResource BoostingReceivedGiftOpenBtn}"
+                                                           Foreground="#FFFFFF"
+                                                           TextAlignment="Center"
+                                                           Style="{StaticResource BaseTextBlockStyle}" />
+                                            </Border>
+                                        </StackPanel>
+                                    </messages:MessageService>
+
+                                    <Grid x:Name="RibbonRoot"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Top"
+                                          Margin="0,2,-2,0"
+                                          Width="72"
+                                          Height="72">
+                                        <Path Data="M69.6569 41.1569L30.8431 2.34315C29.3429 0.842855 27.308 0 25.1863 0H2.82843C1.04662 0 0.154286 2.15429 1.41422 3.41422L68.5858 70.5858C69.8457 71.8457 72 70.9534 72 69.1716V46.8137C72 44.692 71.1571 42.6571 69.6569 41.1569Z"
+                                              Fill="{StaticResource MessageServiceBackgroundBrush}" />
+
+                                        <Border Width="72"
+                                                VerticalAlignment="Center"
+                                                RenderTransformOrigin="0.5,0.5"
+                                                Margin="0,-14,-14,0">
+                                            <Border.RenderTransform>
+                                                <RotateTransform Angle="45" />
+                                            </Border.RenderTransform>
+                                            <TextBlock x:Name="Ribbon"
+                                                       Foreground="#FFFFFF"
+                                                       TextAlignment="Center"
+                                                       FontSize="12" />
+                                        </Border>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </messages:MessageService>
+                    </Grid>
+                </Grid>
+
+                <Grid x:Name="CaptionPanel"
+                      Background="{ThemeResource ContentDialogBackground}">
+                    <controls:CaptionTextBox x:Name="CaptionInput"
+                                             TextChanged="OnTextChanged"
+                                             InputScope="Chat"
+                                             FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                                             PlaceholderText="{CustomResource Gift2Message}"
+                                             Style="{StaticResource DefaultChatTextBoxStyle}"
+                                             Background="Transparent"
+                                             Padding="24,0,0,0"
+                                             BorderThickness="0"
+                                             Grid.Row="1">
+                        <FlyoutBase.AttachedFlyout>
+                            <Flyout x:Name="EmojiFlyout"
+                                    Placement="Top"
+                                    ShowMode="Transient">
+                                <Flyout.FlyoutPresenterStyle>
+                                    <Style TargetType="FlyoutPresenter"
+                                           BasedOn="{StaticResource CommandFlyoutPresenterStyle}">
+                                        <Setter Property="Padding"
+                                                Value="0" />
+                                    </Style>
+                                </Flyout.FlyoutPresenterStyle>
+                                <drawers:EmojiDrawer x:Name="EmojiPanel"
+                                                     ItemClick="Emoji_ItemClick"
+                                                     Width="300"
+                                                     Height="360" />
+                            </Flyout>
+                        </FlyoutBase.AttachedFlyout>
+                    </controls:CaptionTextBox>
+
+                    <Border x:Name="CaptionBorder"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="0,0,0,1"
+                            Grid.ColumnSpan="3" />
+
+                    <messages:CustomEmojiCanvas x:Name="CustomEmoji"
+                                                IsHitTestVisible="False"
+                                                Margin="22,11,0,0" />
+
+                    <controls:GlyphButton Click="Emoji_Click"
+                                          Glyph="&#xE76E;"
+                                          AutomationProperties.Name="{CustomResource Emoji}"
+                                          AllowFocusOnInteraction="False"
+                                          HorizontalAlignment="Right"
+                                          VerticalAlignment="Bottom"
+                                          FontSize="24"
+                                          Grid.Column="1" />
+                </Grid>
+
+                <TextBlock x:Name="CaptionInfo"
+                           Style="{StaticResource InfoCaptionTextBlockStyle}"
+                           Margin="24,8,24,24" />
+
+                <StackPanel x:Name="UpgradeableRoot">
+                    <CheckBox x:Name="Upgradeable"
+                              Checked="OnTextChanged"
+                              Unchecked="OnTextChanged"
+                              Margin="24,8,24,0">
+                        <RichTextBlock IsTextSelectionEnabled="False">
+                            <Paragraph>
+                                <Run x:Name="UpgradeableTextPart1" />
+                                <InlineUIContainer>
+                                    <controls:PremiumStarCount Width="24"
+                                                               Height="24"
+                                                               Margin="-4,-4,-2,-6" />
+                                </InlineUIContainer>
+                                <Run x:Name="UpgradeableTextPart2" />
+                            </Paragraph>
+                        </RichTextBlock>
+                    </CheckBox>
+                    <controls:SettingsFooter x:Name="UpgradeableInfo"
+                                             Click="UpgradeableInfo_Click"
+                                             IsLink="True"
+                                             Margin="24,0,24,8" />
+                </StackPanel>
+
+                <StackPanel x:Name="HideMyNameRoot">
+                    <CheckBox x:Name="HideMyName"
+                              Content="{CustomResource Gift2Hide}"
+                              Margin="24,8,24,0" />
+                    <controls:SettingsFooter x:Name="HideMyNameInfo"
+                                             Margin="24,0,24,24" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <controls:ScrollViewerScrim ScrollingHost="{x:Bind ScrollingHost}"
+                                    Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    BottomInset="0" />
+    </Grid>
+</controls:ContentPopup>

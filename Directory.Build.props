@@ -1,0 +1,64 @@
+<Project>
+
+  <PropertyGroup>
+    <TelegramRoot>$(MSBuildThisFileDirectory)</TelegramRoot>
+    <!-- Only these consume vcpkg: the two native components link against it, and the app needs
+         the runtime DLLs in its output and its package - both builds of it, since Telegram.Modern
+         packages the same dependencies. Without it there libvlc loads and then dies, its plugins
+         never having been copied. -->
+    <TelegramUsesVcpkg Condition="'$(MSBuildProjectName)' == 'Telegram.Native' Or '$(MSBuildProjectName)' == 'Telegram.Native.Calls' Or '$(MSBuildProjectName)' == 'Telegram' Or '$(MSBuildProjectName)' == 'Telegram.Modern' Or '$(MSBuildProjectName)' == 'Telegram.Win32'">true</TelegramUsesVcpkg>
+  </PropertyGroup>
+
+  <!-- Where vcpkg lives, in order of preference: an explicit override, the VCPKG_ROOT variable,
+       a checkout next to the repository, and finally the copy shipped by Visual Studio's "vcpkg
+       package manager" component (read-only, it fetches the registry into %LOCALAPPDATA% itself).
+       Nothing here has to be configured for the common layouts. -->
+  <PropertyGroup>
+    <!-- Repository-wide, not just for the three projects below: `vcpkg integrate install` would
+         otherwise pull whichever checkout it points at into every project in the solution.
+         Microsoft.Cpp.Common.props imports %LOCALAPPDATA%\vcpkg\vcpkg.user.props unless this is
+         set, and it is imported after this file, so setting it here wins. -->
+    <VCPkgLocalAppDataDisabled>true</VCPkgLocalAppDataDisabled>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TelegramUsesVcpkg)' == 'true'">
+    <VcpkgRoot Condition="'$(VcpkgRoot)' == '' And '$(VCPKG_ROOT)' != ''">$(VCPKG_ROOT)</VcpkgRoot>
+    <VcpkgRoot Condition="'$(VcpkgRoot)' == '' And Exists('$(TelegramRoot)..\vcpkg\.vcpkg-root')">$([System.IO.Path]::GetFullPath('$(TelegramRoot)..\vcpkg'))</VcpkgRoot>
+    <VcpkgRoot Condition="'$(VcpkgRoot)' == '' And Exists('$(MSBuildExtensionsPath)\..\VC\vcpkg\vcpkg.exe')">$([System.IO.Path]::GetFullPath('$(MSBuildExtensionsPath)\..\VC\vcpkg'))</VcpkgRoot>
+
+    <TelegramVcpkgTriplet Condition="'$(Platform)' == 'x64'">x64-uwp</TelegramVcpkgTriplet>
+    <TelegramVcpkgTriplet Condition="'$(Platform)' == 'ARM64'">arm64-uwp</TelegramVcpkgTriplet>
+
+    <!-- One install root per triplet - the layout the integration uses left to itself, where the
+         triplet appears twice because vcpkg creates <triplet> inside the root it is handed. It
+         cannot be flattened into a shared root: a manifest install root belongs to a single
+         triplet, and vcpkg purges whatever is outside the plan it just computed, so building
+         ARM64 would take the x64 packages with it. The TDLib build is pointed at the same roots,
+         so openssl is still built once per triplet and shared with tdjson.dll. -->
+    <VcpkgInstalledDir>$(TelegramRoot)vcpkg_installed\$(TelegramVcpkgTriplet)\</VcpkgInstalledDir>
+    <TelegramVcpkgInstalledDir>$(VcpkgInstalledDir)$(TelegramVcpkgTriplet)\</TelegramVcpkgInstalledDir>
+    <TelegramVcpkgBinDir Condition="'$(Configuration)' == 'Debug'">$(TelegramVcpkgInstalledDir)debug\bin\</TelegramVcpkgBinDir>
+    <TelegramVcpkgBinDir Condition="'$(TelegramVcpkgBinDir)' == ''">$(TelegramVcpkgInstalledDir)bin\</TelegramVcpkgBinDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TelegramUsesVcpkg)' == 'true' And '$(MSBuildProjectExtension)' == '.vcxproj'">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <VcpkgEnableClassic>false</VcpkgEnableClassic>
+    <VcpkgManifestRoot>$(TelegramRoot)</VcpkgManifestRoot>
+
+    <!-- The runtime DLLs are declared explicitly in Directory.Build.targets instead. vcpkg's own
+         applocal step is skipped whenever the linker does not run — an up-to-date incremental
+         build, or a pass that only queries the project for its packaging outputs — and the DLLs
+         then go missing from the appx with no error. -->
+    <VcpkgApplocalDeps>false</VcpkgApplocalDeps>
+
+    <!-- Autolink puts every .lib in the installed tree on every link line, which since webrtc
+         arrived means Telegram.Native scans a 339 MB static library it has no reference into.
+         The libraries each project actually needs are listed in Directory.Build.targets. -->
+    <VcpkgAutoLink>false</VcpkgAutoLink>
+  </PropertyGroup>
+
+  <Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props"
+          Condition="'$(TelegramUsesVcpkg)' == 'true' And '$(MSBuildProjectExtension)' == '.vcxproj' And Exists('$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props')" />
+
+</Project>

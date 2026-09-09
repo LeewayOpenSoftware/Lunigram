@@ -1,0 +1,1129 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
+using System.Threading.Tasks;
+using Telegram.Collections;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+using Telegram.Views.Folders;
+using Telegram.Views.Popups;
+using Windows.Foundation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
+
+namespace Telegram.ViewModels
+{
+    public partial class ChatListViewModel : ViewModelBase, IDelegable<IChatListDelegate>
+    {
+        private readonly INotificationsService _notificationsService;
+
+        private readonly Dictionary<long, bool> _deletedChats = new();
+
+        public IChatListDelegate Delegate { get; set; }
+
+        public ChatListViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, INotificationsService notificationsService, ChatList chatList)
+            : base(clientService, settingsService, aggregator)
+        {
+            _notificationsService = notificationsService;
+
+            Items = new ItemsCollection(clientService, aggregator, this, chatList);
+
+            SelectedItems = new RangeObservableCollection<Chat>();
+        }
+
+        #region Selection
+
+        public long LastSelectedItem { get; private set; }
+
+        private long? _selectedItem;
+        public long? SelectedItem
+        {
+            get => _selectedItem;
+            set
+            {
+                Set(ref _selectedItem, value);
+
+                if (value.HasValue)
+                {
+                    LastSelectedItem = value.Value;
+                }
+            }
+        }
+
+        public RangeObservableCollection<Chat> SelectedItems { get; }
+
+        private ListViewSelectionMode _selectionMode = ListViewSelectionMode.None;
+        public ListViewSelectionMode SelectionMode
+        {
+            get => _selectionMode;
+            set => Set(ref _selectionMode, value);
+        }
+
+        #endregion
+
+        public ItemsCollection Items { get; private set; }
+
+        public bool IsLastSliceLoaded { get; set; }
+
+        #region Open
+
+        public void OpenChat(Chat chat)
+        {
+            NavigationService.NavigateToChat(chat, createNewWindow: true);
+        }
+
+        #endregion
+
+        #region Pin
+
+        public async void PinChat(Chat chat)
+        {
+            var position = chat.GetPosition(Items.ChatList);
+            if (position == null)
+            {
+                return;
+            }
+
+            var response = await ClientService.SendAsync(new ToggleChatIsPinned(Items.ChatList, chat.Id, !position.IsPinned));
+            if (response is Error error && error.Code == 400)
+            {
+                // This is not the right way
+                NavigationService.ShowLimitReached(new PremiumLimitTypePinnedChatCount());
+            }
+        }
+
+        #endregion
+
+        #region Archive
+
+        public async void ArchiveChat(Chat chat)
+        {
+            var archived = chat.Positions.Any(x => x.List is ChatListArchive);
+            if (archived)
+            {
+                ClientService.Send(new AddChatToList(chat.Id, new ChatListMain()));
+                return;
+            }
+            else
+            {
+                ClientService.Send(new AddChatToList(chat.Id, new ChatListArchive()));
+            }
+
+            var confirm = await ToastPopup.ShowActionAsync(XamlRoot, Strings.ChatArchived, Strings.Undo, ToastPopupIcon.Archived);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                ClientService.Send(new AddChatToList(chat.Id, new ChatListMain()));
+            }
+        }
+
+        #endregion
+
+        #region Multiple Archive
+
+        public async void ArchiveSelectedChats()
+        {
+            var chats = SelectedItems.ToList();
+
+            foreach (var chat in chats)
+            {
+                ClientService.Send(new AddChatToList(chat.Id, new ChatListArchive()));
+            }
+
+            Delegate?.SetSelectionMode(false);
+            SelectedItems.Clear();
+
+            var confirm = await ToastPopup.ShowActionAsync(XamlRoot, Strings.ChatsArchived, Strings.Undo, ToastPopupIcon.Archived);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                foreach (var undo in chats)
+                {
+                    ClientService.Send(new AddChatToList(undo.Id, new ChatListMain()));
+                }
+            }
+        }
+
+        #endregion
+
+        #region Mark
+
+        public void MarkChatAsRead(Chat chat)
+        {
+            if (chat.UnreadCount > 0 || chat.UnreadMentionCount > 0 || chat.UnreadReactionCount > 0)
+            {
+                if (chat.UnreadCount > 0 && chat.LastMessage != null)
+                {
+                    ClientService.Send(new ViewMessages(chat.Id, new[] { chat.LastMessage.Id }, new MessageSourceChatList(), true));
+                }
+
+                if (chat.UnreadMentionCount > 0)
+                {
+                    ClientService.Send(new ReadAllChatMentions(chat.Id));
+                }
+
+                if (chat.UnreadReactionCount > 0)
+                {
+                    ClientService.Send(new ReadAllChatReactions(chat.Id));
+                }
+            }
+            else
+            {
+                ClientService.Send(new ToggleChatIsMarkedAsUnread(chat.Id, !chat.IsMarkedAsUnread));
+            }
+        }
+
+        #endregion
+
+        #region Multiple Mark
+
+        public void MarkSelectedChatsAsRead()
+        {
+            var chats = SelectedItems.ToList();
+            var unread = chats.Any(x => x.IsUnread());
+            foreach (var chat in chats)
+            {
+                if (unread)
+                {
+                    if (chat.UnreadCount > 0 && chat.LastMessage != null)
+                    {
+                        ClientService.Send(new ViewMessages(chat.Id, new[] { chat.LastMessage.Id }, new MessageSourceChatList(), true));
+                    }
+                    else if (chat.IsMarkedAsUnread)
+                    {
+                        ClientService.Send(new ToggleChatIsMarkedAsUnread(chat.Id, false));
+                    }
+
+                    if (chat.UnreadMentionCount > 0)
+                    {
+                        ClientService.Send(new ReadAllChatMentions(chat.Id));
+                    }
+
+                    if (chat.UnreadReactionCount > 0)
+                    {
+                        ClientService.Send(new ReadAllChatReactions(chat.Id));
+                    }
+                }
+                else if (chat.UnreadCount == 0 && !chat.IsMarkedAsUnread)
+                {
+                    ClientService.Send(new ToggleChatIsMarkedAsUnread(chat.Id, true));
+                }
+            }
+
+            Delegate?.SetSelectionMode(false);
+            SelectedItems.Clear();
+        }
+
+        #endregion
+
+        #region Notify
+
+        public void NotifyChat(Chat chat)
+        {
+            _notificationsService.SetMuteFor(chat, ClientService.Notifications.IsMuted(chat) ? 0 : 632053052, XamlRoot);
+        }
+
+        #endregion
+
+        #region Mute for
+
+        public async void MuteChatFor(Tuple<Chat, int?> value)
+        {
+            var chat = value.Item1;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (value.Item2 is int update)
+            {
+                _notificationsService.SetMuteFor(chat, update, XamlRoot);
+            }
+            // CERRADO 2026-08-27 (PARIDAD M19). La rama del valor null es exactamente la de
+            // «Silenciar...» (Strings.MuteForPopup) del submenu de silencio de un chat, y la
+            // entrada se anadia al flyout igual porque ahi no habia guarda: catorce entradas
+            // respondian y esta se cerraba sin efecto. ChatMutePopup si se compila en esta cabeza
+            // (Views/Popups/ChatMutePopup.xaml y .xaml.cs estan en el csproj) y no lleva ni un
+            // #if dentro, asi que el cuerpo vuelve a ser el de upstream.
+            else
+            {
+                var muteFor = Settings.Notifications.GetMuteFor(chat);
+                var popup = new ChatMutePopup(muteFor);
+
+                var confirm = await ShowPopupAsync(popup);
+                if (confirm != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+
+                if (muteFor != popup.Value)
+                {
+                    _notificationsService.SetMuteFor(chat, popup.Value, XamlRoot);
+                }
+            }
+        }
+
+        public void SetChatSound(Tuple<Chat, bool> value)
+        {
+            var chat = value.Item1;
+            if (chat == null)
+            {
+                return;
+            }
+
+            _notificationsService.SetSound(chat, value.Item2, XamlRoot);
+        }
+
+        #endregion
+
+
+        #region Multiple Notify
+
+        public void NotifySelectedChats()
+        {
+            var chats = SelectedItems.ToList();
+            var muted = chats.Any(x => ClientService.Notifications.IsMuted(x));
+
+            foreach (var chat in chats)
+            {
+                if (chat.Type is ChatTypePrivate privata && privata.UserId == ClientService.Options.MyId)
+                {
+                    continue;
+                }
+
+                _notificationsService.SetMuteFor(chat, muted ? 0 : 632053052, XamlRoot);
+            }
+
+            Delegate?.SetSelectionMode(false);
+            SelectedItems.Clear();
+        }
+
+        #endregion
+
+        #region Delete
+
+        public async void DeleteChat(Chat chat)
+        {
+            Logger.Info(chat.Type);
+
+            var updated = await ClientService.SendAsync(new GetChat(chat.Id)) as Chat ?? chat;
+#if LINUX
+            // Upstream never passes asOwner from the chat list, so on a supergroup or channel you
+            // created this menu only ever offered "leave" -- and leaving your own channel leaves it
+            // standing, empty and unreachable: afterwards can_be_deleted_for_all_users is false and
+            // deleteChat answers 400 (measured, phase 3). On Windows the owner reaches the real
+            // delete through Manage -> Delete (SupergroupEditViewModel.Delete), a page that is not
+            // in the Linux subset. Same popup, same question, same answer as that method: checked
+            // sends DeleteChat (deletes for everyone), unchecked keeps upstream's LeaveChat.
+            // td_api: "Use the field chat.can_be_deleted_for_all_users to find whether the method
+            // can be applied to the chat".
+            var asOwner = updated.CanBeDeletedForAllUsers
+                && updated.Type is ChatTypeBasicGroup or ChatTypeSupergroup;
+            var popup = new DeleteChatPopup(ClientService, updated, Items.ChatList, false, asOwner);
+#else
+            var popup = new DeleteChatPopup(ClientService, updated, Items.ChatList, false);
+#endif
+
+            var confirm = await ShowPopupAsync(popup);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                var check = popup.IsChecked == true;
+
+                _deletedChats[chat.Id] = true;
+                Items.Handle(chat.Id, 0);
+
+                string title;
+                if (chat.Type is ChatTypeSupergroup super)
+                {
+                    title = super.IsChannel ? Strings.ChannelDeletedUndo : Strings.GroupDeletedUndo;
+                }
+                else
+                {
+                    title = chat.Type is ChatTypeBasicGroup ? Strings.GroupDeletedUndo : Strings.ChatDeletedUndo;
+                }
+
+                var undo = await ToastPopup.ShowCountdownAsync(XamlRoot, title, Strings.Undo, TimeSpan.FromSeconds(5));
+                if (undo == ContentDialogResult.Primary)
+                {
+                    _deletedChats.Remove(chat.Id);
+                    Items.Handle(chat.Id, chat.Positions);
+                }
+                else
+                {
+                    if (chat.Type is ChatTypeBasicGroup or ChatTypeSupergroup)
+                    {
+#if LINUX
+                        if (asOwner && check)
+                        {
+                            // SupergroupEditViewModel.Delete: IsChecked -> DeleteChat, else LeaveChat.
+                            await ClientService.SendAsync(new DeleteChat(chat.Id));
+                        }
+                        else
+#endif
+                        {
+                            await ClientService.SendAsync(new LeaveChat(chat.Id));
+                            await ClientService.SendAsync(new DeleteChatHistory(chat.Id, true, false));
+                        }
+                    }
+                    else if (chat.Type is ChatTypeSecret)
+                    {
+                        await ClientService.SendAsync(new DeleteChat(chat.Id));
+                    }
+                    else
+                    {
+                        var user = ClientService.GetUser(chat);
+                        if (user?.Type is UserTypeRegular)
+                        {
+                            await ClientService.SendAsync(new DeleteChatHistory(chat.Id, true, check));
+                        }
+                        else
+                        {
+                            if (user?.Type is UserTypeBot && check)
+                            {
+                                await ClientService.SendAsync(new SetMessageSenderBlockList(new MessageSenderUser(user.Id), new BlockListMain()));
+                            }
+
+                            await ClientService.SendAsync(new DeleteChatHistory(chat.Id, true, false));
+                        }
+                    }
+                }
+            }
+        }
+
+        #endregion
+
+        #region Multiple Delete
+
+        public async void DeleteSelectedChats()
+        {
+            var chats = SelectedItems.ToList();
+
+            var confirm = await ShowPopupAsync(Strings.AreYouSureDeleteFewChats, Locale.Declension(Strings.R.ChatsSelected, chats.Count), Strings.Delete, Strings.Cancel, destructive: true);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                foreach (var chat in chats)
+                {
+                    _deletedChats[chat.Id] = true;
+                    Items.Handle(chat.Id, 0);
+                }
+
+                var undo = await ToastPopup.ShowCountdownAsync(XamlRoot, Strings.ChatDeletedUndo, Strings.Undo, TimeSpan.FromSeconds(5));
+                if (undo == ContentDialogResult.Primary)
+                {
+                    foreach (var chat in chats)
+                    {
+                        _deletedChats.Remove(chat.Id);
+                        Items.Handle(chat.Id, chat.Positions);
+                    }
+                }
+                else
+                {
+                    foreach (var chat in chats)
+                    {
+                        if (chat.Type is ChatTypeBasicGroup or ChatTypeSupergroup)
+                        {
+                            await ClientService.SendAsync(new LeaveChat(chat.Id));
+                            await ClientService.SendAsync(new DeleteChatHistory(chat.Id, true, false));
+                        }
+                        else if (chat.Type is ChatTypeSecret secret)
+                        {
+                            await ClientService.SendAsync(new DeleteChat(chat.Id));
+                            await ClientService.SendAsync(new CloseSecretChat(secret.SecretChatId));
+                        }
+                        else
+                        {
+                            await ClientService.SendAsync(new DeleteChatHistory(chat.Id, true, false));
+                        }
+                    }
+                }
+            }
+
+            Delegate?.SetSelectionMode(false);
+            SelectedItems.Clear();
+        }
+
+        #endregion
+
+        #region Clear
+
+        public async void ClearChat(Chat chat)
+        {
+            Logger.Info(chat.Type);
+
+            var updated = await ClientService.SendAsync(new GetChat(chat.Id)) as Chat ?? chat;
+            var dialog = new DeleteChatPopup(ClientService, updated, Items.ChatList, true);
+
+            var confirm = await ShowPopupAsync(dialog);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                var undo = await ToastPopup.ShowCountdownAsync(XamlRoot, Strings.HistoryClearedUndo, Strings.Undo, TimeSpan.FromSeconds(5));
+                if (undo == ContentDialogResult.Primary)
+                {
+                    _deletedChats.Remove(chat.Id);
+                    Items.Handle(chat.Id, chat.Positions);
+                }
+                else
+                {
+                    ClientService.Send(new DeleteChatHistory(chat.Id, false, dialog.IsChecked));
+                }
+            }
+        }
+
+        #endregion
+
+        #region Multiple Clear
+
+        public async void ClearSelectedChats()
+        {
+            var chats = SelectedItems.ToList();
+
+            var confirm = await ShowPopupAsync(Strings.AreYouSureClearHistoryFewChats, Locale.Declension(Strings.R.ChatsSelected, chats.Count), Strings.ClearHistory, Strings.Cancel);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                var undo = await ToastPopup.ShowCountdownAsync(XamlRoot, Strings.HistoryClearedUndo, Strings.Undo, TimeSpan.FromSeconds(5));
+                if (undo == ContentDialogResult.Primary)
+                {
+                    foreach (var chat in chats)
+                    {
+                        _deletedChats.Remove(chat.Id);
+                        Items.Handle(chat.Id, chat.Positions);
+                    }
+                }
+                else
+                {
+                    foreach (var chat in chats)
+                    {
+                        ClientService.Send(new DeleteChatHistory(chat.Id, false, false));
+                    }
+                }
+            }
+
+            Delegate?.SetSelectionMode(false);
+            SelectedItems.Clear();
+        }
+
+        #endregion
+
+        #region Select
+
+        public void SelectChat(Chat chat)
+        {
+            SelectedItems.ReplaceWith(new[] { chat });
+            SelectionMode = ListViewSelectionMode.Multiple;
+
+            Delegate?.SetSelectedItems(SelectedItems);
+        }
+
+        #endregion
+
+        #region Folder add
+
+        public async void AddToFolder((int ChatFolderId, Chat Chat) data)
+        {
+            var folder = await ClientService.SendAsync(new GetChatFolder(data.ChatFolderId)) as ChatFolder;
+            if (folder == null)
+            {
+                return;
+            }
+
+            var total = folder.IncludedChatIds.Count + folder.PinnedChatIds.Count + 1;
+            if (total > 99)
+            {
+                await ShowPopupAsync(Strings.FilterAddToAlertFullText, Strings.FilterAddToAlertFullTitle, Strings.OK);
+                return;
+            }
+
+            if (folder.IncludedChatIds.Contains(data.Chat.Id))
+            {
+                // Warn user about chat being already in the folder?
+                return;
+            }
+
+            folder.ExcludedChatIds = folder.ExcludedChatIds.Without(data.Chat.Id);
+            folder.IncludedChatIds = folder.IncludedChatIds.With(data.Chat.Id);
+
+            ClientService.Send(new EditChatFolder(data.ChatFolderId, folder));
+
+            // TODO: use FormattedTextBlock in Toasts
+            ShowToast(string.Format(data.Chat.Type is ChatTypePrivate or ChatTypeSecret
+                ? Strings.FilterUserAddedToExisting
+                : Strings.FilterChatAddedToExisting, data.Chat.Title, folder.Name.Text.Text), ToastPopupIcon.FolderIn);
+        }
+
+        #endregion
+
+        #region Folder remove
+
+        public async void RemoveFromFolder((int ChatFolderId, Chat Chat) data)
+        {
+            var folder = await ClientService.SendAsync(new GetChatFolder(data.ChatFolderId)) as ChatFolder;
+            if (folder == null)
+            {
+                return;
+            }
+
+            if (folder.IsShareable)
+            {
+                folder.IncludedChatIds = folder.IncludedChatIds.Without(data.Chat.Id);
+            }
+            else
+            {
+                var total = folder.ExcludedChatIds.Count + 1;
+                if (total > 99)
+                {
+                    await ShowPopupAsync(Strings.FilterRemoveFromAlertFullText, Strings.AppName, Strings.OK);
+                    return;
+                }
+
+                if (folder.ExcludedChatIds.Contains(data.Chat.Id))
+                {
+                    // TODO: Warn user about chat being already in the folder?
+                    return;
+                }
+
+                folder.IncludedChatIds = folder.IncludedChatIds.Without(data.Chat.Id);
+                folder.ExcludedChatIds = folder.ExcludedChatIds.With(data.Chat.Id);
+            }
+
+            if (folder.Empty())
+            {
+                // TODO: Warn user about chat being already in the folder?
+                return;
+            }
+
+            ClientService.Send(new EditChatFolder(data.ChatFolderId, folder));
+
+            // TODO: use FormattedTextBlock in Toasts
+            ShowToast(string.Format(data.Chat.Type is ChatTypePrivate or ChatTypeSecret
+                ? Strings.FilterUserRemovedFrom
+                : Strings.FilterChatRemovedFrom, data.Chat.Title, folder.Name.Text.Text), ToastPopupIcon.FolderOut);
+        }
+
+        #endregion
+
+        #region Folder create
+
+        // COLAPSADO 2026-08-27 (PARIDAD M19). Esto NO se puede cablear: FolderPage y
+        // FolderViewModel no entran en el subconjunto (ni ellos ni FoldersPage/FoldersViewModel),
+        // asi que no hay pantalla de carpeta a la que navegar. Lo que si se ha hecho es dejar de
+        // ofrecerlo: MainPage.Chat_ContextRequested ya no anade «Crear carpeta» al submenu
+        // «Anadir a carpeta» en Linux. Este cuerpo se queda vacio a proposito y no debe volver a
+        // enlazarse hasta que FolderPage entre.
+        public void CreateFolder(Chat chat)
+        {
+            NavigationService.Navigate(typeof(FolderPage), new FolderPageCreateArgs(chat.Id));
+        }
+
+        #endregion
+
+        public void SetChatList(ChatList chatList)
+        {
+            _ = Items.ReloadAsync(chatList);
+        }
+
+        public partial class ItemsCollection : ObservableCollection<Chat>, ISupportIncrementalLoading
+        {
+            private readonly IClientService _clientService;
+            private readonly IEventAggregator _aggregator;
+
+            private CancellationTokenSource _token = new();
+            private readonly HashSet<long> _chats = new();
+
+            private readonly ChatListViewModel _viewModel;
+
+            private ChatList _chatList;
+
+            private bool _hasMoreItems = true;
+
+            private long _lastChatId;
+            private long _lastOrder;
+
+            public ChatList ChatList => _chatList;
+
+            public ItemsCollection(IClientService clientService, IEventAggregator aggregator, ChatListViewModel viewModel, ChatList chatList)
+            {
+                _clientService = clientService;
+                _aggregator = aggregator;
+
+                _viewModel = viewModel;
+                _chatList = chatList;
+
+                _ = LoadMoreItemsAsync(0);
+            }
+
+            public Task ReloadAsync(ChatList chatList)
+            {
+                _token?.Cancel();
+                _token = new CancellationTokenSource();
+
+                _aggregator.Unsubscribe(this);
+                _hasMoreItems = false;
+
+                _lastChatId = 0;
+                _lastOrder = 0;
+
+                _chatList = chatList;
+
+                _chats.Clear();
+                Clear();
+
+                return LoadMoreItemsAsync();
+            }
+
+            public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
+            {
+                return IncrementalLoading.Run(token => LoadMoreItemsAsync());
+            }
+
+            private async Task<LoadMoreItemsResult> LoadMoreItemsAsync()
+            {
+                var token = _token;
+                var totalCount = 0u;
+
+                await Task.Yield();
+
+                var response = await _clientService.GetChatListAsync(_chatList, Count, 20);
+                if (response is Telegram.Td.Api.Chats chats && !token.IsCancellationRequested)
+                {
+                    foreach (var chat in _clientService.GetChats(chats.ChatIds))
+                    {
+                        var order = chat.GetOrder(_chatList);
+                        if (order != 0)
+                        {
+                            // TODO: is this redundant?
+                            var next = NextIndexOf(chat, order);
+                            if (next >= 0)
+                            {
+                                if (_chats.Contains(chat.Id))
+                                {
+                                    Remove(chat);
+                                }
+
+                                _chats.Add(chat.Id);
+                                Insert(Math.Min(Count, next), chat);
+
+                                if (chat.Id == _viewModel.SelectedItem)
+                                {
+                                    _viewModel.Delegate?.SetSelectedItem(chat);
+                                }
+
+                                totalCount++;
+                            }
+
+                            _lastChatId = chat.Id;
+                            _lastOrder = order;
+                        }
+                    }
+
+                    IsEmpty = Count == 0;
+
+                    _hasMoreItems = chats.TotalCount >= 0;
+                    Subscribe();
+
+                    _viewModel.Delegate?.SetSelectedItems(_viewModel.SelectedItems);
+                }
+
+                return new LoadMoreItemsResult
+                {
+                    Count = totalCount
+                };
+            }
+
+            private void Subscribe()
+            {
+                _aggregator.Subscribe<UpdateAuthorizationState>(this, Handle)
+                    .Subscribe<UpdateChatDraftMessage>(Handle)
+                    .Subscribe<UpdateChatLastMessage>(Handle)
+                    .Subscribe<UpdateChatPosition>(Handle);
+            }
+
+            public bool HasMoreItems => _hasMoreItems;
+
+            #region Handle
+
+            public void Handle(UpdateAuthorizationState update)
+            {
+                if (update.AuthorizationState is AuthorizationStateReady)
+                {
+                    _viewModel.BeginOnUIThread(() => _ = ReloadAsync(_chatList));
+                }
+            }
+
+            public void Handle(UpdateChatPosition update)
+            {
+                if (update.Position.List.AreTheSame(_chatList))
+                {
+                    Handle(update.ChatId, update.Position.Order);
+                }
+
+                // Can't be else otherwise cell won't update while archive is open
+                if (update.Position.List is ChatListArchive)
+                {
+                    _viewModel.Delegate?.UpdateChatListArchive();
+                }
+            }
+
+            public void Handle(UpdateChatLastMessage update)
+            {
+                Handle(update.ChatId, update.Positions, true);
+            }
+
+            public void Handle(UpdateChatDraftMessage update)
+            {
+                Handle(update.ChatId, update.Positions, true);
+            }
+
+            public void Handle(long chatId, Vector<ChatPosition> positions, bool lastMessage = false)
+            {
+                var chat = GetChat(chatId);
+                var order = 0L;
+
+                for (int i = 0; i < positions.Count; i++)
+                {
+                    var position = positions[i];
+                    if (position.List.AreTheSame(_chatList))
+                    {
+                        order = position.Order;
+                    }
+
+                    // Can't be else otherwise cell won't update while archive is open
+                    if (position.List is ChatListArchive)
+                    {
+                        _viewModel.Delegate?.UpdateChatListArchive();
+                    }
+                }
+
+                Handle(chat, order, lastMessage);
+            }
+
+            public void Handle(long chatId, long order)
+            {
+                var chat = GetChat(chatId);
+                if (chat != null)
+                {
+                    Handle(chat, order, false);
+                }
+            }
+
+            private void Handle(Chat chat, long order, bool lastMessage)
+            {
+                if (_viewModel._deletedChats.ContainsKey(chat.Id))
+                {
+                    if (order == 0)
+                    {
+                        _viewModel._deletedChats.Remove(chat.Id);
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+
+                //var chat = GetChat(chatId);
+                if (chat != null /*&& _chatList.ListEquals(chat.ChatList)*/)
+                {
+                    _viewModel.BeginOnUIThread(() => UpdateChatOrder(chat, order, lastMessage));
+                }
+            }
+
+            private void UpdateChatOrder(Chat chat, long order, bool lastMessage)
+            {
+                if (order > 0 && (order > _lastOrder || (order == _lastOrder && chat.Id >= _lastChatId)))
+                {
+                    var next = NextIndexOf(chat, order);
+                    if (next >= 0)
+                    {
+                        var oldIndex = -1;
+
+                        if (_chats.Contains(chat.Id))
+                        {
+                            oldIndex = IndexOf(chat);
+
+                            if (oldIndex != -1)
+                            {
+                                RemoveAt(oldIndex);
+                            }
+                        }
+                        else
+                        {
+                            _chats.Add(chat.Id);
+                        }
+
+                        var newIndex = Math.Min(Count, next);
+                        Insert(newIndex, chat);
+
+                        RaiseMoved(oldIndex, newIndex);
+
+                        if (next == Count - 1)
+                        {
+                            _lastChatId = chat.Id;
+                            _lastOrder = order;
+                        }
+
+                        if (chat.Id == _viewModel.SelectedItem)
+                        {
+                            _viewModel.Delegate?.SetSelectedItem(chat);
+                        }
+                        if (_viewModel.SelectedItems.Contains(chat))
+                        {
+                            _viewModel.Delegate?.SetSelectedItems(_viewModel.SelectedItems);
+                        }
+
+                        IsEmpty = Count == 0;
+                    }
+                    else if (lastMessage)
+                    {
+                        _viewModel.Delegate?.UpdateChatLastMessage(chat);
+                    }
+                }
+                else if (_chats.Contains(chat.Id))
+                {
+                    var oldIndex = IndexOf(chat);
+                    RaiseMoved(oldIndex, -1);
+
+                    _chats.Remove(chat.Id);
+                    RemoveAt(oldIndex);
+
+                    if (_viewModel.SelectedItems.Contains(chat))
+                    {
+                        _viewModel.SelectedItems.Remove(chat);
+                        _viewModel.Delegate?.SetSelectedItems(_viewModel.SelectedItems);
+                    }
+
+                    IsEmpty = Count == 0;
+
+                    //if (!_hasMoreItems)
+                    //{
+                    //    await LoadMoreItemsAsync(0);
+                    //}
+                }
+            }
+
+            private ChatListMovedEventArgs _moved;
+            public event EventHandler<ChatListMovedEventArgs> Moved;
+
+            private void RaiseMoved(int oldIndex, int newIndex)
+            {
+                _moved ??= new();
+                _moved.OldIndex = oldIndex;
+                _moved.NewIndex = newIndex;
+
+                Moved?.Invoke(this, _moved);
+            }
+
+            private int NextIndexOf(Chat chat, long order)
+            {
+                var prev = -1;
+                var next = 0;
+
+                for (int i = 0; i < Count; i++)
+                {
+                    var item = this[i];
+                    if (item.Id == chat.Id)
+                    {
+                        prev = i;
+                        continue;
+                    }
+
+                    var itemOrder = item.GetOrder(_chatList);
+
+                    if (order > itemOrder || order == itemOrder && chat.Id >= item.Id)
+                    {
+                        return next == prev ? -1 : next;
+                    }
+
+                    next++;
+                }
+
+                return Count;
+            }
+
+            private Chat GetChat(long chatId)
+            {
+                //if (_viewModels.ContainsKey(chatId))
+                //{
+                //    return _viewModels[chatId];
+                //}
+                //else
+                //{
+                //    var chat = ClientService.GetChat(chatId);
+                //    var item = _viewModels[chatId] = new ChatViewModel(ClientService, chat);
+
+                //    return item;
+                //}
+
+                return _clientService.GetChat(chatId);
+            }
+
+            #endregion
+
+            private bool _isEmpty;
+            public bool IsEmpty
+            {
+                get
+                {
+                    return _isEmpty;
+                }
+                set
+                {
+                    if (_isEmpty != value)
+                    {
+                        _isEmpty = value;
+                        _viewModel.Dispatcher?.Dispatch(NotifyChanged, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
+                    }
+                }
+            }
+
+            private void NotifyChanged()
+            {
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsEmpty)));
+            }
+        }
+    }
+
+    public class ChatListMovedEventArgs
+    {
+        public int OldIndex { get; set; }
+
+        public int NewIndex { get; set; }
+    }
+
+    public enum SearchResultType
+    {
+        Recent,
+        Chats,
+        ChatsOnServer,
+        Contacts,
+        PublicChats,
+
+        Ads,
+        RecentWebApps,
+        WebApps,
+        ChatMembers,
+        None
+    }
+
+    // TODO: always load User when creating by Chat
+    public partial class SearchResult : BindableBase
+    {
+        private readonly IClientService _clientService;
+        private readonly bool _canSendMessageToUser;
+
+        public Chat Chat { get; set; }
+        public User User { get; set; }
+        public ForumTopic Topic { get; set; }
+
+        public string Query { get; set; }
+
+        public SearchResultType Type { get; }
+
+        public bool IsPublic => Type == SearchResultType.PublicChats;
+
+        public SearchResult(IClientService clientService, Chat chat, string query, SearchResultType type, bool canSendMessageToUser)
+        {
+            _clientService = clientService;
+            _canSendMessageToUser = canSendMessageToUser;
+
+            Chat = chat;
+            Query = query;
+            Type = type;
+        }
+
+        public SearchResult(IClientService clientService, Chat chat, bool canSendMessageToUser)
+        {
+            _clientService = clientService;
+            _canSendMessageToUser = canSendMessageToUser;
+
+            Chat = chat;
+            Query = string.Empty;
+            Type = SearchResultType.None;
+        }
+
+        public SearchResult(IClientService clientService, User user, string query, SearchResultType type, bool canSendMessageToUser)
+        {
+            _clientService = clientService;
+            _canSendMessageToUser = canSendMessageToUser;
+
+            User = user;
+            Query = query;
+            Type = type;
+        }
+
+        public SearchResult(ForumTopic topic, string query, SearchResultType type)
+        {
+            Topic = topic;
+            Query = query;
+            Type = type;
+        }
+
+        private bool? _restrictsNewChats;
+        public bool? RestrictsNewChats
+        {
+            get => _restrictsNewChats;
+            set => Set(ref _restrictsNewChats, value);
+        }
+
+        public async void CanSendMessageToUser()
+        {
+            long? userId;
+            if (Chat?.Type is ChatTypePrivate privata)
+            {
+                userId = privata.UserId;
+            }
+            else if (Chat?.Type is ChatTypeSecret secret)
+            {
+                userId = secret.UserId;
+            }
+            else
+            {
+                userId = User?.Id;
+            }
+
+            if (userId == null || !_canSendMessageToUser || _restrictsNewChats.HasValue)
+            {
+                return;
+            }
+
+            _restrictsNewChats = false;
+
+            var response = await _clientService.SendAsync(new CanSendMessageToUser(userId.Value, false));
+            if (response is CanSendMessageToUserResultUserRestrictsNewChats)
+            {
+                RestrictsNewChats = true;
+            }
+        }
+    }
+}
+
+namespace Telegram.Td.Api
+{
+    [Flags]
+    public enum ChatListFolderFlags
+    {
+        IncludeContacts,
+        IncludeNonContacts,
+        IncludeGroups,
+        IncludeChannels,
+        IncludeBots,
+        ExcludeMuted,
+        ExcludeRead,
+        ExcludeArchived,
+
+        // Used by business recipients
+        NewChats,
+        ExistingChats,
+    }
+}

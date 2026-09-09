@@ -1,0 +1,131 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Settings.SettingsDataAndStoragePage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:settings="using:Telegram.Services.Settings"
+                  xmlns:local="using:Telegram.Views"
+                  xmlns:popups="using:Telegram.Views.Settings.Popups"
+                  mc:Ignorable="d"
+                  NavigationMode="Root">
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <ScrollViewer x:Name="ScrollingHost"
+                      VerticalScrollBarVisibility="Auto"
+                      VerticalScrollMode="Auto">
+            <controls:SettingsPanel>
+                <controls:HeaderedControl Header="{CustomResource DataUsage}">
+                    <controls:SettingsButton Content="{CustomResource StorageUsage}"
+                                             Badge="{x:Bind ViewModel.StorageUsage, Mode=OneWay}"
+                                             Glyph="&#xEB05;"
+                                             Click="{x:Bind ViewModel.OpenStorage}"
+                                             IsChevronVisible="True" />
+
+                    <controls:SettingsButton Content="{CustomResource NetworkUsage}"
+                                             Badge="{x:Bind ViewModel.NetworkUsage, Mode=OneWay}"
+                                             Glyph="&#xE91F;"
+                                             Click="{x:Bind ViewModel.OpenStats}"
+                                             IsChevronVisible="True" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl Header="{CustomResource AutomaticMediaDownload}"
+                                          Footer="{CustomResource AutoDownloadAudioInfo}">
+                    <CheckBox IsChecked="{x:Bind ViewModel.AutoDownloadEnabled, Mode=TwoWay}"
+                              Content="{CustomResource AutoDownloadMedia}"
+                              Style="{StaticResource SettingsCheckBoxStyle}" />
+
+                    <controls:SettingsExpander Description="{x:Bind ConvertAutoDownload(settings:AutoDownloadType.Photos, ViewModel.AutoDownload.Photos, 0), Mode=OneWay}"
+                                               IsEnabled="{x:Bind ViewModel.AutoDownloadEnabled, Mode=OneWay}"
+                                               Header="{CustomResource AutoDownloadPhotos}"
+                                               Glyph="&#xEB9F;"
+                                               Background="Transparent"
+                                               Padding="0">
+                        <popups:SettingsDataAutoView DataContext="{x:Bind ViewModel.AutoDownloadPhotos}" />
+                    </controls:SettingsExpander>
+
+                    <controls:SettingsExpander Description="{x:Bind ConvertAutoDownload(settings:AutoDownloadType.Videos, ViewModel.AutoDownload.Videos, ViewModel.AutoDownload.MaximumVideoSize), Mode=OneWay}"
+                                               IsEnabled="{x:Bind ViewModel.AutoDownloadEnabled, Mode=OneWay}"
+                                               Header="{CustomResource AutoDownloadVideos}"
+                                               Glyph="&#xE714;"
+                                               Background="Transparent"
+                                               Padding="0">
+                        <popups:SettingsDataAutoView DataContext="{x:Bind ViewModel.AutoDownloadVideos}" />
+                    </controls:SettingsExpander>
+
+                    <controls:SettingsExpander Description="{x:Bind ConvertAutoDownload(settings:AutoDownloadType.Documents, ViewModel.AutoDownload.Documents, ViewModel.AutoDownload.MaximumDocumentSize), Mode=OneWay}"
+                                               IsEnabled="{x:Bind ViewModel.AutoDownloadEnabled, Mode=OneWay}"
+                                               Header="{CustomResource AutoDownloadFiles}"
+                                               Glyph="&#xE7C3;"
+                                               Background="Transparent"
+                                               Padding="0">
+                        <popups:SettingsDataAutoView DataContext="{x:Bind ViewModel.AutoDownloadDocuments}" />
+                    </controls:SettingsExpander>
+
+                    <controls:SettingsButton x:Name="ResetAutoDownload"
+                                             x:Load="{x:Bind ConvertResetAutoDownload(ViewModel.AutoDownloadDefault), Mode=OneWay}"
+                                             Click="{x:Bind ViewModel.ResetAutoDownload}"
+                                             Content="{CustomResource ResetAutomaticMediaDownload}"
+                                             Foreground="{ThemeResource DangerButtonBackground}"
+                                             Glyph="&#xEA09;" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl x:Name="DownloadFolder"
+                                          x:Load="{x:Bind ViewModel.HasDownloadFolder}"
+                                          Header="{CustomResource DownloadPath}"
+                                          Footer="{CustomResource TemporaryFolderHint}">
+                    <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsDownloadFolderEnabled, Mode=OneWay, Converter={StaticResource BooleanNegationConverter}}"
+                                                  Content="{CustomResource TemporaryFolder}"
+                                                  GroupName="DownloadFolder" />
+                    <Grid BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                          Margin="0,0,0,0"
+                          Canvas.ZIndex="-1">
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsDownloadFolderEnabled, Mode=TwoWay}"
+                                                      Content="{CustomResource DownloadFolder}"
+                                                      Description="{x:Bind ViewModel.DownloadFolder, Mode=OneWay}"
+                                                      GroupName="DownloadFolder" />
+                        <Button Click="ChooseDownloadFolder"
+                                Content="{CustomResource Change}"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Visibility="{x:Bind ViewModel.DownloadFolder, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Margin="0,0,16,0" />
+                    </Grid>
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl Header="{CustomResource Streaming}"
+                                          Footer="{CustomResource EnableAllStreamingInfo}">
+                    <CheckBox IsChecked="{x:Bind ViewModel.IsStreamingEnabled, Mode=TwoWay}"
+                              Content="{CustomResource EnableStreaming}"
+                              Style="{StaticResource SettingsCheckBoxStyle}" />
+                </controls:HeaderedControl>
+
+                <!--<controls:HeaderedControl Header="{CustomResource Calls}">
+                    <controls:BadgeButton Content="{CustomResource VoipUseLessData}">
+                        <controls:BadgeButton.Badge>
+                            <controls:SettingsComboBox ItemsSource="{x:Bind ViewModel.UseLessDataOptions}"
+                                                       SelectedIndex="{x:Bind ViewModel.UseLessData, Mode=TwoWay}"
+                                                       DisplayMemberPath="Text" />
+                        </controls:BadgeButton.Badge>
+                    </controls:BadgeButton>
+                </controls:HeaderedControl>-->
+
+                <controls:HeaderedControl x:Name="ProxyRoot"
+                                          Header="{CustomResource Proxy}">
+                    <controls:SettingsButton Content="{CustomResource ProxySettings}"
+                                             Click="{x:Bind ViewModel.OpenProxy}"
+                                             Glyph="&#xEA1A;"
+                                             IsChevronVisible="True" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl>
+                    <controls:SettingsButton Content="{CustomResource PrivacyDeleteCloudDrafts}"
+                                             Click="{x:Bind ViewModel.ClearDrafts}"
+                                             Foreground="{ThemeResource DangerButtonBackground}"
+                                             Glyph="&#xE74D;" />
+                </controls:HeaderedControl>
+            </controls:SettingsPanel>
+        </ScrollViewer>
+    </Grid>
+</local:HostedPage>

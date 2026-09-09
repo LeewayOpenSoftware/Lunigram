@@ -1,0 +1,13 @@
+import "Telegram.Native.Calls.idl";
+
+namespace Telegram.Native.Calls
+{
+    delegate void MediaChannelDescriptionsRequestedDeferral(Windows.Foundation.Collections.IVector<VoipMediaChannelDescription> participants);
+
+    [default_interface]
+    runtimeclass MediaChannelDescriptionsRequestedEventArgs
+    {
+        Windows.Foundation.Collections.IVector<UInt32> AudioSourceIds{ get; };
+        MediaChannelDescriptionsRequestedDeferral Deferral{ get; };
+    }
+}

@@ -1,0 +1,220 @@
+﻿<controls:ContentPopup x:Class="Telegram.Views.Stars.Popups.BuyPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:common="using:Telegram.Common"
+                       xmlns:controls="using:Telegram.Controls"
+                       mc:Ignorable="d"
+                       Padding="0"
+                       IsDismissButtonVisible="True"
+                       VerticalContentAlignment="Stretch">
+
+    <controls:ContentPopup.Resources>
+        <ControlTemplate x:Name="SubtractedStarTemplate">
+            <Viewbox Width="30"
+                     Height="30"
+                     Stretch="Uniform">
+                <Viewbox.Resources>
+                    <LinearGradientBrush x:Key="paint0_linear_472_5015"
+                                         StartPoint="0.132444992661476,0.0346657000482082"
+                                         EndPoint="0.132444992661476,0.205727994441986"
+                                         MappingMode="RelativeToBoundingBox">
+                        <LinearGradientBrush.GradientStops>
+                            <GradientStopCollection>
+                                <GradientStop Color="#FFF0C2" />
+                                <GradientStop Offset="0.5"
+                                              Color="#FFEDBE" />
+                                <GradientStop Offset="1"
+                                              Color="#FFEBBA" />
+                            </GradientStopCollection>
+                        </LinearGradientBrush.GradientStops>
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="paint1_linear_472_5015"
+                                         StartPoint="0.134515002369881,0.0346295982599258"
+                                         EndPoint="0.172744005918503,0.205708995461464"
+                                         MappingMode="RelativeToBoundingBox">
+                        <LinearGradientBrush.GradientStops>
+                            <GradientStopCollection>
+                                <GradientStop Color="#E58F0D" />
+                                <GradientStop Offset="0.5"
+                                              Color="#E88411" />
+                                <GradientStop Offset="1"
+                                              Color="#EB7814" />
+                            </GradientStopCollection>
+                        </LinearGradientBrush.GradientStops>
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="paint2_linear_472_5015"
+                                         StartPoint="0.140056997537613,0.0474492013454437"
+                                         EndPoint="0.173601001501083,0.201032996177673"
+                                         MappingMode="RelativeToBoundingBox">
+                        <LinearGradientBrush.GradientStops>
+                            <GradientStopCollection>
+                                <GradientStop Color="#E58F0D" />
+                                <GradientStop Offset="0.5"
+                                              Color="#E88411" />
+                                <GradientStop Offset="1"
+                                              Color="#EB7814" />
+                            </GradientStopCollection>
+                        </LinearGradientBrush.GradientStops>
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="paint3_linear_472_5015"
+                                         StartPoint="0.132446005940437,0.0299995001405478"
+                                         EndPoint="0.173645004630089,0.210361003875732"
+                                         MappingMode="RelativeToBoundingBox">
+                        <LinearGradientBrush.GradientStops>
+                            <GradientStopCollection>
+                                <GradientStop Color="#E58F0D" />
+                                <GradientStop Offset="0.5"
+                                              Color="#E88411" />
+                                <GradientStop Offset="1"
+                                              Color="#EB7814" />
+                            </GradientStopCollection>
+                        </LinearGradientBrush.GradientStops>
+                    </LinearGradientBrush>
+                </Viewbox.Resources>
+                <Canvas Height="24"
+                        Width="24">
+                    <Canvas>
+                        <Path Data="M17.8443 20.5662C17.761 20.5761 17.681 20.5761 17.601 20.5695C17.691 20.3661 17.7377 20.1728 17.7777 19.9695C17.8443 19.6295 17.821 19.3029 17.7977 19.1829L17.2977 15.1663L20.1376 12.363C20.431 12.0997 20.6276 11.8564 20.7709 11.5864C20.8843 11.413 21.0276 10.9997 21.0643 10.6664C21.0943 10.403 21.0876 10.3331 21.0709 10.1598C21.0643 10.1164 21.0609 10.0664 21.0543 10.0031C21.0309 9.7564 20.9076 9.44642 20.8509 9.32309C20.8376 9.29309 20.8143 9.24645 20.781 9.18645L21.1943 9.23642C21.7676 9.3064 22.1776 9.82643 22.1076 10.4031C22.0776 10.6398 21.9743 10.8597 21.8042 11.0264L18.4677 14.3163C18.3344 14.4496 18.2677 14.6397 18.291 14.8263L18.8443 19.2695C18.9243 19.9061 18.4777 20.4861 17.8443 20.5662ZM14.1078 4.01988L15.8244 7.51648L14.8478 7.39981L12.9412 3.50656C13.1745 3.43657 13.4311 3.45326 13.6644 3.57326C13.8578 3.66992 14.0111 3.82657 14.1078 4.01988Z"
+                              Fill="{StaticResource paint0_linear_472_5015}" />
+                        <Path Data="M17.8443 20.5662C17.761 20.5761 17.681 20.5761 17.601 20.5695C17.691 20.3661 17.7377 20.1728 17.7777 19.9695C17.8443 19.6295 17.821 19.3029 17.7977 19.1829L17.2977 15.1663L20.1376 12.363C20.431 12.0997 20.6276 11.8564 20.7709 11.5864C20.8843 11.413 21.0276 10.9997 21.0643 10.6664C21.0943 10.403 21.0876 10.3331 21.0709 10.1598C21.0643 10.1164 21.0609 10.0664 21.0543 10.0031C21.0309 9.7564 20.9076 9.44642 20.8509 9.32309C20.8376 9.29309 20.8143 9.24645 20.781 9.18645L21.1943 9.23642C21.7676 9.3064 22.1776 9.82643 22.1076 10.4031C22.0776 10.6398 21.9743 10.8597 21.8042 11.0264L18.4677 14.3163C18.3344 14.4496 18.2677 14.6397 18.291 14.8263L18.8443 19.2695C18.9243 19.9061 18.4777 20.4861 17.8443 20.5662ZM14.1078 4.01988L15.8244 7.51648L14.8478 7.39981L12.9412 3.50656C13.1745 3.43657 13.4311 3.45326 13.6644 3.57326C13.8578 3.66992 14.0111 3.82657 14.1078 4.01988Z"
+                              Fill="{StaticResource paint1_linear_472_5015}" />
+                        <Path Data="M17.7844 20.1029C17.7711 20.1029 17.7644 20.1062 17.7511 20.1062C17.7611 20.0629 17.7678 20.0162 17.7778 19.9695C17.8444 19.6295 17.8211 19.3028 17.7978 19.1828L17.2978 15.1663L17.8278 14.643C17.8211 14.723 17.8211 14.8029 17.8311 14.8863L18.3844 19.3262C18.4311 19.7095 18.1611 20.0562 17.7844 20.1029ZM21.4743 10.6964L20.9343 11.2331C20.9943 11.0531 21.0444 10.8497 21.0644 10.6664C21.0777 10.5698 21.081 10.4998 21.0843 10.4398L21.6077 10.5031C21.5777 10.5731 21.531 10.6397 21.4743 10.6964ZM13.9546 4.76991L15.2745 7.44984L14.8479 7.39983L13.5579 4.76653C13.6878 4.73986 13.8213 4.73991 13.9546 4.76991Z"
+                              Fill="{StaticResource paint2_linear_472_5015}" />
+                        <Path Data="M12.8879 3.39994L13.1512 3.93661C13.2512 3.92329 13.3579 3.93989 13.4546 3.9899C13.5545 4.03992 13.6379 4.12326 13.6879 4.22658L15.2712 7.44984L16.3745 7.58315L14.5245 3.81661C14.3845 3.53329 14.1545 3.30328 13.8746 3.15994C13.4912 2.96662 13.0646 2.95659 12.6946 3.09994C12.7779 3.20658 12.8446 3.31326 12.8879 3.39994ZM17.3578 21.0028C17.5811 20.6795 17.6845 20.3995 17.7511 20.1062C17.7644 20.1062 17.7711 20.1029 17.7845 20.1029C18.1578 20.0562 18.4311 19.7095 18.3845 19.3262L17.8311 14.8863C17.8212 14.803 17.8212 14.723 17.8278 14.643L20.1378 12.363C20.4311 12.0997 20.6277 11.8564 20.771 11.5864C20.8244 11.5064 20.8811 11.3797 20.9344 11.2331L21.4744 10.6964C21.5677 10.6031 21.631 10.4797 21.6477 10.3464C21.6844 10.0231 21.4577 9.73308 21.141 9.69642L20.9844 9.67978C20.9411 9.52978 20.8844 9.39309 20.8511 9.32311C20.8111 9.22645 20.6777 8.9798 20.4811 8.74645C20.4577 8.71978 20.4378 8.69648 20.4178 8.67314L21.251 8.77312C22.081 8.87311 22.6677 9.62976 22.571 10.4597C22.531 10.7997 22.3744 11.1164 22.131 11.3597L18.7944 14.6497C18.7644 14.6797 18.7478 14.7263 18.7544 14.7697L19.3078 19.2129C19.4178 20.0995 18.7911 20.9128 17.9011 21.0262C17.7178 21.0495 17.5378 21.0428 17.3578 21.0028Z"
+                              Fill="{StaticResource paint3_linear_472_5015}" />
+                    </Canvas>
+                </Canvas>
+            </Viewbox>
+        </ControlTemplate>
+    </controls:ContentPopup.Resources>
+
+    <Grid>
+        <ListView x:Name="ScrollingHost"
+                  ItemsSource="{x:Bind ViewModel.Options}"
+                  ItemClick="OnItemClick"
+                  IsItemClickEnabled="True"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  SelectionMode="None"
+                  Padding="12,0">
+            <ListView.Header>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid x:Name="BalancePanel"
+                          Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <controls:PremiumStarCount Width="18"
+                                                   Height="18"
+                                                   Grid.Row="1" />
+
+                        <TextBlock Text="{x:Bind ViewModel.OwnedStarCount, Mode=OneWay}"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Grid.Column="1"
+                                   Grid.Row="1" />
+
+                        <TextBlock Text="{CustomResource StarsBalance}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Margin="2,0,0,-2"
+                                   Grid.ColumnSpan="2"
+                                   Grid.Row="0" />
+                    </Grid>
+
+                    <controls:AnimatedImage Source="ms-appx:///Assets/Animations/YourStars.tgs"
+                                            IsCachingEnabled="False"
+                                            AutoPlay="True"
+                                            FrameSize="120,120"
+                                            DecodeFrameType="Logical"
+                                            LoopCount="1"
+                                            Width="120"
+                                            Height="120"
+                                            Margin="0,24,0,8" />
+                    <TextBlock x:Name="TitleLabel"
+                               Text="{CustomResource TelegramStars}"
+                               Style="{StaticResource PopupTextBlockStyle}"
+                               TextAlignment="Center"
+                               VerticalAlignment="Top"
+                               Grid.Row="1" />
+                    <TextBlock x:Name="SubtitleLabel"
+                               common:TextBlockHelper.Markdown="{CustomResource TelegramStarsInfo}"
+                               Style="{StaticResource InfoBodyTextBlockStyle}"
+                               TextAlignment="Center"
+                               Margin="12,0,12,24"
+                               Grid.Row="2" />
+
+
+                    <TextBlock Text="{CustomResource TelegramStarsChoose}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               Margin="12,0"
+                               Grid.Row="3" />
+                </Grid>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8,8,12,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <controls:PremiumStarCount Width="30"
+                                                   Height="30" />
+
+                        <StackPanel x:Name="Subtracted"
+                                    Orientation="Horizontal"
+                                    Grid.Column="1">
+
+                        </StackPanel>
+
+                        <TextBlock x:Name="Title"
+                                   Style="{StaticResource BaseTextBlockStyle}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,0,4"
+                                   Grid.Column="2" />
+
+                        <TextBlock x:Name="Subtitle"
+                                   Style="{StaticResource InfoBodyTextBlockStyle}"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Right"
+                                   TextAlignment="Right"
+                                   Margin="0,0,0,4"
+                                   Grid.Column="3" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <StackPanel Margin="0,0,0,24">
+                    <Button Content="{CustomResource NotifyMoreOptions}"
+                            Click="Expand_Click"
+                            Visibility="{x:Bind ViewModel.CanExpand, Mode=OneWay}"
+                            HorizontalAlignment="Stretch"
+                            Margin="12,2,12,8" />
+
+                    <controls:SettingsFooter IsLink="True"
+                                             Text="{CustomResource StarsTOS}"
+                                             Click="SettingsFooter_Click"
+                                             Margin="12,0" />
+                </StackPanel>
+            </ListView.Footer>
+        </ListView>
+
+        <controls:ScrollViewerScrim Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    ScrollingHost="{x:Bind ScrollingHost}"
+                                    BottomInset="0" />
+    </Grid>
+</controls:ContentPopup>

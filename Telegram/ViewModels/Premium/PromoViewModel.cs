@@ -1,0 +1,159 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Telegram.Collections;
+using Telegram.Common;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.Views.Premium.Popups;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Premium
+{
+    public partial class PromoViewModel : ViewModelBase
+    {
+        public PromoViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+            Limits = new RangeObservableCollection<PremiumLimit>();
+            Features = new RangeObservableCollection<PremiumFeature>();
+            BusinessFeatures = new RangeObservableCollection<BusinessFeature>();
+        }
+
+        public RangeObservableCollection<PremiumLimit> Limits { get; private set; }
+
+        public RangeObservableCollection<PremiumFeature> Features { get; private set; }
+
+        public RangeObservableCollection<BusinessFeature> BusinessFeatures { get; private set; }
+
+        private Dictionary<Type, Animation> _animations;
+
+        private Stickers _stickers;
+
+        private PremiumState _state;
+        public PremiumState State
+        {
+            get => _state;
+            set => Set(ref _state, value);
+        }
+
+        private PremiumStatePaymentOption _option;
+        public PremiumStatePaymentOption Option
+        {
+            get => _option;
+            set => Set(ref _option, value);
+        }
+
+        private bool _canPurchase;
+        public bool CanPurchase
+        {
+            get => _canPurchase;
+            set => Set(ref _canPurchase, value);
+        }
+
+        protected override async Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState _)
+        {
+            PremiumSource premiumSource = parameter is PremiumSource source ? source : new PremiumSourceSettings();
+
+            var response = await ClientService.SendAsync(new GetPremiumFeatures(premiumSource)) as PremiumFeatures;
+            if (response == null)
+            {
+                return;
+            }
+
+            var features = response.Features.ToList();
+            var limits = response.Limits.ToList();
+
+            var appIcons = response.Features.FirstOrDefault(x => x is PremiumFeatureAppIcons);
+            if (appIcons != null)
+            {
+                features.Remove(appIcons);
+            }
+
+            var archivedChats = response.Limits.FirstOrDefault(x => x.Type is PremiumLimitTypePinnedArchivedChatCount);
+            if (archivedChats != null)
+            {
+                limits.Remove(archivedChats);
+            }
+
+            limits.Add(new PremiumLimit(new PremiumLimitTypeConnectedAccounts(), 3, 4));
+
+            Limits.ReplaceWith(limits);
+            Features.ReplaceWith(features);
+
+            var state = await ClientService.SendAsync(new GetPremiumState()) as PremiumState;
+            if (state == null)
+            {
+                return;
+            }
+
+            State = state;
+            Option = state.PaymentOptions.LastOrDefault();
+
+            CanPurchase = Option != null
+                && ClientService.IsPremiumAvailable;
+
+            _animations = state.Animations
+                .DistinctBy(x => x.Feature.GetType())
+                .ToDictionary(x => x.Feature.GetType(), y => y.Animation);
+
+            _stickers = await ClientService.SendAsync(new GetPremiumStickerExamples()) as Stickers;
+
+            var businessFeatures = await ClientService.SendAsync(new GetBusinessFeatures(null)) as BusinessFeatures;
+            if (businessFeatures == null)
+            {
+                return;
+            }
+
+            BusinessFeatures.ReplaceWith(businessFeatures.Features);
+        }
+
+        public string PremiumPreviewLimitsDescription
+        {
+            get
+            {
+                var channels = Limits.FirstOrDefault(x => x.Type is PremiumLimitTypeSupergroupCount)?.PremiumValue ?? 0;
+                var folders = Limits.FirstOrDefault(x => x.Type is PremiumLimitTypeChatFolderCount)?.PremiumValue ?? 0;
+                var pinned = Limits.FirstOrDefault(x => x.Type is PremiumLimitTypePinnedChatCount)?.PremiumValue ?? 0;
+                var links = Limits.FirstOrDefault(x => x.Type is PremiumLimitTypeCreatedPublicChatCount)?.PremiumValue ?? 0;
+                var accounts = 4;
+
+                return string.Format(Strings.PremiumPreviewLimitsDescription, channels, folders, pinned, links, accounts);
+            }
+        }
+
+        public async Task<bool> OpenAsync(PremiumFeature feature)
+        {
+            var popup = new FeaturesPopup(ClientService, Option?.PaymentOption, Features, BusinessFeatures, Limits, _animations, _stickers, feature);
+
+            var confirm = await ShowPopupAsync(popup);
+            if (confirm == ContentDialogResult.Primary && !ClientService.IsPremium)
+            {
+                Purchase();
+                return false;
+            }
+
+            return true;
+        }
+
+        public void Purchase()
+        {
+            if (Option != null && !ClientService.IsPremium)
+            {
+                ClientService.Send(new ClickPremiumSubscriptionButton());
+                MessageHelper.OpenTelegramUrl(ClientService, NavigationService, Option.PaymentOption.PaymentLink);
+            }
+        }
+    }
+}

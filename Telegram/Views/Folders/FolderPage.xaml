@@ -1,0 +1,490 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Folders.FolderPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:common="using:Telegram.Common"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:cells="using:Telegram.Controls.Cells"
+                  xmlns:messages="using:Telegram.Controls.Messages"
+                  xmlns:local="using:Telegram.Views"
+                  xmlns:drawers="using:Telegram.Controls.Drawers"
+                  xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:not_win="http://uno.ui/not_win"
+                  mc:Ignorable="d not_win"
+                  Loaded="OnLoaded"
+                  Title="{x:Bind ConvertTitle(ViewModel.Folder), Mode=OneWay}">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <local:HostedPage.Action>
+        <Button Content="{CustomResource Done}"
+                Click="{x:Bind ViewModel.Continue}"
+                Style="{StaticResource AccentButtonStyle}"
+                Visibility="{x:Bind ViewModel.HasChanged, Mode=OneWay}" />
+    </local:HostedPage.Action>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Links}"
+                                IsItemClickEnabled="True"
+                                ItemClick="OnItemClick"
+                                ChoosingItemContainer="OnChoosingItemContainer"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                SelectionMode="None">
+            <ListView.Header>
+                <controls:TableListView x:Name="ExcludeHost"
+                                        ItemsSource="{x:Bind ViewModel.Exclude.Head}"
+                                        ChoosingItemContainer="OnChoosingItemContainer"
+                                        ContainerContentChanging="OnContainerContentChanging"
+                                        SelectionMode="None">
+                    <ListView.Header>
+                        <controls:TableListView x:Name="IncludeHost"
+                                                ItemsSource="{x:Bind ViewModel.Include.Head}"
+                                                ChoosingItemContainer="OnChoosingItemContainer"
+                                                ContainerContentChanging="OnContainerContentChanging"
+                                                SelectionMode="None">
+                            <ListView.Header>
+                                <controls:SettingsPanel IsHeader="True">
+                                    <controls:SettingsHeadline Source="ms-appx:///Assets/Animations/ChatListNewFolder.tgs" />
+
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <FlyoutBase.AttachedFlyout>
+                                            <Flyout x:Name="EmojiFlyout"
+                                                    Placement="Top"
+                                                    ShowMode="Transient">
+                                                <Flyout.FlyoutPresenterStyle>
+                                                    <Style TargetType="FlyoutPresenter"
+                                                           BasedOn="{StaticResource CommandFlyoutPresenterStyle}">
+                                                        <Setter Property="Padding"
+                                                                Value="0" />
+                                                    </Style>
+                                                </Flyout.FlyoutPresenterStyle>
+                                                <drawers:EmojiDrawer x:Name="EmojiPanel"
+                                                                     ItemClick="Emoji_ItemClick"
+                                                                     Width="300"
+                                                                     Height="360" />
+                                            </Flyout>
+                                        </FlyoutBase.AttachedFlyout>
+                                        <TextBlock Style="{StaticResource BaseTextBlockStyle}"
+                                                   MaxWidth="1000"
+                                                   Margin="24,16,24,8">
+                                            <Run Text="{x:Bind ConvertTitleHint(ViewModel.HasCustomEmoji), Mode=OneWay}" />
+                                            <Hyperlink Click="ToggleAnimations_Click"
+                                                       UnderlineStyle="None">
+                                                <Run Text="{x:Bind ConvertAnimate(ViewModel.HasCustomEmoji, ViewModel.AnimateCustomEmoji), Mode=OneWay}" />
+                                            </Hyperlink>
+                                        </TextBlock>
+
+                                        <controls:HeaderedControl BorderThickness="0"
+                                                                  Padding="0"
+                                                                  Grid.Row="1">
+                                            <Grid>
+                                                <controls:CaptionTextBox x:Name="TitleField"
+                                                                         TextChanged="TitleField_TextChanged"
+                                                                         FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                                                                         Padding="58,11,6,12"
+                                                                         Height="44"
+                                                                         MaxLength="12"
+                                                                         AcceptsReturn="False" />
+
+                                                <messages:CustomEmojiCanvas x:Name="CustomEmoji"
+                                                                            IsHitTestVisible="False"
+                                                                            Margin="58,10,0,0" />
+
+                                                <controls:GlyphButton x:Name="EmojiButton"
+                                                                      Click="Emoji_Click"
+                                                                      Glyph="&#xE76E;"
+                                                                      AllowFocusOnInteraction="False"
+                                                                      HorizontalAlignment="Right"
+                                                                      VerticalAlignment="Bottom"
+                                                                      FontSize="24"
+                                                                      Height="44"
+                                                                      Grid.Column="1" />
+                                            </Grid>
+                                        </controls:HeaderedControl>
+
+                                        <controls:AnimatedGlyphButton x:Name="IconButton"
+                                                                      FontFamily="{StaticResource TelegramThemeFontFamily}"
+                                                                      Glyph="{x:Bind ConvertIcon(ViewModel.Icon), Mode=OneWay}"
+                                                                      Click="Icon_Click"
+                                                                      Width="60"
+                                                                      Height="46"
+                                                                      HorizontalAlignment="Left"
+                                                                      VerticalAlignment="Bottom"
+                                                                      Margin="24,0,24,0"
+                                                                      Grid.Column="1"
+                                                                      Grid.Row="1">
+                                            <FlyoutBase.AttachedFlyout>
+                                                <Flyout>
+                                                    <GridView x:Name="IconList"
+                                                              ItemClick="IconList_ItemClick"
+                                                              ContainerContentChanging="IconList_ContainerContentChanging"
+                                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                              ScrollViewer.HorizontalScrollMode="Disabled"
+                                                              SelectionMode="Single"
+                                                              IsItemClickEnabled="True"
+                                                              Margin="-8,-7,-12,-23"
+                                                              Width="258">
+                                                        <GridView.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                                                          FontSize="20"
+                                                                          Width="20"
+                                                                          Height="20" />
+                                                            </DataTemplate>
+                                                        </GridView.ItemTemplate>
+                                                        <GridView.ItemContainerStyle>
+                                                            <Style TargetType="GridViewItem"
+                                                                   BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                                                                <Setter Property="FontFamily"
+                                                                        Value="{StaticResource TelegramThemeFontFamily}" />
+                                                                <Setter Property="FontSize"
+                                                                        Value="16" />
+                                                                <Setter Property="MinWidth"
+                                                                        Value="0" />
+                                                                <Setter Property="MinHeight"
+                                                                        Value="0" />
+                                                            </Style>
+                                                        </GridView.ItemContainerStyle>
+                                                        <GridView.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <!--
+                                                                    ItemsWrapGrid is [NotImplemented] on Uno Skia; VariableSizedWrapGrid is the
+                                                                    proven substitute. No Header/Footer/grouping on this GridView (a folder-icon
+                                                                    picker Flyout), so the panel swap alone is enough here.
+                                                                -->
+                                                                <win:ItemsWrapGrid ItemWidth="43"
+                                                                                   ItemHeight="43"
+                                                                                   MaximumRowsOrColumns="6"
+                                                                                   Orientation="Horizontal" />
+                                                                <not_win:VariableSizedWrapGrid ItemWidth="43"
+                                                                                               ItemHeight="43"
+                                                                                               MaximumRowsOrColumns="6"
+                                                                                               Orientation="Horizontal" />
+                                                            </ItemsPanelTemplate>
+                                                        </GridView.ItemsPanel>
+                                                    </GridView>
+                                                </Flyout>
+                                            </FlyoutBase.AttachedFlyout>
+                                        </controls:AnimatedGlyphButton>
+                                    </Grid>
+
+                                    <controls:HeaderedControl Header="{CustomResource FilterInclude}"
+                                                              Margin="0,0,0,2">
+                                        <controls:SettingsButton Click="{x:Bind ViewModel.AddIncluded}"
+                                                                 Content="{CustomResource FilterAddChats}"
+                                                                 BorderThickness="0"
+                                                                 Glyph="&#xEA08;" />
+                                    </controls:HeaderedControl>
+                                </controls:SettingsPanel>
+                            </ListView.Header>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <cells:ProfileCell />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                            <ListView.Footer>
+                                <controls:SettingsPanel IsHeader="True"
+                                                        IsFooter="True">
+                                    <StackPanel>
+                                        <controls:HeaderedControl Visibility="{x:Bind ViewModel.Include.RemainingCount, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                  Padding="0"
+                                                                  Margin="0,2,0,2">
+                                            <controls:SettingsButton Click="{x:Bind ViewModel.Include.Load}"
+                                                                     Content="{x:Bind ConvertRemanining(ViewModel.Include.RemainingCount), Mode=OneWay}"
+                                                                     Glyph="&#xEACB;" />
+                                        </controls:HeaderedControl>
+
+                                        <TextBlock Text="{CustomResource FilterIncludeInfo}"
+                                                   Style="{StaticResource InfoCaptionTextBlockStyle}"
+                                                   Margin="24,6,24,0" />
+                                    </StackPanel>
+
+                                    <controls:HeaderedControl Header="{CustomResource FilterExclude}"
+                                                              Visibility="{x:Bind ConvertExcludeVisibility(ViewModel.Links.Count), Mode=OneWay}">
+                                        <controls:SettingsButton Click="{x:Bind ViewModel.AddExcluded}"
+                                                                 Content="{CustomResource FilterAddChats}"
+                                                                 BorderThickness="0"
+                                                                 Glyph="&#xEA08;" />
+                                    </controls:HeaderedControl>
+                                </controls:SettingsPanel>
+                            </ListView.Footer>
+                            <ListView.Template>
+                                <ControlTemplate TargetType="ListView">
+                                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                                            Background="{TemplateBinding Background}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="{TemplateBinding CornerRadius}">
+                                        <ItemsPresenter Header="{TemplateBinding Header}"
+                                                        HeaderTemplate="{TemplateBinding HeaderTemplate}"
+                                                        HeaderTransitions="{TemplateBinding HeaderTransitions}"
+                                                        Footer="{TemplateBinding Footer}"
+                                                        FooterTemplate="{TemplateBinding FooterTemplate}"
+                                                        FooterTransitions="{TemplateBinding FooterTransitions}"
+                                                        Padding="{TemplateBinding Padding}" />
+                                    </Border>
+                                </ControlTemplate>
+                            </ListView.Template>
+                        </controls:TableListView>
+                    </ListView.Header>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <cells:ProfileCell />
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                    <ListView.Footer>
+                        <controls:SettingsPanel IsHeader="True"
+                                                IsFooter="True">
+                            <StackPanel Visibility="{x:Bind ConvertExcludeVisibility(ViewModel.Links.Count), Mode=OneWay}"
+                                        Margin="0,0,0,-16">
+                                <controls:HeaderedControl Visibility="{x:Bind ViewModel.Exclude.RemainingCount, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                          Padding="0"
+                                                          Margin="0,2,0,2">
+                                    <controls:SettingsButton Click="{x:Bind ViewModel.Exclude.Load}"
+                                                             Content="{x:Bind ConvertRemanining(ViewModel.Exclude.RemainingCount), Mode=OneWay}"
+                                                             Glyph="&#xEACB;" />
+                                </controls:HeaderedControl>
+
+                                <TextBlock Text="{CustomResource FilterExcludeInfo}"
+                                           Style="{StaticResource InfoCaptionTextBlockStyle}"
+                                           Margin="24,6,24,0" />
+                            </StackPanel>
+
+                            <StackPanel>
+                                <Grid Margin="24,32,24,-8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{CustomResource FolderTagColor}"
+                                               Style="{StaticResource BaseTextBlockStyle}"
+                                               VerticalAlignment="Bottom" />
+
+                                    <Grid x:Name="TagPreview"
+                                          Height="16"
+                                          MinWidth="16"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Bottom"
+                                          CornerRadius="4"
+                                          Margin="4,0,0,0"
+                                          Grid.Column="1">
+                                        <RichTextBlock x:Name="TagPreviewText"
+                                                       cells:ChatFolderCell.Title="{x:Bind ViewModel.Name, Mode=OneWay}"
+                                                       TextLineBounds="Tight"
+                                                       TextAlignment="Center"
+                                                       OpticalMarginAlignment="TrimSideBearings"
+                                                       FontSize="11"
+                                                       Padding="4,0,4,0"
+                                                       VerticalAlignment="Center"
+                                                       IsTextSelectionEnabled="False"
+                                                       Typography.NumeralAlignment="Tabular">
+                                            <Paragraph />
+                                        </RichTextBlock>
+                                    </Grid>
+
+                                    <TextBlock x:Name="TagDisabled"
+                                               Style="{StaticResource InfoCaptionTextBlockStyle}"
+                                               VerticalAlignment="Bottom"
+                                               Margin="4,0,0,0"
+                                               Grid.Column="1" />
+                                </Grid>
+                                <controls:HeaderedControl Footer="{CustomResource FolderTagColorInfo}">
+                                    <Grid Background="{ThemeResource SettingsItemBackground}"
+                                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                        <Button Click="Purchase_Click"
+                                                IsEnabled="{x:Bind ViewModel.IsPremium, Mode=OneWay, Converter={StaticResource BooleanNegationConverter}}"
+                                                Style="{StaticResource ListEmptyButtonStyle}" />
+
+                                        <GridView x:Name="Tags"
+                                                  IsHitTestVisible="{x:Bind ViewModel.IsPremium, Mode=OneWay}"
+                                                  IsEnabled="{x:Bind ViewModel.IsPremium, Mode=OneWay}"
+                                                  SelectionMode="Single"
+                                                  ItemsSource="{x:Bind ViewModel.AvailableColors}"
+                                                  SelectedItem="{x:Bind ViewModel.SelectedColor, Mode=TwoWay}"
+                                                  SelectionChanged="Tag_SelectionChanged"
+                                                  ChoosingItemContainer="Tag_ChoosingItemContainer"
+                                                  ContainerContentChanging="Tag_ContainerContentChanging"
+                                                  Padding="10,10,0,10"
+                                                  common:FluidGridView.OrientationOnly="False"
+                                                  common:FluidGridView.Padding="0,0,10,0"
+                                                  Grid.Row="1">
+                                            <common:FluidGridView.Triggers>
+                                                <common:LengthGridViewTrigger ItemLength="40" />
+                                            </common:FluidGridView.Triggers>
+                                            <GridView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Background="Blue"
+                                                          CornerRadius="20">
+                                                        <TextBlock FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                                                   FontSize="20"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="#FFFFFF" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </GridView.ItemTemplate>
+                                            <GridView.ItemContainerTransitions>
+                                                <TransitionCollection />
+                                            </GridView.ItemContainerTransitions>
+                                            <GridView.ItemContainerStyle>
+                                                <Style TargetType="GridViewItem"
+                                                       BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                                                    <Setter Property="HorizontalContentAlignment"
+                                                            Value="Stretch" />
+                                                    <Setter Property="Margin"
+                                                            Value="2" />
+                                                    <Setter Property="Padding"
+                                                            Value="0" />
+                                                    <Setter Property="MinWidth"
+                                                            Value="0" />
+                                                    <Setter Property="MinHeight"
+                                                            Value="0" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="GridViewItem">
+                                                                <Grid x:Name="LayoutRoot">
+                                                                    <VisualStateManager.VisualStateGroups>
+                                                                        <VisualStateGroup x:Name="CommonStates">
+                                                                            <VisualState x:Name="Normal" />
+                                                                            <VisualState x:Name="PointerOver">
+                                                                                <VisualState.Setters>
+                                                                                    <Setter Target="SelectionIndicatorBorder.Opacity"
+                                                                                            Value="0.8" />
+                                                                                </VisualState.Setters>
+                                                                            </VisualState>
+                                                                            <VisualState x:Name="Pressed">
+                                                                                <VisualState.Setters>
+                                                                                    <Setter Target="SelectionIndicatorBorder.Opacity"
+                                                                                            Value="0.6" />
+                                                                                </VisualState.Setters>
+                                                                            </VisualState>
+                                                                            <VisualState x:Name="Selected">
+                                                                                <VisualState.Setters>
+                                                                                    <Setter Target="SelectionIndicatorBorder.Opacity"
+                                                                                            Value="1" />
+                                                                                </VisualState.Setters>
+                                                                            </VisualState>
+                                                                            <VisualState x:Name="PointerOverSelected">
+                                                                                <VisualState.Setters>
+                                                                                    <Setter Target="SelectionIndicatorBorder.Opacity"
+                                                                                            Value="1" />
+                                                                                </VisualState.Setters>
+                                                                            </VisualState>
+                                                                            <VisualState x:Name="PressedSelected">
+                                                                                <VisualState.Setters>
+                                                                                    <Setter Target="SelectionIndicatorBorder.Opacity"
+                                                                                            Value="1" />
+                                                                                </VisualState.Setters>
+                                                                            </VisualState>
+                                                                        </VisualStateGroup>
+                                                                    </VisualStateManager.VisualStateGroups>
+
+                                                                    <ContentPresenter />
+
+                                                                    <Ellipse x:Name="SelectionIndicatorBorder"
+                                                                             Stroke="{ThemeResource ContentDialogBackground}"
+                                                                             StrokeThickness="2"
+                                                                             Margin="2"
+                                                                             Opacity="0" />
+                                                                </Grid>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </GridView.ItemContainerStyle>
+                                            <GridView.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <!--
+                                                        ItemsWrapGrid is [NotImplemented] on Uno Skia; VariableSizedWrapGrid is the
+                                                        proven substitute. No Header/grouping here, and the Footer is a bare 12px
+                                                        trailing spacer (not real content like a button), so a stray few px if it
+                                                        mis-stacks beside the grid is a minor cosmetic gap, not a "grid at ~0"
+                                                        failure: left as-is rather than restructuring a Footer whose real layout
+                                                        (Width, not Height, unlike every other site here) was not fully re-derived.
+                                                    -->
+                                                    <!--
+                                                        ItemWidth/ItemHeight are what stop Uno throwing, not decoration.
+                                                        VariableSizedWrapGrid.ComputeBounds falls back PER AXIS to child 0's
+                                                        DesiredSize when they are unset (both default to NaN), and
+                                                        CalculateOccupancyMap then divides by the cell on both axes; a zero
+                                                        makes the quotient infinite, the int cast underflows and Math.Max(1,.)
+                                                        clamps it to 1, so a degenerate map sends the occupancy walk off the
+                                                        end of its block (Oscar, 78711ff). Child 0 here is a Grid whose only
+                                                        content is a TextBlock that gets its text in
+                                                        Tag_ContainerContentChanging, so on the first pass it desires ZERO
+                                                        width, and the first pass is exactly the one FluidGridView needs to
+                                                        finish before it can compute the real cell from ItemsPanelRoot.
+                                                        ActualWidth. 40 = this list's own LengthGridViewTrigger ItemLength;
+                                                        it carries OrientationOnly="False", so FluidGridView rewrites BOTH
+                                                        axes as soon as that first pass completes and this pair is only the
+                                                        seed that lets it happen.
+                                                    -->
+                                                    <win:ItemsWrapGrid Orientation="Horizontal" />
+                                                    <not_win:VariableSizedWrapGrid Orientation="Horizontal"
+                                                                                   ItemWidth="40"
+                                                                                   ItemHeight="40" />
+                                                </ItemsPanelTemplate>
+                                            </GridView.ItemsPanel>
+                                            <GridView.Footer>
+                                                <Border Width="12" />
+                                            </GridView.Footer>
+                                        </GridView>
+                                    </Grid>
+                                </controls:HeaderedControl>
+                            </StackPanel>
+
+                            <controls:HeaderedControl Header="{CustomResource InviteLinks}"
+                                                      Footer="{CustomResource FilterInviteLinksHint}"
+                                                      Margin="0,0,0,2">
+                                <controls:SettingsButton Click="{x:Bind ViewModel.CreateLink}"
+                                                         Content="{CustomResource CreateNewLink}"
+                                                         BorderThickness="0"
+                                                         Glyph="&#xE9F8;" />
+                            </controls:HeaderedControl>
+                        </controls:SettingsPanel>
+                    </ListView.Footer>
+                    <ListView.Template>
+                        <ControlTemplate TargetType="ListView">
+                            <Border BorderBrush="{TemplateBinding BorderBrush}"
+                                    Background="{TemplateBinding Background}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <ItemsPresenter Header="{TemplateBinding Header}"
+                                                HeaderTemplate="{TemplateBinding HeaderTemplate}"
+                                                HeaderTransitions="{TemplateBinding HeaderTransitions}"
+                                                Footer="{TemplateBinding Footer}"
+                                                FooterTemplate="{TemplateBinding FooterTemplate}"
+                                                FooterTransitions="{TemplateBinding FooterTransitions}"
+                                                Padding="{TemplateBinding Padding}" />
+                            </Border>
+                        </ControlTemplate>
+                    </ListView.Template>
+                </controls:TableListView>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <cells:ChatInviteLinkCell Background="{ThemeResource SettingsItemBackground}"
+                                              BorderBrush="{ThemeResource SettingsItemBorderBrush}" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <controls:SettingsPanel IsFooter="True">
+                    <TextBlock Text="{CustomResource FilterInviteLinksHintNew}"
+                               Style="{StaticResource InfoCaptionTextBlockStyle}"
+                               Margin="24,6,24,0" />
+                </controls:SettingsPanel>
+            </ListView.Footer>
+        </controls:TableListView>
+    </Grid>
+</local:HostedPage>

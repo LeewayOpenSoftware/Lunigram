@@ -1,0 +1,86 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Chats.ChatStarsPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:cells="using:Telegram.Controls.Cells"
+                  xmlns:revenue="using:Telegram.Controls.Cells.Revenue"
+                  xmlns:local="using:Telegram.Views"
+                  xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+                  mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Items}"
+                                ItemClick="OnItemClick"
+                                IsItemClickEnabled="True"
+                                SelectionMode="None"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                VerticalContentAlignment="Top">
+            <ListView.Header>
+                <controls:SettingsPanel IsHeader="True">
+                    <ContentControl Content="{x:Bind ViewModel.Revenue, Mode=OneWay}">
+                        <ContentControl.ContentTemplate>
+                            <DataTemplate>
+                                <cells:ChartCell DataContextChanged="OnElementPrepared"
+                                                 Background="{ThemeResource SettingsItemBackground}" />
+                            </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                    </ContentControl>
+
+                    <controls:HeaderedControl Header="{CustomResource BotStarsOverview}"
+                                              Footer="{CustomResource BotStarsOverviewInfo}"
+                                              Background="{ThemeResource SettingsItemBackground}">
+                        <cells:StarAmountCell x:Name="AvailableAmount"
+                                              UsdRate="{x:Bind ViewModel.UsdRate, Mode=OneWay}"
+                                              Amount="{x:Bind ViewModel.AvailableAmount, Mode=OneWay}"
+                                              Text="{CustomResource BotStarsOverviewAvailableBalance}"
+                                              Margin="12,8" />
+                        <!--<cells:StarAmountCell x:Name="PreviousAmount"
+                                              UsdRate="{x:Bind ViewModel.UsdRate, Mode=OneWay}"
+                                              Amount="{x:Bind ViewModel.PreviousAmount, Mode=OneWay}"
+                                              Text="{CustomResource BotStarsOverviewAvailableBalance}"
+                                              Margin="12,8" />-->
+                        <cells:StarAmountCell x:Name="TotalAmount"
+                                              UsdRate="{x:Bind ViewModel.UsdRate, Mode=OneWay}"
+                                              Amount="{x:Bind ViewModel.TotalAmount, Mode=OneWay}"
+                                              Text="{CustomResource BotStarsOverviewTotalBalance}"
+                                              Margin="12,8" />
+                    </controls:HeaderedControl>
+
+                    <cells:StarWithdrawCell x:Name="Withdraw" />
+
+                    <controls:HeaderedControl>
+                        <controls:SettingsButton Click="{x:Bind ViewModel.OpenAffiliate}"
+                                                 Content="{CustomResource UserAffiliateProgramRowTitle}"
+                                                 Description="{CustomResource UserAffiliateProgramRowText}"
+                                                 Glyph="&#xE9B5;"
+                                                 IsChevronVisible="True" />
+                    </controls:HeaderedControl>
+
+                    <TextBlock x:Name="TransactionsHeader"
+                               x:Load="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BooleanNegationConverter}}"
+                               Text="{CustomResource MonetizationTransactions}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               Margin="24,16,24,8" />
+                </controls:SettingsPanel>
+            </ListView.Header>
+            <!--<ListView.Footer>
+                <muxc:ProgressBar Background="Transparent"
+                                       IsIndeterminate="{x:Bind ViewModel.Voice.IsLoading, Mode=OneWay}" />
+            </ListView.Footer>-->
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <revenue:StarTransactionCell Background="{ThemeResource SettingsItemBackground}"
+                                                 BorderBrush="{ThemeResource SettingsItemBorderBrush}" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <controls:SettingsPanel IsFooter="True">
+
+                </controls:SettingsPanel>
+            </ListView.Footer>
+        </controls:TableListView>
+    </Grid>
+</local:HostedPage>

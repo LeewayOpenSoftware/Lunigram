@@ -1,0 +1,13 @@
+namespace Telegram.Native
+{
+    [default_interface]
+    runtimeclass RichMathSurface 
+    {
+        RichMathSurface(String formula);
+        Int32 PixelWidth{ get; };
+        Int32 PixelHeight{ get; };
+        Single Baseline{ get; };
+
+        void RenderSync(Windows.Storage.Streams.IBuffer buffer, Double rasterizationScale, Windows.UI.Color foreground);
+    }
+}

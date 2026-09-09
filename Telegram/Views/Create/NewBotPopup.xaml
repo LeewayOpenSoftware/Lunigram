@@ -1,0 +1,72 @@
+<controls:ContentPopup x:Class="Telegram.Views.Create.NewBotPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:controls="using:Telegram.Controls"
+                       mc:Ignorable="d"
+                       PrimaryButtonClick="OnPrimaryButtonClick"
+                       IsPrimaryButtonEnabled="{x:Bind ViewModel.IsAvailable, Mode=OneWay}"
+                       Padding="24,16,24,24">
+
+    <StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <controls:ProfilePicture x:Name="Photo"
+                                     Size="64" />
+
+            <TextBlock Text="{CustomResource CreateManagedBotTitle}"
+                       Style="{StaticResource PopupTextBlockStyle}"
+                       VerticalAlignment="Center"
+                       Margin="12,0,0,0"
+                       Grid.Column="1" />
+        </Grid>
+
+        <TextBlock x:Name="Message"
+                   Margin="0,16,0,0" />
+
+        <TextBox Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                 MaxLength="{StaticResource ChatAboutMaxLength}"
+                 Header="{CustomResource CreateManagedBotName}"
+                 Margin="0,16,0,16" />
+
+        <!--<TextBlock Text="{CustomResource CreateManagedBotNameInfo}"
+                   Style="{StaticResource InfoCaptionTextBlockStyle}"
+                   Margin="0,8,0,16" />-->
+
+
+        <controls:PrefixTextBox2 x:Name="Username"
+                                 Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Header="{CustomResource CreateManagedBotUsername}"
+                                 Prefix="@"
+                                 Suffix="{x:Bind ViewModel.Suffix, Mode=OneWay}"
+                                 SuffixForeground="{ThemeResource TextControlPlaceholderForeground}"/>
+
+        <Grid Margin="0,8,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="{x:Bind ConvertAvailable(ViewModel.ComputedUsername), Mode=OneWay}"
+                       TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Visibility="{x:Bind ViewModel.IsAvailable, Mode=OneWay}"
+                       Foreground="Green" />
+            <TextBlock Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                       Text="{CustomResource UsernameChecking}"
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource SystemControlDisabledChromeDisabledLowBrush}"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Visibility="{x:Bind ViewModel.ErrorMessage, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}"
+                       Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                       TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="Red" />
+        </Grid>
+    </StackPanel>
+</controls:ContentPopup>

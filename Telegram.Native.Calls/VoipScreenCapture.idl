@@ -1,0 +1,13 @@
+import "VoipVideoCapture.idl";
+
+namespace Telegram.Native.Calls
+{
+    runtimeclass VoipScreenCapture : VoipCaptureBase
+    {
+        VoipScreenCapture(Windows.Graphics.Capture.GraphicsCaptureItem item);
+
+        event Windows.Foundation.TypedEventHandler<VoipScreenCapture, Boolean> Paused;
+
+        static Boolean IsSupported();
+    }
+}

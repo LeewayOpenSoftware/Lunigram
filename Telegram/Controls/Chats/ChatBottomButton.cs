@@ -1,0 +1,129 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Numerics;
+using Telegram.Common;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+
+namespace Telegram.Controls.Chats
+{
+    /// <summary>
+    /// This button is intended to be placed over the BubbleTextBox
+    /// </summary>
+    public partial class ChatBottomButton : Button
+    {
+        private ContentPresenter ContentPresenter1;
+        private ContentPresenter ContentPresenter2;
+
+        private Visual _visual1;
+        private Visual _visual2;
+
+        private ContentPresenter _label;
+        private Visual _visual;
+
+        public ChatBottomButton()
+        {
+            DefaultStyleKey = typeof(ChatBottomButton);
+        }
+
+        protected override void OnApplyTemplate()
+        {
+            ContentPresenter1 = GetTemplateChild(nameof(ContentPresenter1)) as ContentPresenter;
+            ContentPresenter2 = GetTemplateChild(nameof(ContentPresenter2)) as ContentPresenter;
+
+            _label = ContentPresenter1;
+
+            if (ContentPresenter1 != null && ContentPresenter2 != null)
+            {
+                _visual1 = _visual = ElementComposition.GetElementVisual(ContentPresenter1);
+                _visual2 = ElementComposition.GetElementVisual(ContentPresenter2);
+
+                ContentPresenter2.Content = new object();
+
+                _visual2.Opacity = 0;
+                _visual2.Scale = new Vector3();
+                _visual2.CenterPoint = new Vector3(10);
+
+                ContentPresenter1.Content = Content ?? new object();
+
+                _visual1.Opacity = 1;
+                _visual1.Scale = new Vector3(1);
+                _visual1.CenterPoint = new Vector3(10);
+            }
+
+            base.OnApplyTemplate();
+        }
+
+        protected override async void OnContentChanged(object oldContent, object newContent)
+        {
+            if (_visual == null || _label == null)
+            {
+                return;
+            }
+
+            var visualShow = _visual == _visual1 ? _visual2 : _visual1;
+            var visualHide = _visual == _visual1 ? _visual1 : _visual2;
+
+            var labelShow = _visual == _visual1 ? ContentPresenter2 : ContentPresenter1;
+            var labelHide = _visual == _visual1 ? ContentPresenter1 : ContentPresenter2;
+
+            labelShow.Content = newContent ?? new object();
+
+            await this.UpdateLayoutAsync();
+
+            _visual1.CenterPoint = new Vector3(ContentPresenter1.ActualSize / 2f, 0);
+            _visual2.CenterPoint = new Vector3(ContentPresenter2.ActualSize / 2f, 0);
+
+            var hide1 = _visual.Compositor.CreateVector3KeyFrameAnimation();
+            hide1.InsertKeyFrame(0, new Vector3(1));
+            hide1.InsertKeyFrame(1, new Vector3(0));
+
+            var hide2 = _visual.Compositor.CreateScalarKeyFrameAnimation();
+            hide2.InsertKeyFrame(0, 1);
+            hide2.InsertKeyFrame(1, 0);
+
+            visualHide.StartAnimation("Scale", hide1);
+            visualHide.StartAnimation("Opacity", hide2);
+
+            var show1 = _visual.Compositor.CreateVector3KeyFrameAnimation();
+            show1.InsertKeyFrame(1, new Vector3(1));
+            show1.InsertKeyFrame(0, new Vector3(0));
+
+            var show2 = _visual.Compositor.CreateScalarKeyFrameAnimation();
+            show2.InsertKeyFrame(1, 1);
+            show2.InsertKeyFrame(0, 0);
+
+            visualShow.StartAnimation("Scale", show1);
+            visualShow.StartAnimation("Opacity", show2);
+
+#if LINUX
+            // Same as AnimatedGlyphButton: an animation started on a visual that has no
+            // CompositionTarget yet is never registered with Uno's compositor, so the only value
+            // written is StartAnimation's own - the keyframe at progress 0, i.e. Scale 0 and
+            // Opacity 0 for the incoming content. This is the bar that replaces the composer in
+            // channels and in blocked chats, so the incoming label would simply not be there.
+            CompositionScopedBatchEx.QueueCompleted(Constants.FastAnimation, () =>
+            {
+                visualHide.StopAnimation("Scale");
+                visualHide.StopAnimation("Opacity");
+                visualShow.StopAnimation("Scale");
+                visualShow.StopAnimation("Opacity");
+
+                visualHide.Scale = Vector3.Zero;
+                visualHide.Opacity = 0;
+                visualShow.Scale = Vector3.One;
+                visualShow.Opacity = 1;
+            });
+#endif
+
+            _visual = visualShow;
+            _label = labelShow;
+        }
+    }
+}

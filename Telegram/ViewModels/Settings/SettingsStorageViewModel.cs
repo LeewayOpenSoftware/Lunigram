@@ -1,0 +1,408 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Converters;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.Views.Settings;
+using Windows.Storage;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Settings
+{
+    public partial class SettingsStorageViewModel : ViewModelBase
+    {
+        public SettingsStorageViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+        }
+
+        protected override Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            var chats = new MutableVector<StorageStatisticsByChat>(10);
+
+            for (int i = 0; i < 10; i++)
+            {
+                chats.Add(new StorageStatisticsByChat(0, 0, 0, null));
+            }
+
+            _statistics = new StorageStatistics(0, 0, chats);
+            RaisePropertyChanged(nameof(Statistics));
+
+            IsLoading = true;
+
+            ClientService.Send(new GetStorageStatisticsFast(), result =>
+            {
+                if (result is StorageStatisticsFast stats)
+                {
+                    BeginOnUIThread(() => StatisticsFast = stats);
+                }
+            });
+
+            ClientService.Send(new GetStorageStatistics(25), result =>
+            {
+                if (result is StorageStatistics stats)
+                {
+                    BeginOnUIThread(() => Statistics = stats);
+                }
+            });
+
+            TaskCompleted = true;
+
+            return Task.CompletedTask;
+        }
+
+        public int KeepMedia
+        {
+            get
+            {
+                var enabled = ClientService.Options.UseStorageOptimizer;
+                var ttl = (int)ClientService.Options.StorageMaxTimeFromLastAccess;
+
+                return enabled ? ttl / 60 / 60 / 24 : 0;
+            }
+            set
+            {
+                ClientService.Options.StorageMaxTimeFromLastAccess =
+                    AppSettings.Diagnostics.StorageMaxTimeFromLastAccess = value * 60 * 60 * 24;
+                ClientService.Options.UseStorageOptimizer =
+                    AppSettings.Diagnostics.UseStorageOptimizer = value > 0;
+
+                RaisePropertyChanged();
+            }
+        }
+
+        private StorageStatisticsFast _statisticsFast;
+        public StorageStatisticsFast StatisticsFast
+        {
+            get => _statisticsFast;
+            set => Set(ref _statisticsFast, value);
+        }
+
+        private StorageStatistics _statistics;
+        public StorageStatistics Statistics
+        {
+            get => _statistics;
+            set => Set(ref _statistics, ProcessTotal(value));
+        }
+
+        private StorageStatisticsByChat _totalStatistics;
+        public StorageStatisticsByChat TotalStatistics
+        {
+            get => _totalStatistics;
+            set => Set(ref _totalStatistics, value);
+        }
+
+        private List<StorageChartItem> _itemsView;
+        public List<StorageChartItem> ItemsView
+        {
+            get => _itemsView;
+            set => Set(ref _itemsView, value);
+        }
+
+        private ulong _systemFreeSpace;
+        public ulong SystemFreeSpace
+        {
+            get => _systemFreeSpace;
+            set => Set(ref _systemFreeSpace, value);
+        }
+
+        private ulong _systemCapacity;
+        public ulong SystemCapacity
+        {
+            get => _systemCapacity;
+            set => Set(ref _systemCapacity, value);
+        }
+
+        private long _totalBytes = -1;
+        public long TotalBytes
+        {
+            get => _totalBytes;
+            set => Set(ref _totalBytes, value);
+        }
+
+        private bool _taskCompleted;
+        public bool TaskCompleted
+        {
+            get => _taskCompleted;
+            set => Set(ref _taskCompleted, value);
+        }
+
+        public async void ClearCache()
+        {
+            var confirm = await ShowPopupAsync(Strings.StorageUsageInfo, Strings.ClearCache, Strings.ClearCache, Strings.Cancel, destructive: true);
+            if (confirm != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            var types = ItemsView.Where(x => x.IsVisible).SelectMany(x => x.Types).ToVector();
+            if (types == null || types.Empty())
+            {
+                return;
+            }
+
+            IsLoading = true;
+            TaskCompleted = false;
+
+            var response = await ClientService.SendAsync(new OptimizeStorage(long.MaxValue, 0, int.MaxValue, 0, types.ToVector(), Array.Empty<long>(), Array.Empty<long>(), false, 25));
+            if (response is StorageStatistics statistics)
+            {
+                Statistics = statistics;
+            }
+
+            IsLoading = false;
+            TaskCompleted = true;
+        }
+
+        public async void Clear(StorageStatisticsByChat byChat)
+        {
+            if (byChat == null || byChat.ByFileType.Empty())
+            {
+                return;
+            }
+
+            var dialog = new SettingsStorageOptimizationPage(ClientService, byChat);
+
+            var confirm = await ShowPopupAsync(dialog);
+            if (confirm != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            var types = dialog.SelectedItems;
+            if (types == null || types.Empty())
+            {
+                return;
+            }
+
+            var chatIds = Array.Empty<long>();
+            var excludedChatIds = Array.Empty<long>();
+
+            if (byChat.ChatId != 0)
+            {
+                chatIds = new[] { byChat.ChatId };
+            }
+            else if (byChat != _totalStatistics)
+            {
+                excludedChatIds = _statistics.ByChat.Select(x => x.ChatId).Where(x => x != 0).ToArray();
+            }
+
+            IsLoading = true;
+            TaskCompleted = false;
+
+            var response = await ClientService.SendAsync(new OptimizeStorage(long.MaxValue, 0, int.MaxValue, 0, types.ToVector(), chatIds, excludedChatIds, false, 25));
+            if (response is StorageStatistics statistics)
+            {
+                Statistics = statistics;
+            }
+
+            IsLoading = false;
+            TaskCompleted = true;
+        }
+
+        private StorageStatistics ProcessTotal(StorageStatistics value)
+        {
+            var resultByFileType = new MutableVector<StorageStatisticsByFileType>();
+            var valueByChat = value.ByChat.ToMutableVector();
+
+            var result = new StorageStatisticsByChat();
+            result.ByFileType = resultByFileType;
+            value.ByChat = valueByChat;
+
+            StorageChartItem photo = null;
+            StorageChartItem video = null;
+            StorageChartItem document = null;
+            StorageChartItem audio = null;
+            StorageChartItem voice = null;
+            StorageChartItem stickers = null;
+            StorageChartItem stories = null;
+            StorageChartItem local = null;
+
+            for (int i = 0; i < valueByChat.Count; i++)
+            {
+                var chat = valueByChat[i];
+                var chatByFileType = chat.ByFileType.ToMutableVector();
+
+                result.Count += chat.Count;
+                result.Size += chat.Size;
+
+                for (int j = 0; j < chatByFileType.Count; j++)
+                {
+                    var fileType = chatByFileType[j];
+
+                    switch (fileType.FileType)
+                    {
+                        case FileTypePhoto:
+                            photo = new StorageChartItem(fileType);
+                            break;
+                        case FileTypeVideo:
+                        case FileTypeAnimation:
+                            video = video?.Add(fileType) ?? new StorageChartItem(fileType);
+                            break;
+                        case FileTypeDocument:
+                            document = new StorageChartItem(fileType);
+                            break;
+                        case FileTypeAudio:
+                            audio = new StorageChartItem(fileType);
+                            break;
+                        case FileTypeVideoNote:
+                        case FileTypeVoiceNote:
+                            voice = voice?.Add(fileType) ?? new StorageChartItem(fileType);
+                            break;
+                        case FileTypeSticker:
+                            stickers = new StorageChartItem(fileType);
+                            break;
+                        case FileTypePhotoStory:
+                        case FileTypeVideoStory:
+                            stories = stories?.Add(fileType) ?? new StorageChartItem(fileType);
+                            break;
+                        case FileTypeProfilePhoto:
+                        case FileTypeWallpaper:
+                            break;
+                        default:
+                            local = local?.Add(fileType) ?? new StorageChartItem(fileType);
+                            break;
+                    }
+
+                    if (fileType.FileType is FileTypeProfilePhoto or FileTypeWallpaper)
+                    {
+                        result.Count -= fileType.Count;
+                        result.Size -= fileType.Size;
+
+                        chat.Count -= fileType.Count;
+                        chat.Size -= fileType.Size;
+
+                        chatByFileType.Remove(fileType);
+                        j--;
+
+                        continue;
+                    }
+
+                    var already = resultByFileType.FirstOrDefault(x => x.FileType.TypeEquals(fileType.FileType));
+                    if (already == null)
+                    {
+                        already = new StorageStatisticsByFileType(fileType.FileType, 0, 0);
+                        resultByFileType.Add(already);
+                    }
+
+                    already.Count += fileType.Count;
+                    already.Size += fileType.Size;
+                }
+
+                chat.ByFileType = chatByFileType;
+
+                if (chat.ChatId == 0 || chat.ByFileType.Empty())
+                {
+                    valueByChat.Remove(chat);
+                    i--;
+                }
+            }
+
+            ItemsView = new[]
+            {
+                photo,
+                video,
+                document,
+                audio,
+                voice,
+                stickers,
+                stories,
+                local
+            }.Where(x => x != null).OrderByDescending(x => x.TotalBytes).ToList();
+
+            LoadSystem();
+
+            TotalStatistics = result;
+            IsLoading = false;
+
+            return value;
+        }
+
+        private async void LoadSystem()
+        {
+            var info = await GetSystemTotalBytes();
+            SystemFreeSpace = info.FreeSpace;
+            SystemCapacity = info.Capacity;
+
+            TotalBytes = ItemsView.Where(x => x.IsVisible).Sum(x => x.TotalBytes);
+        }
+
+        private async Task<(ulong FreeSpace, ulong Capacity)> GetSystemTotalBytes()
+        {
+#if LINUX
+            // "System.FreeSpace" and "System.Capacity" are Windows Property System keys. Measured:
+            // neither string appears in ANY of the 200+ assemblies deployed next to this binary
+            // (grep over bin/Debug/net10.0-desktop: 0 and 0), so Uno cannot answer them, the query
+            // below always throws, the catch returns (0, 0) and the page reports "Telegram uses
+            // less than 0% of your disk". That is a fabricated default presented as a measurement,
+            // which is worse than showing nothing.
+            //
+            // DriveInfo goes to statvfs through the runtime, needs no P/Invoke, and resolves the
+            // mount point that actually holds the data directory - which on this machine is not
+            // the root filesystem in the general case.
+            try
+            {
+                var drive = new System.IO.DriveInfo(ApplicationData.Current.LocalFolder.Path);
+
+                return ((ulong)drive.AvailableFreeSpace, (ulong)drive.TotalSize);
+            }
+            catch (Exception ex)
+            {
+                // Logged, unlike upstream's silent catch: if this ever fails the number really is
+                // unknown, and the next reader should be able to tell that from a zero that means
+                // "empty disk".
+                Logger.Error(ex);
+                return (0, 0);
+            }
+#else
+            const String c_freeSpace = "System.FreeSpace";
+            const String c_capacity = "System.Capacity";
+
+            try
+            {
+                var retrieveProperties = await ApplicationData.Current.LocalFolder.Properties.RetrievePropertiesAsync(new[] { c_freeSpace, c_capacity });
+                var freeSpace = (ulong)retrieveProperties[c_freeSpace];
+                var capacity = (ulong)retrieveProperties[c_capacity];
+
+                return (freeSpace, capacity);
+            }
+            catch
+            {
+                return (0, 0);
+            }
+#endif
+        }
+
+        public async void ClearDatabase()
+        {
+            if (StatisticsFast == null)
+            {
+                return;
+            }
+
+            var size = string.Format(Strings.LocalDatabaseClearText2, FileSizeConverter.Convert(StatisticsFast.DatabaseSize, true));
+
+            var confirm = await ShowPopupAsync(Strings.LocalDatabaseClearText + "\n\n" + size + "\n\n" + Strings.LocalDatabaseClearText3, Strings.LocalDatabaseClearTextTitle, Strings.CacheClear, Strings.Cancel, destructive: true);
+            if (confirm != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            ClientService.Delete(true);
+        }
+    }
+}

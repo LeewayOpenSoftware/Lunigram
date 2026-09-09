@@ -1,0 +1,42 @@
+<controls:ContentPopup x:Class="Telegram.Views.Popups.IdenticonPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:local="using:Telegram.Views"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       mc:Ignorable="d"
+                       IsDismissButtonVisible="True">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid Width="192"
+              Height="192"
+              Margin="0,0,0,8">
+            <Path x:Name="Layer0"
+                  Fill="#FFFFFF"
+                  StrokeThickness="0" />
+            <Path x:Name="Layer1"
+                  Fill="#D5E6F3"
+                  StrokeThickness="0" />
+            <Path x:Name="Layer2"
+                  Fill="#2D5775"
+                  StrokeThickness="0" />
+            <Path x:Name="Layer3"
+                  Fill="#2F99C9"
+                  StrokeThickness="0" />
+        </Grid>
+        <TextBlock x:Name="Hash"
+                   FontFamily="Consolas"
+                   HorizontalAlignment="Center"
+                   Grid.Row="1" />
+        <TextBlock x:Name="Subtitle"
+                   TextAlignment="Center"
+                   Style="{StaticResource BodyTextBlockStyle}"
+                   Grid.Row="2" />
+    </Grid>
+</controls:ContentPopup>

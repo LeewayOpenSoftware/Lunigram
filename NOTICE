@@ -1,0 +1,18 @@
+# NOTICE
+
+Unigram for Linux is an unofficial community port of [Unigram](https://github.com/UnigramDev/Unigram), by UnigramDev. It is not affiliated with or endorsed by Telegram or UnigramDev. The project is based on Unigram 12.10.2 and is distributed under GPLv3; see `LICENSE`.
+
+This release includes or uses native components built from the companion `unigram-linux` helper repository. That helper repository is not yet published. The corresponding build recipes and source locations are listed below so that the provenance of the prebuilt libraries is explicit.
+
+## Native components
+
+- **Patched TDLib** — recipe in `unigram-linux/native/tdlib`; pinned gitlink `bc9c263` (TDLib 1.8.67). The Linux port applies its JSON ABI patch. Respect TDLib's own license and notices.
+- **unigram-native** — recipe in `unigram-linux/native/unigram-native`. Respect the component's own license and notices.
+- **unigram-calls** — recipe in `unigram-linux/native/calls`. Respect the component's own license and notices.
+- **rlottie** — recipe in `unigram-linux/native/rlottie`. Respect rlottie's own license and notices.
+- **libprisma** — vendored/pinned submodule component used by the application; respect its own license and notices.
+- **libopus** — pinned native dependency bundled for release; respect its own license and notices.
+
+Prebuilt native libraries are shipped separately as the release asset `unigram-linux-prebuilt-native-libs-x86_64.tar.zst` (currently unsigned; see the checksums in `README.md`). The release artifact does not replace the licenses and notices belonging to each component. Consult each component's source tree and license files when redistributing or rebuilding it.
+
+The `unigram-linux` helper repository is referenced by the build documentation and is not itself a published repository at this time.

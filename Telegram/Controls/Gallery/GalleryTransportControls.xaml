@@ -1,0 +1,151 @@
+<UserControl x:Class="Telegram.Controls.Gallery.GalleryTransportControls"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Telegram.Controls"
+             xmlns:local="using:Telegram.Controls.Gallery"
+             mc:Ignorable="d"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <Grid x:Name="LayoutRoot"
+          Background="{ThemeResource SystemControlPageBackgroundAltMediumBrush}"
+          CornerRadius="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <controls:GlyphButton x:Name="VolumeButton"
+                                      Click="Volume_Click"
+                                      CornerRadius="13,4,4,4" />
+
+                <controls:PlaybackSlider x:Name="VolumeSlider"
+                                         Foreground="#FFFFFF"
+                                         Background="#55FFFFFF"
+                                         Height="20"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         Margin="-4,0,0,0"
+                                         Width="72"
+                                         Grid.Column="1" />
+            </Grid>
+
+            <Grid Grid.Column="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <controls:GlyphButton x:Name="SkipBackButton"
+                                      Click="SkipBackButton_Click"
+                                      Glyph="&#xEAE6;"
+                                      Margin="0,0,-8,0" />
+
+                <controls:AnimatedGlyphButton x:Name="PlaybackButton"
+                                              Click="Toggle_Click"
+                                              Glyph="&#xE768;"
+                                              HorizontalAlignment="Center"
+                                              FontSize="24"
+                                              Grid.Column="1" />
+                <controls:GlyphButton x:Name="SkipForwardButton"
+                                      Click="SkipForwardButton_Click"
+                                      Glyph="&#xEAE5;"
+                                      Margin="-8,0,0,0"
+                                      Grid.Column="2" />
+            </Grid>
+
+            <Grid HorizontalAlignment="Right"
+                  Grid.Column="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <controls:AnimatedGlyphToggleButton x:Name="FullScreenButton"
+                                                    Glyph="&#xE966;"
+                                                    CheckedGlyph="&#xE965;"
+                                                    Margin="0,0,-8,0" />
+                <controls:GlyphButton x:Name="CompactButton"
+                                      Glyph="&#xE92C;"
+                                      Margin="0,0,-8,0"
+                                      Grid.Column="1" />
+
+                <Grid x:Name="SettingsRoot"
+                      Grid.Column="2">
+                    <controls:SettingsButton x:Name="SettingsButton"
+                                             Click="Settings_Click"
+                                             Glyph="&#xE713;"
+                                             Style="{StaticResource DefaultGlyphButtonStyle}"
+                                             CornerRadius="4,13,4,4" />
+                    <Border x:Name="QualityRoot"
+                            Visibility="Collapsed"
+                            IsHitTestVisible="False"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Background="{ThemeResource NavigationViewSelectionIndicatorForeground}"
+                            CornerRadius="2"
+                            Margin="0,0,10,10">
+                        <TextBlock x:Name="QualityText"
+                                   Text="A"
+                                   Foreground="#FFFFFF"
+                                   TextLineBounds="Tight"
+                                   TextAlignment="Center"
+                                   OpticalMarginAlignment="TrimSideBearings"
+                                   FontWeight="SemiBold"
+                                   FontSize="9"
+                                   Margin="2" />
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Grid Padding="0,0,0,8"
+              Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="TimeText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Margin="12,0,12,0"
+                       VerticalAlignment="Center"
+                       Typography.NumeralAlignment="Tabular" />
+
+            <Grid Grid.Column="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="Buffered1" />
+                    <ColumnDefinition x:Name="Buffered2" />
+                </Grid.ColumnDefinitions>
+                <Border Background="#55FFFFFF"
+                        VerticalAlignment="Center"
+                        CornerRadius="2"
+                        Height="4" />
+                <controls:PlaybackSlider x:Name="Slider"
+                                         Foreground="#FFFFFF"
+                                         Background="#55FFFFFF"
+                                         Height="20"
+                                         Grid.ColumnSpan="2" />
+            </Grid>
+
+            <TextBlock x:Name="LengthText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Margin="12,0,12,0"
+                       VerticalAlignment="Center"
+                       Typography.NumeralAlignment="Tabular"
+                       Grid.Column="2" />
+        </Grid>
+    </Grid>
+</UserControl>

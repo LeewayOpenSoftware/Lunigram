@@ -1,0 +1,247 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Numerics;
+using Telegram.Native.Controls;
+using Telegram.Navigation;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
+
+namespace Telegram.Controls
+{
+    public partial class ProgressBarRing : ControlEx
+    {
+        private readonly ShapeVisual _visual;
+        private readonly CompositionSpriteShape _shape;
+        private readonly CompositionEllipseGeometry _ellipse;
+
+        private bool _spinning;
+        private readonly ScalarKeyFrameAnimation _foreverAnimation;
+
+#if LINUX
+        // Uno's Visual.SetAnimatableProperty knows RotationAngle (radians) and does NOT know
+        // RotationAngleInDegrees, so animating the degrees property throws - once per rendered
+        // frame, from inside Compositor.RenderRootVisual, for as long as any spinner is on screen.
+        // Measured in a seven-minute session with one download ring alive: 15,104 unhandled
+        // exceptions out of the render loop, each one a full stack unwind, and the rest of that
+        // frame's animations never re-evaluated. The property below is the same rotation in
+        // radians, which is what the degrees property forwards to anyway.
+        private const string RotationProperty = "RotationAngle";
+        private const float RotationUnit = MathF.PI / 180;
+#else
+        private const string RotationProperty = "RotationAngleInDegrees";
+        private const float RotationUnit = 1;
+#endif
+
+        public ProgressBarRing()
+        {
+            DefaultStyleKey = typeof(ProgressBarRing);
+
+            var ellipse = BootStrapper.Current.Compositor.CreateEllipseGeometry();
+            ellipse.Radius = new Vector2((float)Radius);
+            ellipse.Center = new Vector2((float)Center);
+            ellipse.TrimEnd = 0f;
+
+            var shape = BootStrapper.Current.Compositor.CreateSpriteShape(ellipse);
+            shape.CenterPoint = new Vector2((float)Center);
+            shape.StrokeThickness = 2;
+            shape.StrokeStartCap = CompositionStrokeCap.Round;
+            shape.StrokeEndCap = CompositionStrokeCap.Round;
+
+            if (Foreground is SolidColorBrush brush)
+            {
+                shape.StrokeBrush = BootStrapper.Current.Compositor.CreateColorBrush(brush.Color);
+            }
+
+            var visual = BootStrapper.Current.Compositor.CreateShapeVisual();
+            visual.Shapes.Add(shape);
+            visual.Size = new Vector2((float)Center * 2);
+            visual.CenterPoint = new Vector3((float)Center);
+
+            var easing = BootStrapper.Current.Compositor.CreateLinearEasingFunction();
+            var forever = BootStrapper.Current.Compositor.CreateScalarKeyFrameAnimation();
+            forever.InsertKeyFrame(0, 220 * RotationUnit, easing);
+            forever.InsertKeyFrame(1, 580 * RotationUnit, easing);
+            forever.IterationBehavior = AnimationIterationBehavior.Forever;
+            forever.Duration = TimeSpan.FromSeconds(3);
+
+            _visual = visual;
+            _shape = shape;
+            _ellipse = ellipse;
+
+            _foreverAnimation = forever;
+
+            ElementCompositionPreview.SetElementChildVisual(this, visual);
+            RegisterPropertyChangedCallback(ForegroundProperty, OnForegroundChanged);
+        }
+
+        public double Radius { get; set; } = 21;
+        public double Center { get; set; } = 24;
+
+        public double Thickness { get; set; } = 2;
+
+        public bool Spin { get; set; } = true;
+
+        public bool ShrinkOut { get; set; } = true;
+
+        public bool Mirror { get; set; } = false;
+
+        protected override void OnApplyTemplate()
+        {
+            _ellipse.Radius = new Vector2((float)Radius);
+            _ellipse.Center = new Vector2((float)Center);
+
+            _shape.CenterPoint = new Vector2((float)Center);
+            _shape.StrokeThickness = (float)Thickness;
+
+            _visual.Size = new Vector2((float)Center * 2);
+            _visual.CenterPoint = new Vector3((float)Center);
+
+            base.OnApplyTemplate();
+        }
+
+        private void OnForegroundChanged(DependencyObject sender, DependencyProperty dp)
+        {
+            if (_shape != null && Foreground is SolidColorBrush brush)
+            {
+                _shape.StrokeBrush = BootStrapper.Current.Compositor.CreateColorBrush(brush.Color);
+            }
+        }
+
+        protected override void OnLoaded()
+        {
+            if (_spinning is false && Value is > 0 and < 1 && Spin)
+            {
+                _spinning = true;
+                _visual.StartAnimation(RotationProperty, _foreverAnimation);
+            }
+        }
+
+        protected override void OnUnloaded()
+        {
+            if (_spinning)
+            {
+                _spinning = false;
+                _visual.StopAnimation(RotationProperty);
+            }
+        }
+
+        private double _value;
+        public double Value
+        {
+            get => _value;
+            set => OnValueChanged(_value, _value = value);
+        }
+
+        private void OnValueChanged(double oldValue, double newValue)
+        {
+            if (double.IsNaN(newValue))
+            {
+                newValue = 0;
+            }
+
+            if (newValue > 0)
+            {
+                newValue = Math.Clamp(newValue, 0.05, 1);
+            }
+            else
+            {
+                newValue = Math.Clamp(newValue, 0, 1);
+            }
+
+            OnValueChanged((float)oldValue, (float)newValue);
+        }
+
+        private void OnValueChanged(float oldValue, float newValue)
+        {
+            if (_spinning is false && newValue is > 0 and < 1 && Spin)
+            {
+                _spinning = true;
+                _visual.StartAnimation(RotationProperty, _foreverAnimation);
+            }
+
+            if (Mirror)
+            {
+                oldValue = 1 - oldValue;
+                newValue = 1 - newValue;
+            }
+
+            var diff = Math.Abs(oldValue - newValue);
+            if (diff < 0.10 && newValue < 1 && oldValue != 0 && newValue > 0.10)
+            {
+                if (newValue > 0 && newValue < 1)
+                {
+                    _ellipse.TrimStart = Mirror ? newValue : 0;
+                    _ellipse.TrimEnd = Mirror ? 0 : newValue;
+                }
+                else
+                {
+                    _ellipse.TrimStart = 0;
+                    _ellipse.TrimEnd = 0;
+
+                    if (_spinning)
+                    {
+                        _spinning = false;
+                        _visual.StopAnimation(RotationProperty);
+                    }
+
+                    Completed?.Invoke(this, EventArgs.Empty);
+                }
+            }
+            else
+            {
+                var linear = BootStrapper.Current.Compositor.CreateLinearEasingFunction();
+                var trimStart = BootStrapper.Current.Compositor.CreateScalarKeyFrameAnimation();
+                var trimEnd = BootStrapper.Current.Compositor.CreateScalarKeyFrameAnimation();
+
+                if (oldValue == 0)
+                {
+                    linear = null;
+
+                    trimStart.InsertKeyFrame(0, 0);
+                    trimEnd.InsertKeyFrame(0, 0);
+                }
+
+                if (newValue > 0 && newValue < 1)
+                {
+                    trimStart.InsertKeyFrame(1, 0, linear);
+                    trimEnd.InsertKeyFrame(1, newValue, linear);
+
+                    _ellipse.StartAnimation(Mirror ? "TrimEnd" : "TrimStart", trimStart);
+                    _ellipse.StartAnimation(Mirror ? "TrimStart" : "TrimEnd", trimEnd);
+                }
+                else
+                {
+                    trimStart.InsertKeyFrame(1, ShrinkOut ? 1 : 0, linear);
+                    trimEnd.InsertKeyFrame(1, 1, linear);
+
+                    var batch = BootStrapper.Current.Compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+                    batch.Completed += (s, args) =>
+                    {
+                        if (_spinning)
+                        {
+                            _spinning = false;
+                            _visual.StopAnimation(RotationProperty);
+                        }
+
+                        Completed?.Invoke(this, EventArgs.Empty);
+                    };
+
+                    _ellipse.StartAnimation(Mirror ? "TrimEnd" : "TrimStart", trimStart);
+                    _ellipse.StartAnimation(Mirror ? "TrimStart" : "TrimEnd", trimEnd);
+
+                    batch.End();
+                }
+            }
+        }
+
+        public event EventHandler Completed;
+    }
+}

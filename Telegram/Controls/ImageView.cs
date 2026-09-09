@@ -1,0 +1,538 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Windows.Foundation;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+#if LINUX
+// Uno's SoftwareBitmapSource.SetBitmapAsync throws NotImplementedException, so the blurred
+// placeholder would never reach the screen. BitmapImage is the ImageSource this port already
+// feeds from memory; the SetBitmapAsync it is missing is an extension in
+// Telegram.Linux/Native/Image/PixelBitmap.cs.
+using SoftwareBitmapSource = Microsoft.UI.Xaml.Media.Imaging.BitmapImage;
+#endif
+
+namespace Telegram.Controls
+{
+    public partial class ImageView : Control
+    {
+        protected Border RootGrid;
+        protected FrameworkElement Presenter;
+
+        public ImageView()
+        {
+            DefaultStyleKey = typeof(ImageView);
+        }
+
+        protected override void OnApplyTemplate()
+        {
+            RootGrid = (Border)GetTemplateChild(nameof(RootGrid));
+            Presenter = (FrameworkElement)GetTemplateChild(nameof(Presenter));
+            Presenter.Loaded += Holder_Loaded;
+
+            if (Presenter is Image image)
+            {
+                image.ImageFailed += Holder_ImageFailed;
+                image.ImageOpened += Holder_ImageOpened;
+            }
+        }
+
+        private void Holder_Loaded(object sender, RoutedEventArgs e)
+        {
+            OnSourceChanged(Source, null);
+        }
+
+        private void Holder_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+        {
+            ImageFailed?.Invoke(this, e);
+        }
+
+        private void Holder_ImageOpened(object sender, RoutedEventArgs e)
+        {
+            ImageOpened?.Invoke(this, e);
+        }
+
+        #region Source
+
+        public ImageSource Source
+        {
+            get => (ImageSource)GetValue(SourceProperty);
+            set => SetValue(SourceProperty, value);
+        }
+
+        public static readonly DependencyProperty SourceProperty =
+            DependencyProperty.Register("Source", typeof(ImageSource), typeof(ImageView), new PropertyMetadata(null, OnSourceChanged));
+
+        private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            ((ImageView)d).OnSourceChanged((ImageSource)e.NewValue, (ImageSource)e.OldValue);
+        }
+
+        private void OnSourceChanged(ImageSource newValue, ImageSource oldValue)
+        {
+            if (newValue is WriteableBitmap bitmap && bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0)
+            {
+                ImageOpened?.Invoke(this, null);
+            }
+        }
+
+        #endregion
+
+        #region Stretch
+
+        public Stretch Stretch
+        {
+            get => (Stretch)GetValue(StretchProperty);
+            set => SetValue(StretchProperty, value);
+        }
+
+        public static readonly DependencyProperty StretchProperty =
+            DependencyProperty.Register("Stretch", typeof(Stretch), typeof(ImageView), new PropertyMetadata(Stretch.Uniform));
+
+        #endregion
+
+        #region Constraint
+
+        public object Constraint
+        {
+            get => GetValue(ConstraintProperty);
+            set => SetValue(ConstraintProperty, value);
+        }
+
+        public static readonly DependencyProperty ConstraintProperty =
+            DependencyProperty.Register("Constraint", typeof(object), typeof(ImageView), new PropertyMetadata(null, OnConstraintChanged));
+
+        private static void OnConstraintChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            ((ImageView)d).InvalidateMeasure();
+        }
+
+        #endregion
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            if (Constraint == null)
+            {
+                return base.MeasureOverride(availableSize);
+            }
+
+            var availableWidth = Math.Min(availableSize.Width, Math.Min(double.IsNaN(Width) ? double.PositiveInfinity : Width, MaxWidth));
+            var availableHeight = Math.Min(availableSize.Height, Math.Min(double.IsNaN(Height) ? double.PositiveInfinity : Height, MaxHeight));
+
+            var width = 0.0;
+            var height = 0.0;
+
+            var constraint = Constraint;
+            if (constraint is MessageViewModel viewModel)
+            {
+                //ttl = viewModel.SelfDestructTime > 0;
+                constraint = viewModel.Content;
+            }
+            else if (constraint is Message message)
+            {
+                //ttl = message.SelfDestructTime > 0;
+                constraint = message.Content;
+            }
+
+            if (constraint is MessagePoll poll)
+            {
+                constraint = poll.Media;
+            }
+
+            if (constraint is MessageAnimation animationMessage)
+            {
+                constraint = animationMessage.Animation;
+            }
+            else if (constraint is MessageInvoice invoiceMessage)
+            {
+                if (invoiceMessage.PaidMedia is PaidMediaPhoto paidMediaPhoto)
+                {
+                    constraint = paidMediaPhoto.Photo;
+                }
+                else if (invoiceMessage.PaidMedia is PaidMediaVideo paidMediaVideo)
+                {
+                    constraint = paidMediaVideo.Video;
+                }
+                else if (invoiceMessage.PaidMedia is PaidMediaPreview paidMediaPreview)
+                {
+                    width = paidMediaPreview.Width;
+                    height = paidMediaPreview.Height;
+                }
+                else
+                {
+                    constraint = invoiceMessage.ProductInfo.Photo;
+                }
+            }
+            else if (constraint is MessageGame gameMessage)
+            {
+                if (gameMessage.Game.Animation != null)
+                {
+                    constraint = gameMessage.Game.Animation;
+                }
+                else if (gameMessage.Game.Photo != null)
+                {
+                    constraint = gameMessage.Game.Photo;
+                }
+            }
+            else if (constraint is MessageLocation locationMessage)
+            {
+                constraint = locationMessage.Location;
+            }
+            else if (constraint is MessagePhoto photoMessage)
+            {
+                constraint = photoMessage.Photo;
+            }
+            else if (constraint is MessageSticker stickerMessage)
+            {
+                constraint = stickerMessage.Sticker;
+            }
+            else if (constraint is MessageText textMessage)
+            {
+                if (textMessage?.LinkPreview?.Type is LinkPreviewTypeBackground)
+                {
+                    width = 900;
+                    height = 1600;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeAnimation previewAnimation)
+                {
+                    constraint = previewAnimation.Animation;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeDocument previewDocument)
+                {
+                    constraint = previewDocument.Document;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeEmbeddedAnimationPlayer previewEmbeddedAnimationPlayer)
+                {
+                    width = previewEmbeddedAnimationPlayer.Width;
+                    height = previewEmbeddedAnimationPlayer.Height;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeEmbeddedVideoPlayer previewEmbeddedVideoPlayer)
+                {
+                    width = previewEmbeddedVideoPlayer.Width;
+                    height = previewEmbeddedVideoPlayer.Height;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypePhoto previewPhoto)
+                {
+                    constraint = previewPhoto.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeSticker previewSticker)
+                {
+                    constraint = previewSticker.Sticker;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeVideo previewVideo)
+                {
+                    constraint = previewVideo.Video;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeVideoNote videoNote)
+                {
+                    constraint = videoNote.VideoNote;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeApp app)
+                {
+                    constraint = app.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeArticle article)
+                {
+                    constraint = article.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeChannelBoost channelBoost)
+                {
+                    constraint = channelBoost.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeChat chat)
+                {
+                    constraint = chat.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeSupergroupBoost supergroupBoost)
+                {
+                    constraint = supergroupBoost.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeUser user)
+                {
+                    constraint = user.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeVideoChat videoChat)
+                {
+                    constraint = videoChat.Photo;
+                }
+                else if (textMessage?.LinkPreview?.Type is LinkPreviewTypeWebApp webApp)
+                {
+                    constraint = webApp.Photo;
+                }
+            }
+            else if (constraint is MessageVenue venueMessage)
+            {
+                constraint = venueMessage.Venue;
+            }
+            else if (constraint is MessageVideo videoMessage)
+            {
+                constraint = videoMessage.Video;
+            }
+            else if (constraint is MessageVideoNote videoNoteMessage)
+            {
+                constraint = videoNoteMessage.VideoNote;
+            }
+            else if (constraint is MessageChatChangePhoto chatChangePhoto)
+            {
+                constraint = chatChangePhoto.Photo;
+            }
+            else if (constraint is PaidMediaPreview paidMediaPreview)
+            {
+                width = paidMediaPreview.Width;
+                height = paidMediaPreview.Height;
+            }
+
+            if (constraint is Animation animation)
+            {
+                width = animation.Width;
+                height = animation.Height;
+            }
+            else if (constraint is Location location)
+            {
+                width = 320;
+                height = 200;
+            }
+            else if (constraint is Photo photo)
+            {
+                var size = photo.Sizes.Count > 0 ? photo.Sizes[^1] : null;
+                if (size != null)
+                {
+                    width = size.Width;
+                    height = size.Height;
+                }
+            }
+            else if (constraint is ChatPhoto chatPhoto)
+            {
+                var size = chatPhoto.Sizes.Count > 0 ? chatPhoto.Sizes[^1] : null;
+                if (size != null)
+                {
+                    width = size.Width;
+                    height = size.Height;
+                }
+            }
+            else if (constraint is Sticker sticker)
+            {
+                width = sticker.Width;
+                height = sticker.Height;
+            }
+            else if (constraint is Venue venue)
+            {
+                width = 320;
+                height = 200;
+            }
+            else if (constraint is Video video)
+            {
+                width = video.Width;
+                height = video.Height;
+            }
+            else if (constraint is VideoNote videoNote)
+            {
+                width = 200;
+                height = 200;
+            }
+
+            if (constraint is PhotoSize photoSize)
+            {
+                width = photoSize.Width;
+                height = photoSize.Height;
+            }
+
+            if (constraint is PageBlockMap map)
+            {
+                width = map.Width;
+                height = map.Height;
+            }
+
+            if (constraint is Background wallpaper)
+            {
+                width = 900;
+                height = 1600;
+            }
+
+
+
+        Calculate:
+            if (width > availableWidth || height > availableHeight)
+            {
+                var ratioX = availableWidth / width;
+                var ratioY = availableHeight / height;
+                var ratio = Math.Min(ratioX, ratioY);
+
+                //if (Holder != null)
+                //{
+                //    Holder.Width = width * ratio;
+                //    Holder.Height = height * ratio;
+                //}
+
+                return new Size(width * ratio, height * ratio);
+            }
+            else
+            {
+                return new Size(width, height);
+            }
+        }
+
+        public event ExceptionRoutedEventHandler ImageFailed;
+
+        public event RoutedEventHandler ImageOpened;
+
+        public void Clear()
+        {
+            _clientService = null;
+            _file = null;
+            _width = 0;
+            _height = 0;
+            _blurRadius = 0;
+
+            Source = null;
+            UpdateManager.Unsubscribe(this, ref _fileToken);
+        }
+
+        #region Bitmap
+
+        private IClientService _clientService;
+        private File _file;
+        private int _width;
+        private int _height;
+        private int _blurRadius;
+
+        private long _fileToken;
+
+        public void SetSource(IClientService clientService, File file, int width = 0, int height = 0, int blurRadius = 0, bool clear = true)
+        {
+            _clientService = clientService;
+            _file = file;
+            _width = width;
+            _height = height;
+            _blurRadius = blurRadius;
+
+            Source = GetSource(clientService, file, null, width, height, blurRadius, true, clear);
+        }
+
+        public void SetSource(IClientService clientService, File file, Minithumbnail minithumbnail, int width = 0, int height = 0, int blurRadius = 0, bool clear = true)
+        {
+            _clientService = clientService;
+            _file = file;
+            _width = width;
+            _height = height;
+            _blurRadius = blurRadius;
+
+            Source = GetSource(clientService, file, minithumbnail, width, height, blurRadius, true, clear);
+        }
+
+        private ImageSource GetSource(IClientService clientService, File file, Minithumbnail minithumbnail, int width, int height, int blurRadius, bool download, bool clear)
+        {
+            if (file == null)
+            {
+                return null;
+            }
+            else if (file.Local.IsDownloadingCompleted)
+            {
+                if (blurRadius > 0)
+                {
+                    var source = new SoftwareBitmapSource();
+                    Direct2D.GetBlurred(source, file.Local.Path, blurRadius);
+                    return source;
+                }
+
+                return UriEx.ToBitmap(file.Local.Path, width, height);
+            }
+            else if (download)
+            {
+                UpdateManager.Subscribe(this, clientService, file, ref _fileToken, UpdateSource, true);
+
+                if (file.Local.CanBeDownloaded && !file.Local.IsDownloadingActive)
+                {
+                    clientService.DownloadFile(file.Id, 16);
+                }
+
+                if (minithumbnail != null)
+                {
+                    var source = new SoftwareBitmapSource();
+                    Direct2D.GetBlurred(source, minithumbnail.Data, 3);
+                    return source;
+                }
+
+                if (!clear)
+                {
+                    return Source;
+                }
+            }
+
+            return null;
+        }
+
+        private void UpdateSource(File file)
+        {
+            Source = GetSource(_clientService, _file, null, _width, _height, _blurRadius, false, true);
+        }
+
+        #endregion
+
+        #region Location
+
+        private double _latitude;
+        private double _longitude;
+
+        public async void SetSource(IClientService clientService, Location location, int width, int height, long chatId)
+        {
+            if (_latitude == location.Latitude && _longitude == location.Longitude)
+            {
+                return;
+            }
+
+            _latitude = location.Latitude;
+            _longitude = location.Longitude;
+
+#if LINUX
+            // Two things about XamlRoot here, both from PORTING.md 6. It is null until the control
+            // is in the visual tree, and LocationContent binds from OnApplyTemplate and again from
+            // every rebind, so reading it blind is a NullReferenceException inside a container
+            // callback — which costs the whole history, not just the row. And even once it answers,
+            // it answers 1 on a 2x screen, so the map would be fetched at half the size it is drawn
+            // at. DisplayScale.Current is the number Uno itself laid the window out with, and the
+            // workaround switches itself off as soon as XamlRoot reports anything better.
+            var raster = XamlRoot?.RasterizationScale is double reported && reported > 1
+                ? reported
+                : DisplayScale.Current;
+#else
+            var raster = XamlRoot.RasterizationScale;
+#endif
+
+            var scaledWidth = (int)(width * raster);
+            var scaledHeight = (int)(height * raster);
+
+            if (scaledWidth > 1024 || scaledHeight > 1024)
+            {
+#if LINUX
+                var ratio = Math.Min(1024 / (width * raster), 1024 / (height * raster));
+                scaledWidth = (int)(width * raster * ratio);
+                scaledHeight = (int)(height * raster * ratio);
+#else
+                var scaledSize = ImageHelper.Fit(width * raster, height * raster, 1024);
+                scaledWidth = (int)scaledSize.Width;
+                scaledHeight = (int)scaledSize.Height;
+#endif
+            }
+
+            var response = await clientService.SendAsync(new GetMapThumbnailFile(location, 15, scaledWidth, scaledHeight, 1, chatId));
+            if (response is File file && _latitude == location.Latitude && _longitude == location.Longitude)
+            {
+                SetSource(clientService, file, width, height, clear: false);
+            }
+        }
+
+        #endregion
+    }
+}

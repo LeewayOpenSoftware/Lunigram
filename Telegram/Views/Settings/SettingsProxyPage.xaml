@@ -1,0 +1,81 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Settings.SettingsProxyPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:common="using:Telegram.Common"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:cells="using:Telegram.Controls.Cells"
+                  xmlns:viewModels="using:Telegram.ViewModels.Settings"
+                  xmlns:local="using:Telegram.Views"
+                  mc:Ignorable="d"
+                  PreviewKeyDown="OnPreviewKeyDown">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Items}"
+                                SelectionMode="None"
+                                ChoosingItemContainer="OnChoosingItemContainer"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                VerticalContentAlignment="Top">
+            <common:SelectedItemsBinder.Attached>
+                <common:SelectedItemsBinder SelectedItems="{x:Bind ViewModel.SelectedItems}"
+                                            SelectionMode="Auto" />
+            </common:SelectedItemsBinder.Attached>
+            <ListView.Header>
+                <controls:SettingsPanel IsHeader="True">
+                    <controls:HeaderedControl>
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsDisabled, Mode=TwoWay}"
+                                                      Content="{CustomResource DisableProxy}"
+                                                      GroupName="ProxyType" />
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsSystem, Mode=TwoWay}"
+                                                      Content="{CustomResource UseSystemProxySettings}"
+                                                      GroupName="ProxyType" />
+                    </controls:HeaderedControl>
+
+                    <controls:HeaderedControl>
+                        <controls:SettingsButton Content="{CustomResource AddProxy}"
+                                                 Click="{x:Bind ViewModel.Add}"
+                                                 Glyph="&#xE710;" />
+                    </controls:HeaderedControl>
+
+                    <TextBlock Visibility="{x:Bind ViewModel.Items.Count, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               Text="{CustomResource ProxyConnections}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               Margin="24,16,24,6" />
+                </controls:SettingsPanel>
+            </ListView.Header>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="controls:TableListViewItem">
+                    <Setter Property="Background"
+                            Value="Transparent" />
+                    <Setter Property="BorderBrush"
+                            Value="Transparent" />
+                    <Setter Property="BorderThickness"
+                            Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="viewModels:ProxyViewModel">
+                    <controls:SettingsRadioButton GroupName="ProxyType"
+                                                  CornerRadius="4"
+                                                  BorderThickness="1">
+                        <cells:ProxyCell DisplayName="{x:Bind DisplayName}"
+                                         Status="{x:Bind Status, Mode=OneWay}" />
+                    </controls:SettingsRadioButton>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <Border Height="32" />
+            </ListView.Footer>
+        </controls:TableListView>
+    </Grid>
+</local:HostedPage>

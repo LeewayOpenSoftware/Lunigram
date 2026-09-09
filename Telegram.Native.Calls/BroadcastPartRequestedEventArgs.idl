@@ -1,0 +1,24 @@
+import "Telegram.Native.Calls.idl";
+
+namespace Telegram.Native.Calls
+{
+    delegate void BroadcastPartRequestedDeferral(Int64 time, Int64 response, byte[] data);
+
+    [default_interface]
+    runtimeclass AudioBroadcastPartRequestedEventArgs
+    {
+        Int32 Scale{ get; };
+        Int64 Time{ get; };
+        BroadcastPartRequestedDeferral Deferral{ get; };
+    }
+
+    [default_interface]
+    runtimeclass VideoBroadcastPartRequestedEventArgs
+    {
+        Int32 Scale{ get; };
+        Int64 Time{ get; };
+        Int32 ChannelId{ get; };
+        VoipVideoChannelQuality VideoQuality{ get; };
+        BroadcastPartRequestedDeferral Deferral{ get; };
+    }
+}

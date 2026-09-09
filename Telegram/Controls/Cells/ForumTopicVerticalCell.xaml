@@ -1,0 +1,189 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    xmlns:controls="using:Telegram.Controls"
+                    xmlns:local="using:Telegram.Controls.Cells"
+                    xmlns:chats="using:Telegram.Controls.Chats"
+                    mc:Ignorable="d">
+
+    <Style x:Key="FromTextBlockStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource BodyTextBlockStyle}">
+        <Setter Property="Foreground"
+                Value="{ThemeResource ChatFromLabelBrush}" />
+    </Style>
+
+    <Style TargetType="local:ForumTopicVerticalCell">
+        <Setter Property="AllowDrop"
+                Value="True" />
+        <Setter Property="IsTabStop"
+                Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:ForumTopicVerticalCell">
+                    <Grid Background="Transparent"
+                          Width="72">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup>
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver" />
+                                <VisualState x:Name="Pressed" />
+                                <VisualState x:Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Target="TitleLabel.Foreground"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="General.Fill"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="AllTopics.Fill"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="Animated.ReplacementColor"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="PointerOverSelected">
+                                    <VisualState.Setters>
+                                        <Setter Target="TitleLabel.Foreground"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="General.Fill"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="AllTopics.Fill"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="Animated.ReplacementColor"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="PressedSelected">
+                                    <VisualState.Setters>
+                                        <Setter Target="TitleLabel.Foreground"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="General.Fill"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="AllTopics.Fill"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                        <Setter Target="Animated.ReplacementColor"
+                                                Value="{ThemeResource NavigationViewSelectionIndicatorForeground}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border x:Name="PinnedBackground"
+                                Visibility="Collapsed"
+                                Background="{ThemeResource ListViewItemBackgroundPointerOver}"
+                                Margin="4,0"
+                                CornerRadius="4"
+                                Grid.RowSpan="3" />
+
+                        <TextBlock x:Name="PinnedIcon"
+                                   Visibility="Collapsed"
+                                   Text="&#xEA05;"
+                                   FontSize="12"
+                                   FontFamily="{StaticResource TelegramThemeFontFamily}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Top"
+                                   Margin="8,2,0,0"
+                                   Grid.RowSpan="3" />
+
+                        <Grid HorizontalAlignment="Center">
+                            <controls:CustomEmojiIcon x:Name="Animated"
+                                                      ReplacementColor="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                                                      Width="28"
+                                                      Height="36"
+                                                      FrameSize="28,28"
+                                                      IsViewportAware="False"
+                                                      AutoPlay="False" />
+                            <Grid x:Name="IconRoot"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center">
+                                <Path x:Name="IconPath"
+                                      Data="M2.00003 14C2.00003 7.37258 7.37261 2 14 2C20.6274 2 26 7.37258 26 14C26 20.6274 20.6274 26 14 26C11.964 26 10.0446 25.4924 8.36332 24.5963L3.59342 25.9527C2.65148 26.2206 1.78133 25.3504 2.04919 24.4085L3.40531 19.6396C2.50826 17.9577 2.00003 16.0372 2.00003 14Z" />
+                                <TextBlock x:Name="IconText"
+                                           TextAlignment="Center"
+                                           Foreground="#FFFFFF"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Left"
+                                           Margin="0,2,0,0"
+                                           Width="28" />
+                            </Grid>
+                            <Path x:Name="General"
+                                  Fill="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="M10.9848 3.16464C11.0756 2.61988 10.7076 2.10462 10.1629 2.01378C9.6181 1.92293 9.10284 2.29091 9.012 2.83567L8.15118 7.99772L3.99937 8.00016C3.44708 8.00049 2.99963 8.44847 2.99996 9.00075C3.00028 9.55304 3.44826 10.0005 4.00055 10.0002L7.81763 9.99791L7.15053 13.9983L2.99955 14.0002C2.44727 14.0004 1.99975 14.4483 2 15.0006C2.00025 15.5529 2.44816 16.0004 3.00045 16.0002L6.81699 15.9985L6.01034 20.8357C5.91949 21.3804 6.28747 21.8957 6.83223 21.9865C7.37699 22.0774 7.89225 21.7094 7.9831 21.1646L8.84475 15.9976L13.8203 15.9953L13.0136 20.8358C12.9228 21.3805 13.2908 21.8958 13.8356 21.9865C14.3803 22.0773 14.8956 21.7093 14.9863 21.1646L15.848 15.9944L20.0004 15.9926C20.5527 15.9923 21.0002 15.5444 21 14.9921C20.9998 14.4399 20.5518 13.9923 19.9996 13.9926L16.1814 13.9943L16.8483 9.9926L21.0005 9.99015C21.5528 9.98983 22.0003 9.54185 22 8.98956C21.9996 8.43728 21.5517 7.98983 20.9994 7.99015L17.1817 7.9924L17.9863 3.16456C18.0771 2.61978 17.7091 2.10456 17.1644 2.01376C16.6196 1.92297 16.1044 2.29099 16.0136 2.83576L15.1539 7.99359L10.179 7.99652L10.9848 3.16464ZM9.84545 9.99672L14.8206 9.99379L14.1537 13.9952L9.1783 13.9974L9.84545 9.99672Z"
+                                  Visibility="Collapsed" />
+                            <Path x:Name="AllTopics"
+                                  Fill="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="M11 3C6.02944 3 2 7.02944 2 12C2 13.4484 2.3427 14.8187 2.95192 16.0325L2.044 19.4209C1.79495 20.3504 2.64547 21.2009 3.57493 20.9518L6.96065 20.0446C8.17608 20.656 9.54884 21 11 21C15.9706 21 20 16.9706 20 12C20 7.02944 15.9706 3 11 3ZM17 25.0001C14.3217 25.0001 11.9167 23.8302 10.2681 21.9736C10.5098 21.9912 10.7539 22.0001 11 22.0001C11.4671 22.0001 11.9267 21.9681 12.3768 21.9061C13.6507 22.9047 15.2558 23.5001 17 23.5001C18.3024 23.5001 19.5252 23.1687 20.5909 22.5863C20.7601 22.4939 20.9584 22.4701 21.1447 22.52L24.395 23.3909L23.5235 20.1383C23.4736 19.9522 23.4972 19.7542 23.5894 19.5851C24.1698 18.5208 24.5 17.3001 24.5 16.0001C24.5 13.193 22.9579 10.7462 20.6746 9.46046C20.494 8.77052 20.2416 8.10965 19.9257 7.48633C23.46 8.70063 26 12.0537 26 16.0001C26 17.4485 25.6573 18.8188 25.048 20.0326L25.956 23.421C26.205 24.3504 25.3545 25.201 24.425 24.9519L21.0393 24.0447C19.8239 24.6561 18.4511 25.0001 17 25.0001Z"
+                                  Visibility="Collapsed" />
+                            <controls:ProfilePicture x:Name="Photo"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"
+                                                     Size="28" />
+                        </Grid>
+
+                        <TextBlock x:Name="TitleLabel"
+                                   MaxLines="1"
+                                   TextAlignment="Center"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   FontFamily="{ThemeResource EmojiThemeFontFamilyWithSymbols}"
+                                   Margin="8,0,8,4"
+                                   Grid.Row="1" />
+
+                        <Grid x:Name="PreviewPanel"
+                              Background="Transparent"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Top"
+                              Margin="0,0,16,10">
+                            <Border x:Name="UnreadMentionsBadge"
+                                    Background="{ThemeResource ChatUnreadBadgeBrush}"
+                                    Width="16"
+                                    Height="16"
+                                    CornerRadius="8"
+                                    VerticalAlignment="Top"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,2,0,0"
+                                    Visibility="Collapsed">
+                                <TextBlock x:Name="UnreadMentionsLabel"
+                                           Text="&#xE986;"
+                                           FontSize="12"
+                                           FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource ChatUnreadLabelBrush}"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center" />
+                            </Border>
+                            <controls:BadgeControl x:Name="UnreadBadge"
+                                                   VerticalAlignment="Top"
+                                                   HorizontalAlignment="Right"
+                                                   Margin="0,2,0,0"
+                                                   Visibility="Collapsed" />
+                        </Grid>
+
+                        <Rectangle x:Name="DropVisual"
+                                   x:Load="False"
+                                   Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                                   StrokeThickness="2"
+                                   RadiusX="4"
+                                   RadiusY="4"
+                                   Visibility="Collapsed"
+                                   Grid.ColumnSpan="3"
+                                   Grid.RowSpan="3" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

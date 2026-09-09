@@ -1,0 +1,823 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+
+namespace Telegram.ViewModels
+{
+    public partial class PinnedMessageViewModel : MessageViewModel
+    {
+        public PinnedMessageViewModel(IClientService clientService, WeakReference delegato, Chat chat, Message message, int index)
+            : base(clientService, delegato, chat, null, null, message, true)
+        {
+            Index = index;
+        }
+
+        public int Index { get; set; }
+
+        public override string ToString()
+        {
+            return string.Format("Id: {0}, Index: {1}", Id, Index);
+        }
+    }
+
+    public partial class MessageViewModel : MessageWithOwner
+    {
+        // TODO: find a way NOT to use a weak reference here
+        private readonly WeakReference _delegate;
+
+        protected readonly ForumTopic _forumTopic;
+        protected readonly DirectMessagesChatTopic _directMessagesChatTopic;
+
+        public MessageViewModel(IClientService clientService, IMessageDelegate delegato, Chat chat, ForumTopic forumTopic, DirectMessagesChatTopic directMessagesChatTopic, Message message, bool processText = false)
+            : base(clientService, message, chat)
+        {
+            _delegate = new WeakReference(delegato);
+
+            _forumTopic = forumTopic;
+            _directMessagesChatTopic = directMessagesChatTopic;
+
+            if (processText)
+            {
+                if (Content is MessageRichMessage richMessage)
+                {
+                    Text = TextStyleRun.GetText(richMessage.Message);
+                }
+                else
+                {
+                    SetText(Content?.GetCaption());
+                }
+            }
+        }
+
+        public MessageViewModel(IClientService clientService, WeakReference delegato, Chat chat, ForumTopic forumTopic, DirectMessagesChatTopic directMessagesChatTopic, Message message, bool processText = false)
+            : base(clientService, message, chat)
+        {
+            _delegate = delegato;
+
+            _forumTopic = forumTopic;
+            _directMessagesChatTopic = directMessagesChatTopic;
+
+            if (processText)
+            {
+                if (Content is MessageRichMessage richMessage)
+                {
+                    Text = TextStyleRun.GetText(richMessage.Message);
+                }
+                else
+                {
+                    SetText(Content?.GetCaption());
+                }
+            }
+        }
+
+        public long LastReadOutboxMessageId => _forumTopic?.LastReadOutboxMessageId
+            ?? _directMessagesChatTopic?.LastReadOutboxMessageId
+            ?? Chat.LastReadOutboxMessageId;
+
+        //public void Cleanup()
+        //{
+        //    _playbackService = null;
+        //    _delegate = null;
+
+        //    _updateSelection = null;
+
+        //    if (_message.Content is MessageAlbum album)
+        //    {
+        //        foreach (var child in album.Messages)
+        //        {
+        //            child.Cleanup();
+        //        }
+
+        //        album.Messages.Clear();
+        //    }
+
+        //    ReplyToMessage?.Cleanup();
+        //    ReplyToMessage = null;
+        //}
+
+        public IMessageDelegate Delegate => _delegate.Target as IMessageDelegate;
+
+        /// <summary>
+        /// Whether this message arrived while the view was live, and so is worth animating in or
+        /// out. Everything loaded with the history is <see cref="MessageAnimationState.None"/>.
+        /// </summary>
+        public MessageAnimationState AnimationState { get; set; }
+
+        public bool IsFirst { get; set; } = true;
+        public bool IsLast { get; set; } = true;
+
+        // Used only in recent actions
+        public ChatEvent Event { get; set; }
+
+        public Photo GetPhoto() => Content.GetPhoto();
+
+        private bool? _isService;
+        public bool IsService => _isService ??= Content.IsService();
+
+        private bool? _isSaved;
+        public bool IsSaved => _isSaved ??= this.IsSaved(_clientService.Options.MyId);
+
+        private bool? _isVerificationCode;
+        public bool IsVerificationCode => _isVerificationCode ??= ChatId == _clientService.Options.VerificationCodesBotChatId && ForwardInfo != null;
+
+        // TODO: BaseObject
+        public object ReplyToItem { get; set; }
+        public MessageReplyToState ReplyToState { get; set; } = MessageReplyToState.None;
+
+        public void Reset()
+        {
+            _isService = null;
+        }
+
+        private MessageContent _generatedContent;
+
+        /// <summary>
+        /// This is used for additional content that's generated by the app
+        /// </summary>
+        public MessageContent GeneratedContent
+        {
+            get => _generatedContent;
+            set
+            {
+                _generatedContent = value;
+
+                if (value is MessageRichMessage richMessage)
+                {
+                    Text = TextStyleRun.GetText(richMessage.Message);
+                }
+                else if (value != null)
+                {
+                    SetText(value.GetCaption());
+                }
+            }
+        }
+
+        public bool GeneratedContentUnread { get; set; }
+
+        /// <summary>
+        /// Whether the message exists only in this list: a pending message being streamed by a
+        /// bot, or the new-thread footer. It carries an identifier that sorts it into place but
+        /// that the server knows nothing about, so it must be kept out of anything that talks
+        /// message identifiers back to TDLib.
+        /// </summary>
+        public bool IsSynthetic { get; set; }
+
+        public override bool CanBeAddedToDownloads => CanBeSaved && !Chat.HasProtectedContent && Content is MessageAudio or MessageDocument or MessageVideo;
+
+        public bool IsVisuallyOutgoing => (IsOutgoing && !IsChannelPost) || (IsSaved && ForwardInfo?.Source is { IsOutgoing: true });
+
+        public void Replace(Message message)
+        {
+            Content = ApplyEphemeralContent(message);
+            MediaAlbumId = message.MediaAlbumId;
+            InteractionInfo = message.InteractionInfo;
+            AuthorSignature = message.AuthorSignature;
+            ViaBotUserId = message.ViaBotUserId;
+            GuestBotCallerId = message.GuestBotCallerId;
+            SelfDestructIn = message.SelfDestructIn;
+            SelfDestructType = message.SelfDestructType;
+            ReplyTo = message.ReplyTo;
+            FactCheck = message.FactCheck;
+            ForwardInfo = message.ForwardInfo;
+            ImportInfo = message.ImportInfo;
+            UnreadReactions = message.UnreadReactions;
+            EditDate = message.EditDate;
+            Date = message.Date;
+            ContainsUnreadMention = message.ContainsUnreadMention;
+            ContainsUnreadPollVotes = message.ContainsUnreadPollVotes;
+            IsFromOffline = message.IsFromOffline;
+            IsChannelPost = message.IsChannelPost;
+            IsPaidStarSuggestedPost = message.IsPaidStarSuggestedPost;
+            IsPaidGramSuggestedPost = message.IsPaidGramSuggestedPost;
+            SuggestedPostInfo = message.SuggestedPostInfo;
+            IsOutgoing = message.IsOutgoing;
+            IsPinned = message.IsPinned;
+            SchedulingState = message.SchedulingState;
+            SendingState = message.SendingState;
+            ChatId = message.ChatId;
+            TopicId = message.TopicId;
+            ReceiverId = message.ReceiverId;
+            SenderId = message.SenderId;
+            SenderBoostCount = message.SenderBoostCount;
+            SenderTag = message.SenderTag;
+            SenderBusinessBotUserId = message.SenderBusinessBotUserId;
+            Id = message.Id;
+            EffectId = message.EffectId;
+            PaidMessageStarCount = message.PaidMessageStarCount;
+            RestrictionInfo = message.RestrictionInfo;
+            SummaryLanguageCode = message.SummaryLanguageCode;
+            AutoDeleteIn = message.AutoDeleteIn;
+        }
+
+        public void Replace(MessageViewModel message)
+        {
+#if !LINUX
+            _ephemeral = message._ephemeral;
+#endif
+
+            Content = message.Content;
+            ReplyMarkup = message.ReplyMarkup;
+            MediaAlbumId = message.MediaAlbumId;
+            InteractionInfo = message.InteractionInfo;
+            AuthorSignature = message.AuthorSignature;
+            ViaBotUserId = message.ViaBotUserId;
+            GuestBotCallerId = message.GuestBotCallerId;
+            SelfDestructIn = message.SelfDestructIn;
+            SelfDestructType = message.SelfDestructType;
+            ReplyTo = message.ReplyTo;
+            FactCheck = message.FactCheck;
+            ForwardInfo = message.ForwardInfo;
+            ImportInfo = message.ImportInfo;
+            UnreadReactions = message.UnreadReactions;
+            EditDate = message.EditDate;
+            Date = message.Date;
+            ContainsUnreadMention = message.ContainsUnreadMention;
+            ContainsUnreadPollVotes = message.ContainsUnreadPollVotes;
+            IsFromOffline = message.IsFromOffline;
+            IsChannelPost = message.IsChannelPost;
+            IsPaidStarSuggestedPost = message.IsPaidStarSuggestedPost;
+            IsPaidGramSuggestedPost = message.IsPaidGramSuggestedPost;
+            SuggestedPostInfo = message.SuggestedPostInfo;
+            CanBeSaved = message.CanBeSaved;
+            IsOutgoing = message.IsOutgoing;
+            IsPinned = message.IsPinned;
+            HasTimestampedMedia = message.HasTimestampedMedia;
+            SchedulingState = message.SchedulingState;
+            SendingState = message.SendingState;
+            ChatId = message.ChatId;
+            TopicId = message.TopicId;
+            ReceiverId = message.ReceiverId;
+            SenderId = message.SenderId;
+            SenderBoostCount = message.SenderBoostCount;
+            SenderTag = message.SenderTag;
+            SenderBusinessBotUserId = message.SenderBusinessBotUserId;
+            Id = message.Id;
+            EffectId = message.EffectId;
+            PaidMessageStarCount = message.PaidMessageStarCount;
+            RestrictionInfo = message.RestrictionInfo;
+            SummaryLanguageCode = message.SummaryLanguageCode;
+            AutoDeleteIn = message.AutoDeleteIn;
+        }
+
+        private bool? _canBeShared;
+        public bool CanBeShared => _canBeShared ??= GetCanBeShared();
+
+        private bool GetCanBeShared()
+        {
+            if (SchedulingState != null || !CanBeSaved)
+            {
+                return false;
+            }
+            //else if (eventId != 0)
+            //{
+            //    return false;
+            //}
+            else if (IsSaved)
+            {
+                return true;
+            }
+            else if (Content is MessageSticker or MessageDice or MessageStakeDice)
+            {
+                return false;
+            }
+            else if (ForwardInfo?.Origin is MessageOriginChannel && !IsOutgoing)
+            {
+                return true;
+            }
+            else if (SenderId is MessageSenderUser senderUser && !IsChannelPost)
+            {
+                if (Content is MessageText text && text.LinkPreview == null)
+                {
+                    return false;
+                }
+
+                if (!IsOutgoing)
+                {
+                    var user = ClientService.GetUser(senderUser.UserId);
+                    if (user != null && user.Type is UserTypeBot)
+                    {
+                        return true;
+                    }
+
+                    if (Content is MessageGame or MessageInvoice)
+                    {
+                        return true;
+                    }
+
+                    if (Chat?.Type is ChatTypeSupergroup super && !super.IsChannel)
+                    {
+                        var supergroup = ClientService.GetSupergroup(super.SupergroupId);
+                        return supergroup != null && supergroup.IsPublic() && Content is not MessageContact and not MessageLocation;
+                    }
+                }
+            }
+            else if (IsChannelPost)
+            {
+                if (ViaBotUserId == 0 && ReplyTo == null || Content is not MessageSticker)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool IsDirectMessagesChatTopicMessage => _directMessagesChatTopic != null && _directMessagesChatTopic.SenderId.AreTheSame(SenderId);
+
+        private bool? _hasSenderPhoto;
+        public bool HasSenderPhoto => _hasSenderPhoto ??= GetHasSenderPhoto();
+
+#if DEBUG
+        public bool CanSummarizeText => Text?.Text.Length > 1000 && !IsVisuallyOutgoing;
+#else
+        public bool CanSummarizeText => SummaryLanguageCode?.Length > 0 && !IsVisuallyOutgoing;
+#endif
+
+        private bool GetHasSenderPhoto()
+        {
+            if (IsService || _directMessagesChatTopic != null)
+            {
+                return false;
+            }
+
+            if (IsChannelPost)
+            {
+                if (ClientService.TryGetSupergroup(Chat, out var supergroup))
+                {
+                    return supergroup.ShowMessageSender;
+                }
+
+                return false;
+            }
+            else if (IsSaved && ForwardInfo?.Source is { IsOutgoing: false })
+            {
+                return true;
+            }
+            else if (GuestBotCallerId != null)
+            {
+                return true;
+            }
+            else if (IsOutgoing)
+            {
+                return false;
+            }
+
+            return Chat?.Type is ChatTypeSupergroup or ChatTypeBasicGroup || (ChatId == _clientService.Options.VerificationCodesBotChatId && Id != 0);
+        }
+
+
+        public int AnimationHash()
+        {
+            return base.GetHashCode();
+        }
+
+        public void UpdateAlbum(MessageViewModel message)
+        {
+            AuthorSignature = message.AuthorSignature;
+            CanBeSaved = message.CanBeSaved;
+            ChatId = message.ChatId;
+            ContainsUnreadMention = message.ContainsUnreadMention;
+            ContainsUnreadPollVotes = message.ContainsUnreadPollVotes;
+            //Content = message.Content;
+            //Date = message.Date;
+            EditDate = message.EditDate;
+            ForwardInfo = message.ForwardInfo;
+            Id = message.Id;
+            IsFromOffline = message.IsFromOffline;
+            IsChannelPost = message.IsChannelPost;
+            IsPaidStarSuggestedPost = message.IsPaidStarSuggestedPost;
+            IsPaidGramSuggestedPost = message.IsPaidGramSuggestedPost;
+            SuggestedPostInfo = message.SuggestedPostInfo;
+            IsOutgoing = message.IsOutgoing;
+            IsPinned = message.IsPinned;
+            MediaAlbumId = message.MediaAlbumId;
+            ReplyMarkup = message.ReplyMarkup;
+            ReplyTo = message.ReplyTo;
+            FactCheck = message.FactCheck;
+            ReceiverId = message.ReceiverId;
+            SenderId = message.SenderId;
+            SendingState = message.SendingState;
+            SelfDestructType = message.SelfDestructType;
+            SelfDestructIn = message.SelfDestructIn;
+            AutoDeleteIn = message.AutoDeleteIn;
+            ViaBotUserId = message.ViaBotUserId;
+            GuestBotCallerId = message.GuestBotCallerId;
+            InteractionInfo = message.InteractionInfo;
+            UnreadReactions = message.UnreadReactions;
+            RestrictionInfo = message.RestrictionInfo;
+            SummaryLanguageCode = message.SummaryLanguageCode;
+            ImportInfo = message.ImportInfo;
+            TopicId = message.TopicId;
+            HasTimestampedMedia = message.HasTimestampedMedia;
+            SchedulingState = message.SchedulingState;
+            SenderBoostCount = message.SenderBoostCount;
+            SenderTag = message.SenderTag;
+            SenderBusinessBotUserId = message.SenderBusinessBotUserId;
+            EffectId = message.EffectId;
+            PaidMessageStarCount = message.PaidMessageStarCount;
+
+            _isSaved = null;
+
+            if (Content is MessageAlbum album)
+            {
+                FormattedText caption = null;
+                StyledText text = null;
+                bool showCaptionAboveMedia = false;
+                int editDate = 0;
+
+                if (album.IsMedia)
+                {
+                    foreach (var child in album.Messages)
+                    {
+                        var childCaption = child.GetCaption();
+                        if (childCaption != null && !string.IsNullOrEmpty(childCaption.Text))
+                        {
+                            if (caption == null || string.IsNullOrEmpty(caption.Text))
+                            {
+                                caption = childCaption;
+                                showCaptionAboveMedia = child.ShowCaptionAboveMedia();
+                                text = child.Text;
+                                editDate = child.EditDate;
+                            }
+                            else
+                            {
+                                caption = null;
+                                text = null;
+                                break;
+                            }
+                        }
+                    }
+                }
+                else if (album.Messages.Count > 0)
+                {
+                    caption = album.Messages[^1].GetCaption();
+                    showCaptionAboveMedia = album.Messages[^1].ShowCaptionAboveMedia();
+                    text = album.Messages[^1].Text;
+                    editDate = album.Messages[^1].EditDate;
+                }
+
+                album.Caption = caption ?? new FormattedText();
+                album.ShowCaptionAboveMedia = showCaptionAboveMedia;
+                Text = text;
+                EditDate = editDate;
+            }
+        }
+    }
+
+    public partial class MessageWithOwner
+    {
+        protected readonly IClientService _clientService;
+        protected readonly Chat _chat;
+
+        public MessageWithOwner(IClientService clientService, Message message, Chat chat = null)
+        {
+            _clientService = clientService;
+            _chat = chat ?? clientService.GetChat(message.ChatId);
+            _content = ApplyEphemeralContent(message);
+
+            MediaAlbumId = message.MediaAlbumId;
+            InteractionInfo = message.InteractionInfo;
+            AuthorSignature = message.AuthorSignature;
+            ViaBotUserId = message.ViaBotUserId;
+            GuestBotCallerId = message.GuestBotCallerId;
+            SelfDestructIn = message.SelfDestructIn;
+            SelfDestructType = message.SelfDestructType;
+            ReplyTo = message.ReplyTo;
+            FactCheck = message.FactCheck;
+            ForwardInfo = message.ForwardInfo;
+            ImportInfo = message.ImportInfo;
+            UnreadReactions = message.UnreadReactions;
+            EditDate = message.EditDate;
+            Date = message.Date;
+            ContainsUnreadMention = message.ContainsUnreadMention;
+            ContainsUnreadPollVotes = message.ContainsUnreadPollVotes;
+            IsFromOffline = message.IsFromOffline;
+            IsChannelPost = message.IsChannelPost;
+            IsPaidStarSuggestedPost = message.IsPaidStarSuggestedPost;
+            IsPaidGramSuggestedPost = message.IsPaidGramSuggestedPost;
+            SuggestedPostInfo = message.SuggestedPostInfo;
+            IsOutgoing = message.IsOutgoing;
+            IsPinned = message.IsPinned;
+            SchedulingState = message.SchedulingState;
+            SendingState = message.SendingState;
+            ChatId = message.ChatId;
+            TopicId = message.TopicId;
+            ReceiverId = message.ReceiverId;
+            SenderId = message.SenderId;
+            SenderBoostCount = message.SenderBoostCount;
+            SenderTag = message.SenderTag;
+            SenderBusinessBotUserId = message.SenderBusinessBotUserId;
+            Id = message.Id;
+            EffectId = message.EffectId;
+            PaidMessageStarCount = message.PaidMessageStarCount;
+            RestrictionInfo = message.RestrictionInfo;
+            SummaryLanguageCode = message.SummaryLanguageCode;
+            AutoDeleteIn = message.AutoDeleteIn;
+        }
+
+        public Object GetSender()
+        {
+            if (SenderId is MessageSenderUser user)
+            {
+                return ClientService.GetUser(user.UserId);
+            }
+            else if (SenderId is MessageSenderChat chat)
+            {
+                return ClientService.GetChat(chat.ChatId);
+            }
+
+            return null;
+        }
+
+        public User GetViaBotUser()
+        {
+            if (ViaBotUserId != 0)
+            {
+                return ClientService.GetUser(ViaBotUserId);
+            }
+
+            if (ClientService.TryGetUser(SenderId, out User user) && user.Type is UserTypeBot)
+            {
+                return user;
+            }
+
+            return null;
+        }
+
+        //public override string ToString()
+        //{
+        //    return _message.ToString();
+        //}
+
+        public Chat Chat => _chat;
+
+        public MessageId CombinedId => new(this);
+
+        public IClientService ClientService => _clientService;
+
+        public ReplyMarkup ReplyMarkup { get; set; }
+        public long MediaAlbumId { get; protected set; }
+        public MessageInteractionInfo InteractionInfo { get; set; }
+        public string AuthorSignature { get; protected set; }
+        public long ViaBotUserId { get; protected set; }
+        public MessageSender? GuestBotCallerId { get; protected set; }
+        public double SelfDestructIn { get; set; }
+        public MessageSelfDestructType SelfDestructType { get; protected set; }
+        public MessageReplyTo ReplyTo { get; set; }
+        public FactCheck FactCheck { get; set; }
+        public MessageForwardInfo ForwardInfo { get; protected set; }
+        public MessageImportInfo ImportInfo { get; protected set; }
+        public Vector<UnreadReaction> UnreadReactions { get; set; }
+        public int EditDate { get; set; }
+        public int Date { get; protected set; }
+        public bool ContainsUnreadMention { get; set; }
+        public bool ContainsUnreadPollVotes { get; set; }
+        public bool IsFromOffline { get; protected set; }
+        public bool IsChannelPost { get; protected set; }
+        public bool IsPaidStarSuggestedPost { get; protected set; }
+        public bool IsPaidGramSuggestedPost { get; protected set; }
+        public SuggestedPostInfo SuggestedPostInfo { get; set; }
+        public bool CanBeSaved { get; protected set; }
+        public bool IsOutgoing { get; protected set; }
+        public bool IsPinned { get; set; }
+        public bool HasTimestampedMedia { get; protected set; }
+        public MessageSchedulingState SchedulingState { get; protected set; }
+        public MessageSendingState SendingState { get; protected set; }
+        public long ChatId { get; protected set; }
+        public MessageTopic TopicId { get; protected set; }
+        public MessageSender SenderId { get; set; }
+        public MessageSender ReceiverId { get; set; }
+        public int SenderBoostCount { get; protected set; }
+        public string SenderTag { get; set; }
+        public long SenderBusinessBotUserId { get; protected set; }
+        public long Id { get; protected set; }
+        public long EffectId { get; protected set; }
+        public long PaidMessageStarCount { get; protected set; }
+        public RestrictionInfo RestrictionInfo { get; protected set; }
+        public double AutoDeleteIn { get; protected set; }
+        public string SummaryLanguageCode { get; protected set; }
+
+        /// <summary>
+        /// What an ephemeral content hides. TDLib requires its content to be shown in place of the
+        /// message's own, so <see cref="Content"/> and the three properties beside it carry the
+        /// ephemeral values while one is applied and every reader gets the right thing without
+        /// asking for it. This holds what deleteMessageEphemeralContent reverts to, and stays null
+        /// - one reference, no allocation - for the messages that have no ephemeral content.
+        /// </summary>
+#if LINUX
+        // Public TDLib 1.8.66 has no ephemeral message content: nothing to overlay.
+        protected MessageContent ApplyEphemeralContent(Message message)
+        {
+            ReplyMarkup = message.ReplyMarkup;
+            CanBeSaved = message.CanBeSaved;
+            HasTimestampedMedia = message.HasTimestampedMedia;
+
+            return message.Content;
+        }
+#else
+        protected sealed class EphemeralOverlay
+        {
+            public EphemeralMessageContent Ephemeral;
+            public MessageContent Content;
+            public ReplyMarkup ReplyMarkup;
+            public bool CanBeSaved;
+            public bool HasTimestampedMedia;
+        }
+
+        protected EphemeralOverlay _ephemeral;
+
+        public EphemeralMessageContent EphemeralContent
+        {
+            get => _ephemeral?.Ephemeral;
+            set => SetEphemeralContent(value);
+        }
+
+        /// <summary>
+        /// Splits a message into what has to be shown and what an ephemeral content hides, and
+        /// returns the content to show. The caller assigns it, so that reading a message costs one
+        /// assignment whether or not it carries an ephemeral content.
+        /// </summary>
+        protected MessageContent ApplyEphemeralContent(Message message)
+        {
+            var ephemeral = message.EphemeralContent;
+
+            _ephemeral = ephemeral == null ? null : new EphemeralOverlay
+            {
+                Ephemeral = ephemeral,
+                Content = message.Content,
+                ReplyMarkup = message.ReplyMarkup,
+                CanBeSaved = message.CanBeSaved,
+                HasTimestampedMedia = message.HasTimestampedMedia
+            };
+
+            ReplyMarkup = ephemeral?.ReplyMarkup ?? message.ReplyMarkup;
+            CanBeSaved = ephemeral?.CanBeSaved ?? message.CanBeSaved;
+            HasTimestampedMedia = ephemeral?.HasTimestampedMedia ?? message.HasTimestampedMedia;
+
+            return ephemeral?.Content ?? message.Content;
+        }
+
+        /// <summary>
+        /// Applies an ephemeral content over a message already read, or removes the applied one
+        /// when null: updateMessageEphemeralContent, and the revert that deletes it. Reading a
+        /// whole message goes through <see cref="ApplyEphemeralContent"/> instead, which also
+        /// drops the overlay the message replaces.
+        /// </summary>
+        private void SetEphemeralContent(EphemeralMessageContent value)
+        {
+            if (value == null)
+            {
+                if (_ephemeral == null)
+                {
+                    return;
+                }
+
+                Content = _ephemeral.Content;
+                ReplyMarkup = _ephemeral.ReplyMarkup;
+                CanBeSaved = _ephemeral.CanBeSaved;
+                HasTimestampedMedia = _ephemeral.HasTimestampedMedia;
+
+                _ephemeral = null;
+                return;
+            }
+
+            _ephemeral ??= new EphemeralOverlay
+            {
+                Content = _content,
+                ReplyMarkup = ReplyMarkup,
+                CanBeSaved = CanBeSaved,
+                HasTimestampedMedia = HasTimestampedMedia
+            };
+
+            _ephemeral.Ephemeral = value;
+
+            Content = value.Content;
+            ReplyMarkup = value.ReplyMarkup;
+            CanBeSaved = value.CanBeSaved;
+            HasTimestampedMedia = value.HasTimestampedMedia;
+        }
+#endif
+
+        public MessageEffect Effect { get; set; }
+
+        private void SetContent(MessageContent content)
+        {
+            _content = content;
+            if (content is MessageRichMessage richMessage)
+            {
+                Text = TextStyleRun.GetText(richMessage.Message);
+            }
+            else
+            {
+                SetText(content?.GetCaption());
+            }
+        }
+
+        protected void SetText(FormattedText caption)
+        {
+            if (caption != null && caption.Text.Length > 0)
+            {
+                Text = TextStyleRun.GetText(caption);
+            }
+            else
+            {
+                Text = StyledText.Empty;
+            }
+        }
+
+        protected MessageContent _content;
+        public MessageContent Content
+        {
+            get => _content;
+            set => SetContent(value);
+        }
+
+        public StyledText Text { get; set; }
+
+        public MessageTranslateResult TranslatedText { get; set; }
+
+        public MessageTranslateResult SummarizedText { get; set; }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is Message y)
+            {
+                return Id == y.Id && ChatId == y.ChatId;
+            }
+            else if (obj is MessageWithOwner ym)
+            {
+                return Id == ym.Id && ChatId == ym.ChatId;
+            }
+
+            return base.Equals(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(ChatId, Id);
+        }
+
+        // TODO: Get rid of this
+        public Message Get()
+        {
+            // TODO: triple check ephemeral content
+
+#if LINUX
+            return new Message(Id, SenderId, ReceiverId, ChatId, SendingState, SchedulingState, IsOutgoing, IsPinned, IsFromOffline, CanBeSaved, HasTimestampedMedia, IsChannelPost, IsPaidStarSuggestedPost, IsPaidGramSuggestedPost, ContainsUnreadMention, ContainsUnreadPollVotes, Date, EditDate, ForwardInfo, ImportInfo, InteractionInfo, UnreadReactions, FactCheck, SuggestedPostInfo, ReplyTo, TopicId, SelfDestructType, SelfDestructIn, AutoDeleteIn, ViaBotUserId, GuestBotCallerId, SenderBusinessBotUserId, SenderBoostCount, SenderTag, PaidMessageStarCount, AuthorSignature, MediaAlbumId, EffectId, RestrictionInfo, SummaryLanguageCode, Content, ReplyMarkup, 0);
+#else
+            var overlay = _ephemeral;
+            return new Message(Id, SenderId, ReceiverId, ChatId, SendingState, SchedulingState, IsOutgoing, IsPinned, IsFromOffline, overlay?.CanBeSaved ?? CanBeSaved, overlay?.HasTimestampedMedia ?? HasTimestampedMedia, IsChannelPost, IsPaidStarSuggestedPost, IsPaidGramSuggestedPost, ContainsUnreadMention, ContainsUnreadPollVotes, Date, EditDate, ForwardInfo, ImportInfo, InteractionInfo, UnreadReactions, FactCheck, SuggestedPostInfo, ReplyTo, TopicId, SelfDestructType, SelfDestructIn, AutoDeleteIn, ViaBotUserId, GuestBotCallerId, SenderBusinessBotUserId, SenderBoostCount, SenderTag, PaidMessageStarCount, AuthorSignature, MediaAlbumId, EffectId, RestrictionInfo, SummaryLanguageCode, overlay?.Content ?? Content, EphemeralContent, overlay?.ReplyMarkup ?? ReplyMarkup);
+#endif
+        }
+
+        public virtual bool CanBeAddedToDownloads
+        {
+            get
+            {
+                if (ClientService.TryGetChat(ChatId, out var chat))
+                {
+                    return CanBeSaved && !chat.HasProtectedContent && Content is MessageAudio or MessageDocument or MessageVideo;
+                }
+
+                return false;
+            }
+        }
+    }
+
+    public enum MessageReplyToState
+    {
+        None,
+        Loading,
+        Deleted,
+        Hidden
+    }
+
+    public enum MessageAnimationState
+    {
+        /// <summary>
+        /// Loaded with the history, or replaced in place: it appears without a transition.
+        /// </summary>
+        None,
+
+        /// <summary>
+        /// Arrived while the view was live.
+        /// </summary>
+        Added,
+
+        /// <summary>
+        /// Deleted, as opposed to merely leaving the collection — which also happens when the
+        /// history is trimmed, when a pending message is replaced by the sent one, and when the
+        /// view model is torn down. Only this one is worth a send-off.
+        /// </summary>
+        Removed
+    }
+}

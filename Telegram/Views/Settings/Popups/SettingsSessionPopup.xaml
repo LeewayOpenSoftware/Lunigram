@@ -1,0 +1,99 @@
+﻿<controls:ContentPopup x:Class="Telegram.Views.Settings.Popups.SettingsSessionPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:controls="using:Telegram.Controls"
+                       mc:Ignorable="d"
+                       DefaultButton="None"
+                       PrimaryButtonStyle="{StaticResource DangerButtonStyle}"
+                       Opened="OnOpened"
+                       Padding="0,24,0,16"
+                       IsDismissButtonVisible="True">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,12">
+            <Border x:Name="IconBackground"
+                    CornerRadius="48"
+                    Width="96"
+                    Height="96">
+                <controls:AnimatedImage x:Name="Icon"
+                                        AutoPlay="False"
+                                        IsCachingEnabled="False"
+                                        LoopCount="1"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FrameSize="72,72"
+                                        DecodeFrameType="Logical"
+                                        Width="72"
+                                        Height="72" />
+            </Border>
+
+            <TextBlock x:Name="Title"
+                       Style="{StaticResource PopupTextBlockStyle}"
+                       TextAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       TextWrapping="NoWrap"
+                       Margin="12,12,12,0" />
+
+            <TextBlock x:Name="Subtitle"
+                       TextAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       Style="{StaticResource InfoBodyTextBlockStyle}"
+                       Grid.Column="1"
+                       Grid.Row="2" />
+        </StackPanel>
+
+        <controls:SettingsButton x:Name="Application"
+                                 Description="{CustomResource Application}"
+                                 Glyph="&#xE975;"
+                                 Background="Transparent"
+                                 Grid.Row="1" />
+        <controls:SettingsButton x:Name="Location"
+                                 Description="{CustomResource Location}"
+                                 Glyph="&#xE1C4;"
+                                 Background="Transparent"
+                                 Grid.Row="2" />
+        <controls:SettingsButton x:Name="Address"
+                                 Description="{CustomResource IpAddress}"
+                                 Glyph="&#xE774;"
+                                 Background="Transparent"
+                                 Grid.Row="3" />
+
+        <controls:SettingsButton x:Name="AcceptCallsPanel"
+                                 Click="AcceptCallsPanel_Click"
+                                 Content="{CustomResource AcceptCalls}"
+                                 Glyph="&#xE717;"
+                                 Background="Transparent"
+                                 Margin="0,0,12,0"
+                                 Grid.Row="4">
+            <controls:SettingsButton.Badge>
+                <CheckBox x:Name="AcceptCalls"
+                          MinWidth="0"
+                          Padding="0" />
+            </controls:SettingsButton.Badge>
+        </controls:SettingsButton>
+
+        <controls:SettingsButton x:Name="AcceptSecretChatsPanel"
+                                 Click="AcceptSecretChatsPanel_Click"
+                                 Content="{CustomResource AcceptSecretChats}"
+                                 Glyph="&#xE72E;"
+                                 Background="Transparent"
+                                 Margin="0,0,12,0"
+                                 Grid.Row="5">
+            <controls:SettingsButton.Badge>
+                <CheckBox x:Name="AcceptSecretChats"
+                          MinWidth="0"
+                          Padding="0" />
+            </controls:SettingsButton.Badge>
+        </controls:SettingsButton>
+    </Grid>
+</controls:ContentPopup>

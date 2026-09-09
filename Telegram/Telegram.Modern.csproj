@@ -1,0 +1,419 @@
+﻿<!--
+  Sdk.props is imported by hand rather than through the Sdk attribute because three properties
+  have to be set before it: the two output paths, so this project does not share obj\ and bin\
+  with Telegram.csproj, and DefaultItemExcludes, because the default globs would otherwise
+  compile Telegram.csproj's own generated output - its XamlTypeInfo.g.cs, every page's .g.cs, and
+  the .NET Native ilc sources under bin\ - as if they were app source.
+-->
+<Project>
+
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj\modern\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\modern\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <!--
+    The same app on UWP XAML over .NET 10, CsWinRT and NativeAOT, built beside Telegram.csproj
+    rather than replacing it: UseDotNetNativeToolchain exists only in the legacy project system
+    and UseUwp only in SDK-style, and neither format can produce the other's output.
+
+    Build with Visual Studio's MSBuild, never the dotnet CLI - modern UWP XAML support is imported
+    from VS's own ImportBefore/ImportAfter hooks, which the SDK's MSBuild does not have:
+
+      "%ProgramFiles%\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe" ^
+        Telegram.Modern.csproj -restore -p:Configuration=Debug -p:Platform=x64
+
+    net10-port-todo.md at the repository root is the plan this belongs to.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.18362.0</TargetPlatformMinVersion>
+    <RootNamespace>Telegram</RootNamespace>
+    <AssemblyName>Telegram</AssemblyName>
+    <DefaultLanguage>en</DefaultLanguage>
+    <UseUwp>true</UseUwp>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>preview</LangVersion>
+
+    <!-- Set here rather than passed on the command line: as a global property it flows into the
+         ProjectReference, and Telegram.Generators is netstandard2.0, which cannot AOT
+         (NETSDK1207). Publish with SelfContained and no -p:PublishAot to get a CoreCLR layout. -->
+    <!-- Release only: ILC is the whole cost of a Debug deploy, which publishes through the
+         packaging project, and nothing about a debug session wants a native image. SelfContained
+         in the publish profile is what makes the CoreCLR layout it falls back to work. -->
+    <PublishAot Condition="'$(Configuration)' != 'Debug'">true</PublishAot>
+    <!-- PublishAot turns the trim analyzer on for every build, and it is 98% of the
+         analyzer time in the compile - 765 CPU-seconds, ~16s of wall clock. Nothing is
+         trimmed in a Debug build, and publish and Release still run it, so it gates
+         releases rather than the inner loop. -->
+    <EnableTrimAnalyzer Condition="'$(Configuration)' == 'Debug'">false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer Condition="'$(Configuration)' == 'Debug'">false</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer Condition="'$(Configuration)' == 'Debug'">false</EnableSingleFileAnalyzer>
+    <!-- 15s of a Debug build, measured with ReportAnalyzer: CA2252 alone is 7.5s and only says
+         anything about preview APIs. Release still runs them, so they gate releases rather than
+         the inner loop - the same trade as the three analyzers above. -->
+    <EnableNETAnalyzers Condition="'$(Configuration)' == 'Debug'">false</EnableNETAnalyzers>
+    <!-- Turns off the runtime's marshalling subsystem for this assembly: only blittable types may
+         cross a P/Invoke, and everything else is marshalled by the LibraryImport generator in C#
+         instead. The SDK turns this property into the assembly attribute.
+
+         Safe here only because every DllImport now has a LibraryImport counterpart and both
+         delegates handed to native code became function pointers. It is deliberately absent from
+         Telegram.csproj: .NET Native keeps the #else branches and the runtime marshalling they
+         rely on. -->
+    <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+    <!-- The CsWinRT generators are the interesting output of this project: what they emit for
+         [GeneratedBindableCustomProperty] is what classic {Binding} and ItemsPath resolve
+         through once AOT has trimmed reflection away. -->
+    <EmitCompilerGeneratedFiles Condition="'$(Configuration)' != 'Debug'">true</EmitCompilerGeneratedFiles>
+
+    <!-- Debug is not AOT, so none of this is needed to run - and both cost on every keystroke, not
+         just on build: the optimizer is a source generator and the warning level is what raises the
+         ~1800 CsWinRT1034 diagnostics the IDE recomputes live. CsWinRTAotExportsEnabled turns
+         itself off with PublishAot. -->
+    <CsWinRTAotOptimizerEnabled Condition="'$(Configuration)' == 'Debug'">false</CsWinRTAotOptimizerEnabled>
+    <CsWinRTAotWarningLevel Condition="'$(Configuration)' == 'Debug'">0</CsWinRTAotWarningLevel>
+
+    <!-- Properties\AssemblyInfo.cs stays with the legacy project (see the Compile Remove below);
+         these carry its values over to the attributes the SDK generates in its place. -->
+    <AssemblyTitle>Telegram</AssemblyTitle>
+    <Product>Telegram</Product>
+    <Copyright>Copyright ©  2015</Copyright>
+
+    <!-- The .NET Native project's constants, minus the ones that were only ever about it.
+         NET9_0_OR_GREATER arrives on its own and is what the source already switches on. -->
+    <DefineConstants>$(DefineConstants);NETFX_CORE;WINDOWS_UWP;CODE_ANALYSIS</DefineConstants>
+    <NoWarn>$(NoWarn);2008</NoWarn>
+
+    <!-- The one key in the repository, shared by every project that packages the app. Only
+         reached when this project is built on its own with signing on: the bundle is signed by
+         Telegram.Msix.Modern, which names the same file.
+
+         It also arms a trap, so keep the UapAppxPackageBuildMode scoping in that wapproj. A store
+         mode reaching this project turns on its own single-project packaging, which used to fail
+         loudly with APPX0101 for want of a key; with one here it would instead succeed, quietly
+         costing a second ILC-sized packaging pass beside the bundle's. -->
+    <PackageCertificateKeyFile>..\Telegram_TemporaryKey.pfx</PackageCertificateKeyFile>
+  </PropertyGroup>
+
+  <!--
+    Compile and Page are globbed, against Telegram.csproj's 1250 hand-listed Compile and 473 Page
+    entries. The two lists agree today except for the six files below, which are on disk and not
+    in the legacy project; a parity check between the glob and that list is still to be written.
+  -->
+  <ItemGroup>
+    <Compile Remove="Common\HttpServer.cs" />
+    <Compile Remove="Common\MediaHttpServer.cs" />
+    <Compile Remove="Controls\SettingsCheckBox.cs" />
+    <Compile Remove="Entities\SourceGenerationContext.cs" />
+    <Compile Remove="Streams\DiceFileSource.cs" />
+    <!-- The SDK generates these attributes itself, and two sets of them is CS0579. -->
+    <Compile Remove="Properties\AssemblyInfo.cs" />
+    <!-- The other side of the fork Telegram.Win32.csproj makes: its host partials and its own
+         process entry point are on disk beside these sources and must not be compiled here. -->
+    <Compile Remove="**\*.Win32.cs" />
+    <Compile Remove="Host\**" />
+  </ItemGroup>
+
+  <!--
+    A separate identity, so this installs beside the .NET Native build instead of replacing it -
+    different package family means a separate LocalState too, so the two do not share an account.
+    Patched into obj rather than kept as a second manifest: the real one is 108 lines of
+    capabilities, extensions and file associations, and a copy would drift the first time one of
+    them changes.
+  -->
+  <PropertyGroup>
+    <!-- Single-project MSIX, so this project can deploy and run on its own while the port is in
+         progress. Telegram.Msix still packages the shipping build; Phase 6 decides whether the
+         modern one joins it there or keeps packaging itself. Without EnableMsixTooling the PRI
+         targets are half-configured and fail on IntermediateExtension. -->
+    <AppxPackage>true</AppxPackage>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <ModernPackageIdentity>38833FF26BA1D.UnigramNet10</ModernPackageIdentity>
+    <ModernPackageDisplayName>Unigram .NET 10</ModernPackageDisplayName>
+    <!-- BaseIntermediateOutputPath, not IntermediateOutputPath: the latter is still empty when
+         this evaluates, which collapses the destination onto Package.appxmanifest itself and
+         rewrites the source manifest in place. The guard below is there because that happened. -->
+    <!-- Alternative installs beside Telegram.csproj's package; Original replaces it. In the path
+         as well as the condition, because the target is incremental on the source manifest and
+         this file - flipping the property alone would leave the previous manifest in place. -->
+    <ModernIdentity Condition="'$(ModernIdentity)' == ''">Alternative</ModernIdentity>
+    <ModernAppxManifest>$(BaseIntermediateOutputPath)Package.$(ModernIdentity).appxmanifest</ModernAppxManifest>
+    <ModernManifestNamespaces>&lt;Namespace Prefix='f' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;&lt;Namespace Prefix='uap' Uri='http://schemas.microsoft.com/appx/manifest/uap/windows10' /&gt;</ModernManifestNamespaces>
+  </PropertyGroup>
+
+  <Target Name="PatchModernAppxManifest"
+          BeforeTargets="PrepareForBuild"
+          Inputs="Package.appxmanifest;$(MSBuildThisFileFullPath)"
+          Outputs="$(ModernAppxManifest)">
+    <PropertyGroup>
+      <_ModernManifestFull>$([System.IO.Path]::GetFullPath('$(ModernAppxManifest)'))</_ModernManifestFull>
+      <_SourceManifestFull>$([System.IO.Path]::GetFullPath('Package.appxmanifest'))</_SourceManifestFull>
+    </PropertyGroup>
+    <Error Condition="'$(_ModernManifestFull)' == '$(_SourceManifestFull)'"
+           Text="ModernAppxManifest resolves to the source manifest; patching it would rewrite Telegram.csproj's own identity." />
+    <Copy SourceFiles="Package.appxmanifest" DestinationFiles="$(ModernAppxManifest)" />
+    <!-- -p:ModernIdentity=Original leaves the copy alone, so this deploys as the identity
+         Telegram.csproj uses and replaces it rather than installing beside it. -->
+    <XmlPoke Condition="'$(ModernIdentity)' != 'Original'"
+             XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="/f:Package/f:Identity/@Name" Value="$(ModernPackageIdentity)" />
+    <XmlPoke Condition="'$(ModernIdentity)' != 'Original'"
+             XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="/f:Package/f:Properties/f:DisplayName" Value="$(ModernPackageDisplayName)" />
+    <XmlPoke Condition="'$(ModernIdentity)' != 'Original'"
+             XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="/f:Package/f:Applications/f:Application/uap:VisualElements/@DisplayName" Value="$(ModernPackageDisplayName)" />
+  </Target>
+
+  <ItemGroup>
+    <!-- The .resw under Strings\ need no PRIResource items: with the MSIX tooling on, the SDK
+         globs them itself, and listing them as well is NETSDK1022. -->
+    <AppxManifest Include="$(ModernAppxManifest)" />
+  </ItemGroup>
+
+  <!--
+    Content needs CopyToOutputDirectory here. The legacy UWP project system packaged Content
+    implicitly; SDK-style does not, and without it the app starts, initialises TDLib, and then
+    dies on `Cannot locate resource from 'ms-appx:///Assets/grammars.dat'` because nothing
+    under Assets\ was ever laid down.
+
+    Assets\** is auto-included by the MSIX tooling, so it is updated rather than included - and it
+    sweeps in files that are source rather than payload, hence the removals below. What survives
+    them is Telegram.csproj's list exactly, plus the ten high-contrast tile logos it never listed.
+  -->
+  <ItemGroup>
+    <!-- The LottieGen inputs under Icons\ and the C# they generate (compiled, never shipped), the
+         mockup art that only theme_preview_image.jpg is used from, the icon font's glyph map, and
+         the shader sources beside the compiled i420.bin. -->
+    <Content Remove="Assets\Icons\**" />
+    <!-- The notification area icons: this flavour has no in process tray, Telegram.Stub owns it. -->
+    <Content Remove="Assets\Tray\**" />
+    <Content Remove="Assets\Mockup\**" />
+    <Content Include="Assets\Mockup\theme_preview_image.jpg" />
+    <Content Remove="Assets\Fonts\Telegram.json" />
+    <Content Remove="Assets\i420.bat" />
+    <Content Remove="Assets\i420.fxlib" />
+    <Content Remove="Assets\i420.hlsl" />
+
+    <Content Update="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Libraries\unigram-iv-editor\editor.html" Link="Assets\editor.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Libraries\libprisma\libprisma\grammars.dat" Link="Assets\grammars.dat" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Libraries\MicroTeX\res\fonts\**\*.ttf" Link="res\fonts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <AppxManifest Remove="obj\modern\Package.Alternative.appxmanifest" />
+    <None Include="Assets\i420.hlsl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.3.2" />
+    <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+    <PackageReference Include="SQLitePCLRaw.bundle_winsqlite3" Version="2.1.11" />
+    <PackageReference Include="Win2D.uwp" Version="1.28.3" />
+    <!-- Dropped against Telegram.csproj: Microsoft.NETCore.UniversalWindowsPlatform, System.Memory,
+         System.ValueTuple, Microsoft.Bcl.HashCode, PolySharp, System.Text.Json,
+         System.Threading.Channels (all in-box on net10.0, and NU1510 for the last two), and
+         System.Reflection.Metadata, which nothing in the app references. -->
+  </ItemGroup>
+
+  <!--
+    The two local WinRT components. A bare winmd Reference, which is what Telegram.csproj used
+    for RLottie before lottie moved into Telegram.Native, is rejected here with NETSDK1130, so
+    CsWinRT generates the projections instead.
+    Everything in CsWinRTInputs is read for metadata; only the namespaces in CsWinRTIncludes are
+    emitted - which is why Win2D's winmd is an input (both components have Win2D types in their
+    signatures) while Win2D itself still comes from its own package projection.
+  -->
+  <PropertyGroup>
+    <CsWinRTIncludes>Telegram.Native</CsWinRTIncludes>
+    <!-- 3 is the loudest level: it adds the casting, ternary, switch and constructor-argument
+         cases on top of the defaults. Every AOT bug in this port so far was a marshalling
+         mistake that only showed up by running the feature, so noise here is worth paying for.
+
+         Conditioned, because this used to be unconditional and sits later in the file than the
+         Debug override above, so it silently won and Debug paid for ~1800 CsWinRT1034 diagnostics
+         on every compile - the exact cost that override was added to remove. -->
+    <CsWinRTAotWarningLevel Condition="'$(CsWinRTAotWarningLevel)' == ''">3</CsWinRTAotWarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 2.3.1, not 2.2.0, for the Native AOT analyzers: collection expressions and the
+         IReferenceArray cases are diagnosed at build time rather than at the call site.
+         3.0.0-preview is a different branch and cannot build UWP XAML. -->
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" />
+    <CsWinRTInputs Include="..\$(Platform)\$(Configuration)\Telegram.Native\Telegram.Native.winmd" />
+    <CsWinRTInputs Include="..\$(Platform)\$(Configuration)\Telegram.Native.Calls\Telegram.Native.Calls.winmd" />
+    <CsWinRTInputs Include="$(NuGetPackageRoot)win2d.uwp\1.28.3\lib\uap10.0\Microsoft.Graphics.Canvas.winmd" />
+  </ItemGroup>
+
+  <!-- Kept in step with Telegram.csproj by hand: the generator reads TdParsers and emits parsers,
+       the hand-written code reads the constants and calls them, so the two projects must agree or
+       the generated file calls helpers that were compiled out.
+
+       Changing this needs obj's generated editorconfig deleted: the value reaches the
+       generator through it, and it is not rewritten when the property alone changes, so
+       the next build emits one parser set against the other's constants. -->
+  <PropertyGroup>
+    <TdParsers>Pointer</TdParsers>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TdParsers)' != 'Pointer'">
+    <DefineConstants>$(DefineConstants);TD_READER_PARSER</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TdParsers)' != 'Reader'">
+    <DefineConstants>$(DefineConstants);TD_POINTER_PARSER</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Roslyn | MSBuild - see TdSchemaMode. CsWinRT's generator never sees what SchemaGenerator
+       emitted, so it files the vtable for a schema type under an unqualified key
+       ("Telegram.Vector`1[Message]") that type.ToString() never produces, and the CCW is looked up
+       and missed at runtime. MSBuild writes the same text to obj/ before CoreCompile so it is
+       compiled as ordinary source and CsWinRT can resolve it.
+
+       Put this back to Roslyn once CsWinRT resolves them on its own - nothing else has to change,
+       and Telegram.Generators.Cli can then be deleted. -->
+  <PropertyGroup>
+    <TdSchemaMode Condition="'$(TdSchemaMode)' == ''">MSBuild</TdSchemaMode>
+    <TdSchemaSource>$(MSBuildThisFileDirectory)..\Libraries\tdjson\td_api.tl</TdSchemaSource>
+    <TdSchemaCli>$(MSBuildThisFileDirectory)..\Telegram.Generators.Cli\bin\$(Configuration)\net10.0\Telegram.Generators.Cli.dll</TdSchemaCli>
+  </PropertyGroup>
+
+  <!-- Opt-in (-p:Instrumented=true): compiles in the Profiler probes and Instrumentation.Register,
+       which keeps a WeakReference per registered object for the session, so it must not reach a
+       shipping build. Telegram.csproj has it on in Debug instead. -->
+  <PropertyGroup Condition="'$(Instrumented)' == 'true'">
+    <DefineConstants>$(DefineConstants);INSTRUMENTATION</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Telegram.Generators\Telegram.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+    <!-- DynamicCastRootGenerator runs a semantic query per cast in the app - 8.8s a build - and
+         exists only so trimming cannot drop the metadata a cast needs. Debug is not trimmed, so
+         what it emits there is inert. WinRTExposedTypeAnalyzer goes with it, and reports on a
+         Release build instead. -->
+    <ProjectReference Include="..\Telegram.Generators.WinRT\Telegram.Generators.WinRT.csproj"
+                      Condition="'$(Configuration)' != 'Debug'"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="..\Libraries\tdjson\td_api.tl" />
+    <CompilerVisibleProperty Include="TdParsers" />
+    <CompilerVisibleProperty Include="TdSchemaMode" />
+    <!-- Ordering only, hence ReferenceOutputAssembly=false: the app runs the built dll by path.
+         Platform is removed because this is an AnyCPU tool and the app builds x64 and ARM64. -->
+    <ProjectReference Include="..\Telegram.Generators.Cli\Telegram.Generators.Cli.csproj"
+                      Condition="'$(TdSchemaMode)' == 'MSBuild'"
+                      ReferenceOutputAssembly="false"
+                      GlobalPropertiesToRemove="Platform;RuntimeIdentifier;PublishAot;SelfContained" />
+  </ItemGroup>
+
+  <!-- IntermediateOutputPath is still empty during evaluation, so the path cannot be a property
+       group at project scope - the same trap ModernAppxManifest documents above. Getting it wrong
+       is silent: the Exec writes to the right place, the Compile item points at the wrong one, and
+       the build fails with every Telegram.Td.Api type unresolved. -->
+  <Target Name="ResolveTdSchemaPath" Condition="'$(TdSchemaMode)' == 'MSBuild'">
+    <PropertyGroup>
+      <!-- No trailing separator: cmd reads the backslash before a closing quote as an escape, so
+           a directory passed as "...\" swallows the quote and takes the next argument with it. -->
+      <TdSchemaDir>$(IntermediateOutputPath)TdSchema</TdSchemaDir>
+      <TdSchemaFile>$(TdSchemaDir)\TdDotNetApi.g.cs</TdSchemaFile>
+      <TdSchemaStamp>$(TdSchemaDir)\schema.stamp</TdSchemaStamp>
+    </PropertyGroup>
+  </Target>
+
+  <!-- Before MarkupCompilePass1, not BeforeCompile: UseUwp injects
+       MarkupCompilePass1;XamlPreCompile;MarkupCompilePass2 into PrepareResourcesDependsOn, and
+       PrepareResources runs a whole phase ahead of Compile. XamlPreCompile is a real csc pass over
+       @(Compile) that resolves every x:Bind, so the schema has to be in @(Compile) by then - a
+       BeforeCompile hook fails there first, with every Telegram.Td.Api type unresolved. -->
+  <Target Name="GenerateTdSchema" BeforeTargets="MarkupCompilePass1;BeforeCompile" Condition="'$(TdSchemaMode)' == 'MSBuild'"
+          DependsOnTargets="ResolveTdSchemaPath"
+          Inputs="$(TdSchemaSource);@(TdSchemaCliSource)" Outputs="$(TdSchemaStamp)">
+    <Exec Command="&quot;$(DOTNET_HOST_PATH)&quot; &quot;$(TdSchemaCli)&quot; --schema &quot;$(TdSchemaSource)&quot; --out &quot;$(TdSchemaDir)&quot; --parsers $(TdParsers)" />
+    <!-- The stamp is the output, not the .cs: the emitter leaves the file alone when the text is
+         unchanged, so its timestamp never catches up to the inputs and the target would re-run on
+         every build forever. -->
+    <Touch Files="$(TdSchemaStamp)" AlwaysCreate="true" />
+  </Target>
+
+  <!-- Separate from the target above, and it has to be: an up-to-date Inputs/Outputs check skips
+       the whole target, which would take the Compile item with it and fail the build with every
+       Telegram.Td.Api type missing. The item also has to be added from inside a target - at
+       project scope it evaluates before anything runs, when the file does not exist yet. -->
+  <Target Name="IncludeTdSchema" BeforeTargets="MarkupCompilePass1;BeforeCompile" DependsOnTargets="GenerateTdSchema"
+          Condition="'$(TdSchemaMode)' == 'MSBuild'">
+    <Error Condition="!Exists('$(TdSchemaFile)')" Text="TdSchemaMode is MSBuild but $(TdSchemaFile) was not written." />
+    <ItemGroup>
+      <Compile Include="$(TdSchemaFile)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Same copy-local set as Telegram.csproj, including tdjson.pdb by name: it arrives as a copy
+       local path rather than a Reference, so RAR never runs its related-file discovery and without
+       this the symbols are missing from every TDLib crash. -->
+  <PropertyGroup>
+    <OpenSSLPlatform>-$(Platform)</OpenSSLPlatform>
+  </PropertyGroup>
+
+  <!-- The two C++/WinRT components are consumed as projections rather than ProjectReferences, so
+       nothing copies their binaries the way a project reference would. They come from the same
+       build output the winmds are read from, which is also why this project does not build them:
+       Telegram.Native has to have been built by the solution first. Calls only adds its own two
+       files; the rest of its folder is the same ffmpeg set.
+
+       $(TelegramRoot) rather than a relative path: these paths reach the .appxrecipe
+       verbatim, and Visual Studio resolves the recipe against its own working directory,
+       so a relative one fails deployment with DEP1000 even though the build copied it. -->
+  <ItemGroup>
+    <!-- Only the components themselves. Their folders also hold the whole ffmpeg/libvlc set, but
+         those come from vcpkg through Directory.Build.targets, as they do for Telegram.csproj -
+         copying both is NETSDK1152, sixteen files deep. Same for Win2D, which comes from its
+         package, and Telegram.Td.dll, which the shipping package does not carry at all. -->
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)$(Platform)\$(Configuration)\Telegram.Native\Telegram.Native.dll" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)$(Platform)\$(Configuration)\Telegram.Native\Telegram.Native.pri" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)$(Platform)\$(Configuration)\Telegram.Native.Calls\Telegram.Native.Calls.dll" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)$(Platform)\$(Configuration)\Telegram.Native.Calls\Telegram.Native.Calls.pri" />
+    <!-- Telegram.csproj gets these two through its vcxproj ProjectReferences, whose debug symbols
+         output group the packaging project asks for. Nothing here does, so the .appxsym carried no
+         symbols for either component. -->
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)$(Platform)\$(Configuration)\Telegram.Native\Telegram.Native.pdb" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)$(Platform)\$(Configuration)\Telegram.Native.Calls\Telegram.Native.Calls.pdb" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same reason as tdjson.pdb below: Telegram.csproj names these itself as copy-local
+         paths, and there is no Reference here to find them from. -->
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)Libraries\tdjson\$(Platform)\tdjson.dll" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)Libraries\tdjson\$(Platform)\tdjson.pdb" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)Libraries\tdjson\$(Platform)\libcrypto-3$(OpenSSLPlatform).dll" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)Libraries\tdjson\$(Platform)\libssl-3$(OpenSSLPlatform).dll" />
+    <ReferenceCopyLocalPaths Include="$(TelegramRoot)Libraries\tdjson\$(Platform)\zlib1.dll" />
+  </ItemGroup>
+
+  <!--
+    ILC's pdb, the only one that can read a stack in the app itself.
+
+    The NativeAOT targets take the IL pdb out of the publish list and put nothing back, so nothing
+    told the packaging project that the app had symbols at all. _CopyAotSymbols does drop the pdb
+    into the publish folder, but it runs after Publish, long after the publish item list the
+    packaging project reads has been computed - so the .appxsym never saw it.
+  -->
+  <Target Name="PublishNativeSymbols" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(NativeOutputPath)$(TargetName)$(NativeSymbolExt)">
+        <RelativePath>$(TargetName)$(NativeSymbolExt)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+</Project>

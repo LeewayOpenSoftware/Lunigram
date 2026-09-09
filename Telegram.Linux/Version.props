@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    ÚNICA fuente de versión del port Linux. Los scripts de packaging leen estos
+    dos valores; Telegram.Linux.csproj los importa para que la etiqueta dentro
+    de la aplicación y los nombres/metadatos de los artefactos no diverjan.
+
+    OJO: Package.appxmanifest NO es la fuente. Sigue diciendo 12.7.0.12195 incluso
+    en el tag v12.10.2 de upstream, que nunca lo toca. De ahí salió el 12195
+    original (su cuarto componente); como upstream no lo mueve, el código de
+    versión pasa a un esquema propio y monótono: major*10000 + minor*100 + patch.
+  -->
+  <PropertyGroup>
+    <UnigramLinuxVersion>12.10.2</UnigramLinuxVersion>
+    <UnigramLinuxVersionCode>121002</UnigramLinuxVersionCode>
+    <UnigramLinuxReleaseDate>2026-09-09</UnigramLinuxReleaseDate>
+    <ApplicationDisplayVersion>$(UnigramLinuxVersion)</ApplicationDisplayVersion>
+    <ApplicationVersion>$(UnigramLinuxVersionCode)</ApplicationVersion>
+  </PropertyGroup>
+</Project>

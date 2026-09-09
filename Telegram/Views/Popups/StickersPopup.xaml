@@ -1,0 +1,282 @@
+﻿<controls:ContentPopup x:Class="Telegram.Views.Popups.StickersPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:local="using:Telegram.Views.Popups"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:common="using:Telegram.Common"
+                       xmlns:viewModels="using:Telegram.ViewModels.Drawers"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:not_win="http://uno.ui/not_win"
+                       mc:Ignorable="d not_win"
+                       VerticalContentAlignment="Stretch"
+                       ContentMaxHeight="500"
+                       Padding="0,24,0,0"
+                       Closing="OnClosing"
+                       IsDismissButtonVisible="True"
+                       PrimaryButtonText="{x:Bind ConvertIsInstalled(ViewModel.IsInstalled, ViewModel.IsArchived, ViewModel.StickerType), Mode=OneWay}"
+                       PrimaryButtonClick="ContentDialog_PrimaryButtonClick"
+                       ButtonsLayout="Vertical">
+
+    <controls:ContentPopup.Resources>
+        <!--
+            Linux only, and unused on Windows. One sticker cell for the repeater below. The cell
+            stretches so the columns share the whole popup width; the sticker inside does not.
+            Background must be Transparent rather than unset or the cell is not hit-testable, so
+            a tap would never reach it. Height is assigned per pack in code, because a custom-emoji
+            pack packs 8 to a row and a sticker pack 5.
+        -->
+        <DataTemplate x:Key="LinuxStickerTemplate">
+            <Grid HorizontalAlignment="Stretch"
+                  Background="Transparent"
+                  Tapped="OnStickerTapped">
+                <controls:AnimatedImage x:Name="Player"
+                                        ReplacementColor="{ThemeResource TelegramForegroundAccentBrush}"
+                                        AutoPlay="False"
+                                        LimitFps="True"
+                                        DecodeFrameType="Logical"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Ready="Player_Ready" />
+            </Grid>
+        </DataTemplate>
+
+        <!--
+            Linux only. One PACK: its title, then its own stickers in a wrap layout. The title is
+            what GroupStyle.HeaderTemplate used to draw and it has to live in the item template,
+            because Uno only draws group headers from the virtualizing panel path and no panel
+            that both wraps and virtualizes exists on this head. Visibility is driven from code:
+            a single-pack preview shows no header, which is what the GridView did by collapsing
+            the group header container when Items.Count was 1.
+        -->
+        <DataTemplate x:Key="LinuxStickerSetTemplate">
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock x:Name="SetTitle"
+                           Text="{Binding Title}"
+                           Style="{StaticResource InfoCaptionTextBlockStyle}"
+                           Margin="2,8,2,4" />
+                <ItemsRepeater x:Name="SetStickers"
+                               ItemsSource="{Binding Stickers}"
+                               ItemTemplate="{StaticResource LinuxStickerTemplate}">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout Orientation="Horizontal"
+                                           ItemsStretch="Fill" />
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+            </StackPanel>
+        </DataTemplate>
+    </controls:ContentPopup.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock common:TextBlockHelper.Markdown="{x:Bind ViewModel.Title, Mode=OneWay}"
+                   Style="{StaticResource PopupTextBlockStyle}"
+                   Margin="24,0,12,12" />
+
+        <GridView x:Name="ScrollingHost"
+                  ItemsSource="{x:Bind ViewModel.ItemsView}"
+                  ItemClick="List_ItemClick"
+                  IsItemClickEnabled="True"
+                  SelectionMode="None"
+                  ChoosingGroupHeaderContainer="OnChoosingGroupHeaderContainer"
+                  ChoosingItemContainer="OnChoosingItemContainer"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  common:FluidGridView.OrientationOnly="False"
+                  Padding="16,0,16,20"
+                  Grid.Row="1">
+            <common:FluidGridView.Triggers>
+                <common:FluidGridViewTrigger RowsOrColumns="{x:Bind ConvertItemsPerRow(ViewModel.StickerType), Mode=OneWay}" />
+            </common:FluidGridView.Triggers>
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem"
+                       BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                    <Setter Property="Margin"
+                            Value="0" />
+                    <Setter Property="Padding"
+                            Value="0" />
+                    <Setter Property="MinWidth"
+                            Value="0" />
+                    <Setter Property="MinHeight"
+                            Value="0" />
+                    <Setter Property="HorizontalContentAlignment"
+                            Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment"
+                            Value="Stretch" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="2">
+                        <controls:AnimatedImage x:Name="Player"
+                                                ReplacementColor="{ThemeResource TelegramForegroundAccentBrush}"
+                                                AutoPlay="False"
+                                                LimitFps="True"
+                                                DecodeFrameType="Logical"
+                                                Ready="Player_Ready" />
+                    </Grid>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+            <GridView.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate x:DataType="viewModels:StickerSetViewModel">
+                            <Grid Padding="8,0,4,4">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock common:TextBlockHelper.Markdown="{x:Bind Title}"
+                                           VerticalAlignment="Bottom"
+                                           Style="{StaticResource BaseTextBlockStyle}" />
+                                <TextBlock Text="{x:Bind common:Locale.Declension('Stickers', Size)}"
+                                           VerticalAlignment="Top"
+                                           Style="{StaticResource InfoBodyTextBlockStyle}"
+                                           Grid.Row="1" />
+
+                                <controls:SettingsButton Content="{CustomResource Add}"
+                                                         Visibility="{x:Bind IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=invert}"
+                                                         Style="{StaticResource PillButtonStyle}"
+                                                         HorizontalAlignment="Right"
+                                                         VerticalAlignment="Center"
+                                                         Padding="12,1,12,2"
+                                                         CornerRadius="12"
+                                                         Margin="0,-6"
+                                                         Grid.RowSpan="2"
+                                                         Grid.Column="1" />
+                            </Grid>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                    <GroupStyle.HeaderContainerStyle>
+                        <Style TargetType="GridViewHeaderItem">
+                            <Setter Property="Background"
+                                    Value="Transparent" />
+                            <Setter Property="FontFamily"
+                                    Value="{ThemeResource ContentControlThemeFontFamily}" />
+                            <Setter Property="FontSize"
+                                    Value="{ThemeResource ListViewHeaderItemThemeFontSize}" />
+                            <Setter Property="Margin"
+                                    Value="0" />
+                            <Setter Property="Padding"
+                                    Value="0" />
+                            <Setter Property="HorizontalContentAlignment"
+                                    Value="Stretch" />
+                            <Setter Property="VerticalContentAlignment"
+                                    Value="Top" />
+                            <Setter Property="MinHeight"
+                                    Value="32" />
+                            <Setter Property="UseSystemFocusVisuals"
+                                    Value="True" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GridViewHeaderItem">
+                                        <Border Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                            <ContentPresenter x:Name="ContentPresenter"
+                                                              Margin="{TemplateBinding Padding}"
+                                                              Content="{TemplateBinding Content}"
+                                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                              ContentTransitions="{TemplateBinding ContentTransitions}"
+                                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GroupStyle.HeaderContainerStyle>
+                </GroupStyle>
+            </GridView.GroupStyle>
+            <GridView.ItemContainerTransitions>
+                <TransitionCollection />
+            </GridView.ItemContainerTransitions>
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <!--
+                        Uno's ItemsWrapGrid is a shell (see CommonStyles.xaml, same Setter comment):
+                        it measures no width and materialises no container, so the pack body came up
+                        empty. Safe to swap here in particular because this GridView declares no
+                        Header and no Footer, so it cannot meet the second-order trap the profile
+                        tabs met (ItemsPresenter reads VariableSizedWrapGrid's PhysicalOrientation as
+                        the ITEM-FLOW axis and stacks Header BESIDE the panel).
+                        AreStickyGroupHeadersEnabled has no equivalent and a non-virtualizing panel
+                        does not draw group headers; only the many-packs arm of this popup groups,
+                        and the single-pack arm collapses its header anyway.
+                    -->
+                    <win:ItemsWrapGrid Orientation="Horizontal"
+                                       AreStickyGroupHeadersEnabled="False" />
+                    <!--
+                        ItemWidth/ItemHeight are not decoration here, they are what stops Uno
+                        throwing. Read off the deployed Uno.UI 6.6.184: VariableSizedWrapGrid.
+                        ComputeBounds falls back PER AXIS to child 0's DesiredSize when they are
+                        unset (both default to NaN), and CalculateOccupancyMap then divides by the
+                        cell size on both axes:
+                          itemsPerLine = (int)(available.Direct / itemSize.Direct)
+                          lineCount    = (int)Math.Floor(available.Indirect / itemSize.Indirect)
+                        A zero on either axis makes that quotient infinite, the int cast underflows,
+                        Math.Max(1, .) clamps it to 1, and a 1-wide or 1-tall occupancy map with N
+                        items sends FindAndFillNextAvailableRect off the end of the block:
+                          System.IndexOutOfRangeException
+                            at VariableSizedWrapGrid.OccupancyBlock.GetItem
+                            at VariableSizedWrapGrid.OccupancyMap.GetCurrentItemRect
+                        unhandled on the dispatcher tick, every tick, which is the hard freeze.
+                        Setting ONE axis is not enough: the other still collapses the map.
+                        Measured and fixed first by Oscar on the sticker drawer (78711ff).
+                        68 = the item template's 64x64 AnimatedImage FrameSize plus its
+                        Grid Margin="2" either side, the same cell the drawer uses. This list has
+                        FluidGridView.OrientationOnly="False", so FluidGridView overwrites BOTH
+                        axes with the responsive value as soon as a layout pass completes; the
+                        static pair only has to make that first pass possible.
+                    -->
+                    <not_win:VariableSizedWrapGrid Orientation="Horizontal"
+                                                   ItemWidth="68"
+                                                   ItemHeight="68" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </GridView>
+
+        <!--
+            Linux only, and it REPLACES the GridView above rather than decorating it.
+
+            The panel swap stopped the crash but could not make this render: the source here is a
+            grouped CollectionViewSource (StickersViewModel builds it with IsSourceGrouped) and of
+            the panels Uno ships none both wraps and virtualizes - ItemsWrapGrid and WrapGrid are
+            [NotImplemented] stubs on __SKIA__, ItemsStackPanel virtualizes but stacks, and
+            VariableSizedWrapGrid wraps but does not virtualize AND draws no group headers, so the
+            set titles were simply gone. Same shape Oscar landed on for the sticker drawer: an
+            outer repeater over the PACKS, which virtualizes, and one inner wrap repeater per pack
+            over its own stickers, so each pack keeps a real title.
+        -->
+        <not_win:ScrollViewer x:Name="RepeaterHost"
+                              Grid.Row="1"
+                              Visibility="Collapsed"
+                              Padding="16,0,16,20"
+                              HorizontalScrollMode="Disabled"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Visible">
+            <ItemsRepeater x:Name="Repeater"
+                           ItemTemplate="{StaticResource LinuxStickerSetTemplate}">
+                <ItemsRepeater.Layout>
+                    <StackLayout />
+                </ItemsRepeater.Layout>
+            </ItemsRepeater>
+        </not_win:ScrollViewer>
+
+        <controls:ScrollViewerScrim Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    ScrollingHost="{x:Bind ScrollingHost}"
+                                    BottomInset="0"
+                                    Grid.Row="1" />
+
+        <controls:MoreButton x:Name="MoreButton"
+                             Click="More_ContextRequested"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top"
+                             Margin="0,-24,40,0"
+                             CornerRadius="20" />
+    </Grid>
+</controls:ContentPopup>

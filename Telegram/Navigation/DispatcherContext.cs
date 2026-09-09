@@ -1,0 +1,223 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using Windows.System;
+#if LINUX
+// The global DispatcherQueue alias points at Microsoft.UI.Dispatching, whose TryEnqueue takes its
+// own priority enum rather than Windows.System.DispatcherQueuePriority (what `using Windows.System`
+// above would pick). The alias wins over the namespace import, so the interface follows suit.
+using DispatcherQueuePriority = Microsoft.UI.Dispatching.DispatcherQueuePriority;
+#endif
+
+namespace Telegram.Navigation
+{
+    public interface IDispatcherContext
+    {
+        void Dispatch(DispatcherQueueHandler action, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal);
+        Task DispatchAsync(Func<Task> func, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal);
+        Task DispatchAsync(Action action, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal);
+        Task<T> DispatchAsync<T>(Func<T> func, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal);
+        Task<T> DispatchAsync<T>(Func<Task<T>> func, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal);
+
+        bool HasThreadAccess { get; }
+    }
+
+    // DOCS: https://github.com/Windows-XAML/Template10/wiki/Docs-%7C-DispatcherWrapper
+    public partial class DispatcherContext : IDispatcherContext
+    {
+        [ThreadStatic]
+        private static IDispatcherContext _current;
+        public static IDispatcherContext Current => _current ??= TryCreate();
+
+        private static IDispatcherContext TryCreate()
+        {
+            var dispatcher = DispatcherQueue.GetForCurrentThread();
+            if (dispatcher != null)
+            {
+                return new DispatcherContext(dispatcher);
+            }
+
+            return null;
+        }
+
+        public DispatcherContext(DispatcherQueue dispatcher)
+        {
+            Logger.Info("Constructor");
+            _dispatcher = dispatcher;
+        }
+
+        public bool HasThreadAccess => _dispatcher.HasThreadAccess;
+
+        private readonly DispatcherQueue _dispatcher;
+
+        [DebuggerNonUserCode]
+        public Task DispatchAsync(Action action, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal)
+        {
+            if (_dispatcher.HasThreadAccess && priority == DispatcherQueuePriority.Normal)
+            {
+                action();
+                return Task.CompletedTask;
+            }
+            else
+            {
+                var tcs = new TaskCompletionSource<bool>();
+                var result = _dispatcher.TryEnqueue(priority, () =>
+                {
+                    try
+                    {
+                        action();
+                        tcs.TrySetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                });
+
+                if (result)
+                {
+                    return tcs.Task;
+                }
+
+                return Task.CompletedTask;
+            }
+        }
+
+        [DebuggerNonUserCode]
+        public Task DispatchAsync(Func<Task> func, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal)
+        {
+            if (_dispatcher.HasThreadAccess && priority == DispatcherQueuePriority.Normal)
+            {
+                return func();
+            }
+            else
+            {
+                var tcs = new TaskCompletionSource<bool>();
+                var result = _dispatcher.TryEnqueue(priority, async () =>
+                {
+                    try
+                    {
+                        await func();
+                        tcs.TrySetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                });
+
+                if (result)
+                {
+                    return tcs.Task;
+                }
+
+                return Task.CompletedTask;
+            }
+        }
+
+        [DebuggerNonUserCode]
+        public Task<T> DispatchAsync<T>(Func<T> func, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal)
+        {
+            if (_dispatcher.HasThreadAccess && priority == DispatcherQueuePriority.Normal)
+            {
+                return Task.FromResult(func());
+            }
+            else
+            {
+                var tcs = new TaskCompletionSource<T>();
+                var result = _dispatcher.TryEnqueue(priority, () =>
+                {
+                    try
+                    {
+                        tcs.TrySetResult(func());
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                });
+
+                if (result)
+                {
+                    return tcs.Task;
+                }
+                else
+                {
+                    return Task.FromResult<T>(default);
+                }
+            }
+        }
+
+        [DebuggerNonUserCode]
+        public Task<T> DispatchAsync<T>(Func<Task<T>> func, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal)
+        {
+            if (_dispatcher.HasThreadAccess && priority == DispatcherQueuePriority.Normal)
+            {
+                return func();
+            }
+            else
+            {
+                var tcs = new TaskCompletionSource<T>();
+                var result = _dispatcher.TryEnqueue(priority, async () =>
+                {
+                    try
+                    {
+                        tcs.TrySetResult(await func());
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                });
+                if (result)
+                {
+                    return tcs.Task;
+                }
+                else
+                {
+                    return Task.FromResult<T>(default);
+                }
+            }
+        }
+
+        [DebuggerNonUserCode]
+        public void Dispatch(DispatcherQueueHandler action, DispatcherQueuePriority priority = DispatcherQueuePriority.Normal)
+        {
+            if (_dispatcher.HasThreadAccess && priority == DispatcherQueuePriority.Normal)
+            {
+                action();
+            }
+            else
+            {
+                try
+                {
+                    // The handler runs as a CCW: an exception escaping it reaches CoreMessaging as a
+                    // failure HRESULT, and it fails the process fast (0xC000027B) with nothing logged.
+                    // Every DispatchAsync overload already guards its handler; this one did not.
+                    _dispatcher.TryEnqueue(priority, () =>
+                    {
+                        try
+                        {
+                            action();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error(ex.ToString());
+                        }
+                    });
+                }
+                catch
+                {
+                    // Most likey Excep_InvalidComObject_NoRCW_Wrapper, so we can just ignore it
+                }
+            }
+        }
+    }
+}

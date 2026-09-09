@@ -1,0 +1,75 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Converters;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+
+namespace Telegram.Controls.Cells.Revenue
+{
+    public sealed partial class StarSubscriptionCell : Grid
+    {
+        public StarSubscriptionCell()
+        {
+            InitializeComponent();
+        }
+
+        public void UpdateInfo(IClientService clientService, StarSubscription subscription)
+        {
+            if (subscription == null || !clientService.TryGetChat(subscription.ChatId, out Chat chat))
+            {
+                return;
+            }
+
+            Photo.Source = ProfilePictureSource.Chat(clientService, chat);
+            Title.Text = chat.Title;
+
+            if (subscription.IsCanceled)
+            {
+                Subtitle.Text = string.Format(Strings.StarsSubscriptionExpired, Formatter.Date(subscription.ExpirationDate));
+                Date.Text = Strings.StarsSubscriptionStatusCancelled;
+                Date.Foreground = BootStrapper.Current.Resources["SystemFillColorCriticalBrush"] as Brush;
+                Date.VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center;
+
+                Stars.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+
+                SetRow(Date, 0);
+                SetRowSpan(Date, 2);
+            }
+            else if (subscription.ExpirationDate < DateTime.Now.ToUnixTimeSeconds())
+            {
+                Subtitle.Text = string.Format(Strings.StarsSubscriptionExpired, Formatter.Date(subscription.ExpirationDate));
+                Date.Text = Strings.StarsSubscriptionStatusExpired;
+                Date.Foreground = BootStrapper.Current.Resources["SystemFillColorCriticalBrush"] as Brush;
+                Date.VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center;
+
+                Stars.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+
+                SetRow(Date, 0);
+                SetRowSpan(Date, 2);
+            }
+            else
+            {
+                Subtitle.Text = string.Format(Strings.StarsSubscriptionRenews, Formatter.Date(subscription.ExpirationDate));
+                StarCount.Text = subscription.Pricing.StarCount.ToString("N0");
+                Date.Text = Strings.StarsParticipantSubscriptionPerMonth;
+                Date.Foreground = BootStrapper.Current.Resources["SystemControlDisabledChromeDisabledLowBrush"] as Brush;
+                Date.VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Top;
+
+                Stars.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+
+                SetRow(Date, 1);
+                SetRowSpan(Date, 1);
+            }
+        }
+    }
+}

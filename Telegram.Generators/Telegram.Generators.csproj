@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <OutputItemType>Analyzer</OutputItemType>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <Nullable>disable</Nullable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <!-- RS2008: analyzer-release-tracking bookkeeping for this project's own TDAPI0xx/TDDI0xx
+         diagnostics (AnalyzerReleases.Shipped/Unshipped.md). Real, but not something this port
+         maintains a release history for; suppressed here specifically, not with a blanket
+         WarningLevel=0 on the whole build (see PORTING.md, "Cómo compilar"). -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

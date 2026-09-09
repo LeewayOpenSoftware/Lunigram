@@ -1,0 +1,188 @@
+<controls:ContentPopup x:Class="Telegram.Views.Supergroups.Popups.SupergroupEditAdministratorPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:cells="using:Telegram.Controls.Cells"
+                       xmlns:chats="using:Telegram.Controls.Chats"
+                       xmlns:messages="using:Telegram.Controls.Messages"
+                       mc:Ignorable="d"
+                       Padding="0,24,0,0"
+                       PrimaryButtonClick="{x:Bind ViewModel.Continue}">
+
+    <Grid>
+        <ScrollViewer x:Name="ScrollingHost"
+                      VerticalScrollBarVisibility="Auto"
+                      VerticalScrollMode="Auto">
+            <StackPanel Margin="24,0,24,24">
+                <cells:ProfileCell x:Name="Cell"
+                                   Click="{x:Bind ViewModel.OpenProfile}"
+                                   Padding="0,0,0,12" />
+
+                <StackPanel x:Name="PermissionsRoot">
+                    <CheckBox x:Name="ChangeInfo"
+                              IsChecked="{x:Bind ViewModel.CanChangeInfo, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminChangeGroupInfo}" />
+
+                    <controls:SettingsExpander x:Name="CanManageMessagesRoot"
+                                               Visibility="Collapsed"
+                                               Background="Transparent"
+                                               MinHeight="32">
+                        <controls:SettingsExpander.Header>
+                            <CheckBox x:Name="CanManageMessages"
+                                      IsChecked="{x:Bind ViewModel.CanManageMessages, Mode=TwoWay}"
+                                      Margin="-16,-11,0,-12">
+                                <TextBlock>
+                                        <Run Text="{CustomResource ChannelManageMessages}" />
+                                        <Run Text="{x:Bind ConvertCanSendCount(ViewModel.CanManageMessagesCount), Mode=OneWay}"
+                                             FontWeight="SemiBold" />
+                                </TextBlock>
+                            </CheckBox>
+
+                        </controls:SettingsExpander.Header>
+                        <StackPanel>
+                            <CheckBox x:Name="CanPostMessages"
+                                      IsChecked="{x:Bind ViewModel.CanPostMessages, Mode=TwoWay}"
+                                      Content="{CustomResource EditAdminPostMessages}" />
+
+                            <CheckBox x:Name="CanEditMessages"
+                                      IsChecked="{x:Bind ViewModel.CanEditMessages, Mode=TwoWay}"
+                                      Content="{CustomResource EditAdminEditMessages}" />
+
+                            <CheckBox x:Name="CanDeleteMessages2"
+                                      IsChecked="{x:Bind ViewModel.CanDeleteMessages, Mode=TwoWay}"
+                                      Content="{CustomResource EditAdminDeleteMessages}" />
+                        </StackPanel>
+                    </controls:SettingsExpander>
+
+                    <controls:SettingsExpander x:Name="CanManageStoriesRoot"
+                                               Background="Transparent"
+                                               MinHeight="32">
+                        <controls:SettingsExpander.Header>
+                            <CheckBox x:Name="CanManageStories"
+                                      IsChecked="{x:Bind ViewModel.CanManageStories, Mode=TwoWay}"
+                                      Margin="-16,-11,0,-12">
+                                <TextBlock>
+                                        <Run Text="{CustomResource ChannelManageStories}" />
+                                        <Run Text="{x:Bind ConvertCanSendCount(ViewModel.CanManageStoriesCount), Mode=OneWay}"
+                                             FontWeight="SemiBold" />
+                                </TextBlock>
+                            </CheckBox>
+
+                        </controls:SettingsExpander.Header>
+                        <StackPanel>
+                            <CheckBox x:Name="CanPostStories"
+                                      IsChecked="{x:Bind ViewModel.CanPostStories, Mode=TwoWay}"
+                                      Content="{CustomResource EditAdminPostStories}" />
+
+                            <CheckBox x:Name="CanEditStories"
+                                      IsChecked="{x:Bind ViewModel.CanEditStories, Mode=TwoWay}"
+                                      Content="{CustomResource EditAdminEditStories}" />
+
+                            <CheckBox x:Name="CanDeleteStories"
+                                      IsChecked="{x:Bind ViewModel.CanDeleteStories, Mode=TwoWay}"
+                                      Content="{CustomResource EditAdminDeleteStories}" />
+                        </StackPanel>
+                    </controls:SettingsExpander>
+
+                    <CheckBox x:Name="DeleteMessages"
+                              IsChecked="{x:Bind ViewModel.CanDeleteMessages, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminGroupDeleteMessages}" />
+
+                    <CheckBox x:Name="BanUsers"
+                              IsChecked="{x:Bind ViewModel.CanRestrictMembers, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminBanUsers}" />
+
+                    <CheckBox x:Name="ManageDirectMessages"
+                              IsChecked="{x:Bind ViewModel.CanManageDirectMessages, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminManageDirect}" />
+
+                    <CheckBox x:Name="AddUsers"
+                              IsChecked="{x:Bind ViewModel.CanInviteUsers, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminAddUsers}" />
+
+                    <CheckBox x:Name="PinMessages"
+                              IsChecked="{x:Bind ViewModel.CanPinMessages, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminPinMessages}" />
+
+                    <CheckBox x:Name="ManageTags"
+                              IsChecked="{x:Bind ViewModel.CanManageTags, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminEditTags}" />
+
+                    <CheckBox x:Name="SendWelcomeMessages"
+                              IsChecked="{x:Bind ViewModel.CanSendWelcomeMessages, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminUserManageWelcomeMessages}" />
+
+                    <CheckBox x:Name="ManageTopics"
+                              IsChecked="{x:Bind ViewModel.CanManageTopics, Mode=TwoWay}"
+                              Content="{CustomResource ManageTopicsPermission}" />
+
+                    <CheckBox x:Name="ManageVideoChats"
+                              IsChecked="{x:Bind ViewModel.CanManageVideoChats, Mode=TwoWay}"
+                              Content="{CustomResource StartVoipChatPermission}" />
+
+                    <CheckBox x:Name="AddAdmins"
+                              IsChecked="{x:Bind ViewModel.CanPromoteMembers, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminAddAdmins}" />
+
+                    <CheckBox x:Name="IsAnonymous"
+                              IsChecked="{x:Bind ViewModel.IsAnonymous, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminSendAnonymously}" />
+
+                    <CheckBox x:Name="ProcessJoinRequests"
+                              IsChecked="{x:Bind ViewModel.ProcessJoinRequests, Mode=TwoWay}"
+                              Content="{CustomResource EditAdminProcessJoinRequests}" />
+                </StackPanel>
+
+                <TextBlock x:Name="PermissionsFooter"
+                           Text="{CustomResource EditAdminCantEdit}"
+                           Style="{StaticResource InfoCaptionTextBlockStyle}" />
+
+                <TextBlock x:Name="EditRankHeader"
+                           Text="{CustomResource EditAdminRank}"
+                           Style="{StaticResource BaseTextBlockStyle}"
+                           Margin="0,16,0,0" />
+
+                <Grid CornerRadius="4"
+                      Margin="0,8">
+                    <chats:ChatBackgroundControl x:Name="BackgroundControl" />
+                    <messages:MessageBubble x:Name="Message"
+                                            Margin="8,12,12,12" />
+                </Grid>
+
+                <TextBox x:Name="EditRankField"
+                         Text="{x:Bind ViewModel.CustomTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         TextChanged="EditRankField_TextChanged"
+                         FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                         MaxLength="16"
+                         PlaceholderText="{CustomResource MemberTagHintEdit}"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="True"
+                         Margin="0,0,0,8" />
+
+                <TextBlock x:Name="EditRankFooter"
+                           Text="{CustomResource EditAdminRankInfo}"
+                           Style="{StaticResource InfoCaptionTextBlockStyle}" />
+
+                <StackPanel Visibility="{x:Bind ConvertActionVisibility(TransferOwnership.Visibility, Dismiss.Visibility), Mode=OneWay}"
+                            Margin="-12,16,0,0">
+                    <Button x:Name="TransferOwnership"
+                            Click="{x:Bind ViewModel.Transfer}"
+                            Content="{CustomResource EditAdminGroupTransfer}"
+                            Visibility="{x:Bind ViewModel.CanTransferOwnership, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Style="{StaticResource AccentTextButtonStyle}" />
+                    <Button x:Name="Dismiss"
+                            Click="{x:Bind ViewModel.Dismiss}"
+                            Content="{CustomResource EditAdminRemoveAdmin}"
+                            Style="{StaticResource DangerTextButtonStyle}"
+                            Visibility="Collapsed" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <controls:ScrollViewerScrim Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    ScrollingHost="{x:Bind ScrollingHost}"
+                                    BottomInset="0" />
+    </Grid>
+</controls:ContentPopup>

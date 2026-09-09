@@ -1,0 +1,561 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Controls.Media;
+using Telegram.Streams;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+#if LINUX
+using AutomaticDragHelper = Telegram.Native.Controls.AutomaticDragHelper;
+#endif
+
+namespace Telegram.Controls.Messages.Content
+{
+    public sealed partial class PhotoContent : Control, IContentWithFile
+    {
+        private readonly bool _album;
+
+        private MessageViewModel _message;
+        public MessageViewModel Message => _message;
+
+        private PaidMediaPhoto _paidMedia;
+
+        private long _fileToken;
+        private long _thumbnailToken;
+
+        private ThumbnailController _thumbnailController;
+
+        private bool _hidden = true;
+
+        public PhotoContent(MessageViewModel message, PaidMediaPhoto paidMedia = null, bool album = false)
+        {
+            _message = message;
+            _paidMedia = paidMedia;
+            _album = album;
+
+            DefaultStyleKey = typeof(PhotoContent);
+            Telegram.Common.Instrumentation.Register(this);
+        }
+
+        public PhotoContent()
+        {
+            DefaultStyleKey = typeof(PhotoContent);
+        }
+
+        #region InitializeComponent
+
+        private AutomaticDragHelper ButtonDrag;
+
+        private AspectView LayoutRoot;
+        private ImageBrush ThumbnailTexture;
+        private ImageBrush Texture;
+        private AnimatedImage Player;
+        private AnimatedImage Particles;
+        private Border Overlay;
+        private TextBlock Subtitle;
+        private FileButton Button;
+        private SelfDestructTimer Timer;
+        private bool _templateApplied;
+
+        protected override void OnApplyTemplate()
+        {
+            LayoutRoot = GetTemplateChild(nameof(LayoutRoot)) as AspectView;
+            ThumbnailTexture = LayoutRoot.Background as ImageBrush;
+            Texture = GetTemplateChild(nameof(Texture)) as ImageBrush;
+            Player = GetTemplateChild(nameof(Player)) as AnimatedImage;
+            Particles = GetTemplateChild(nameof(Particles)) as AnimatedImage;
+            Overlay = GetTemplateChild(nameof(Overlay)) as Border;
+            Subtitle = GetTemplateChild(nameof(Subtitle)) as TextBlock;
+            Button = GetTemplateChild(nameof(Button)) as FileButton;
+            Timer = GetTemplateChild(nameof(Timer)) as SelfDestructTimer;
+
+            ButtonDrag = new AutomaticDragHelper(Button, true);
+            ButtonDrag.StartDetectingDrag();
+
+            Button.Click += Button_Click;
+            Button.DragStarting += Button_DragStarting;
+
+            _templateApplied = true;
+
+            if (_message != null)
+            {
+                UpdateMessage(_message);
+            }
+        }
+
+        private void Texture_ImageOpened(object sender, RoutedEventArgs e)
+        {
+            var visual = ElementComposition.GetElementVisual(LayoutRoot.Children[0]);
+            var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(0, 0);
+            animation.InsertKeyFrame(1, 1);
+
+            visual.StartAnimation("Opacity", animation);
+        }
+
+        #endregion
+
+        public void UpdateMessage(MessageViewModel message)
+        {
+            var prevId = _message?.Id;
+            var nextId = message?.Id;
+
+            _message = message;
+
+            var photo = GetContent(message, out _, out bool hasSpoiler, out bool isSecret, out _);
+            if (photo == null || !_templateApplied)
+            {
+                _hidden = (prevId != nextId || _hidden) && hasSpoiler;
+                return;
+            }
+
+            _hidden = (prevId != nextId || _hidden) && hasSpoiler;
+
+            LayoutRoot.Constraint = _album ? null : isSecret ? Constants.SecretSize : ((object)_paidMedia ?? photo);
+            //LayoutRoot.Background = null;
+            Texture.Stretch = _album
+                ? Stretch.UniformToFill
+                : Stretch.Uniform;
+
+            //UpdateMessageContentOpened(message);
+
+            var small = photo.GetSmall()?.Photo;
+            var big = photo.GetBig();
+
+            if (small == null || big == null)
+            {
+                UpdateTexture(message, null, null);
+                return;
+            }
+
+            if (small.Id != big.Photo.Id && !big.Photo.Local.IsDownloadingCompleted || isSecret || hasSpoiler)
+            {
+                UpdateThumbnail(message, small, photo.Minithumbnail, true, isSecret, hasSpoiler);
+            }
+            else
+            {
+                UpdateThumbnail(message, null, photo.Minithumbnail, false, isSecret, hasSpoiler);
+            }
+
+            UpdateManager.Subscribe(this, message, big.Photo, ref _fileToken, UpdateFile);
+            UpdateFile(message, big.Photo);
+        }
+
+        public void Mockup(MessagePhoto photo)
+        {
+            var big = photo.Photo.GetBig();
+
+            LayoutRoot.Constraint = photo;
+            LayoutRoot.Background = null;
+            Texture.ImageSource = new BitmapImage(new Uri(big.Photo.Local.Path));
+
+            Overlay.Opacity = 0;
+            Button.Opacity = 0;
+        }
+
+        public void UpdateMessageContentOpened(MessageViewModel message)
+        {
+            if (message.SelfDestructType is MessageSelfDestructTypeTimer selfDestructTypeTimer && _templateApplied)
+            {
+                Timer.Maximum = selfDestructTypeTimer.SelfDestructTime;
+                Timer.Value = DateTime.Now.AddSeconds(message.SelfDestructIn);
+            }
+        }
+
+        private void UpdateFile(File file)
+        {
+            UpdateFile(_message, file);
+        }
+
+        private void UpdateFile(MessageViewModel message, File file)
+        {
+            var photo = GetContent(message, out Video video, out bool hasSpoiler, out bool isSecret, out bool isGame);
+            if (photo == null || !_templateApplied)
+            {
+                return;
+            }
+
+            var big = photo.GetBig();
+            if (big == null || big.Photo.Id != file.Id)
+            {
+                return;
+            }
+
+            if (isGame)
+            {
+                Subtitle.Text = Strings.AttachGame;
+                Overlay.Opacity = 1;
+            }
+            else if (isSecret)
+            {
+                if (message.SelfDestructType is MessageSelfDestructTypeTimer selfDestructTypeTimer)
+                {
+                    Subtitle.Text = Icons.PlayFilled12 + "\u2004\u200A" + Locale.FormatTtl(selfDestructTypeTimer.SelfDestructTime, true);
+                }
+                else
+                {
+                    Subtitle.Text = Icons.ArrowClockwiseFilled12 + "\u2004\u200A1";
+                }
+
+                Overlay.Opacity = 1;
+            }
+            else
+            {
+                Overlay.Opacity = 0;
+            }
+
+            var size = Math.Max(file.Size, file.ExpectedSize);
+            var state = file.GetFileState(message, photo);
+
+            if (state == MessageContentState.Downloading)
+            {
+                Button.SetGlyph(file.Id, MessageContentState.Downloading);
+                Button.Progress = (double)file.Local.DownloadedSize / size;
+
+                Button.Opacity = 1;
+
+                UpdateTexture(message, null, null);
+            }
+            else if (state == MessageContentState.Uploading)
+            {
+                Button.SetGlyph(file.Id, MessageContentState.Uploading);
+                Button.Progress = (double)file.Remote.UploadedSize / size;
+
+                Button.Opacity = 1;
+
+                if (isSecret || string.IsNullOrEmpty(file.Local.Path))
+                {
+                    UpdateTexture(message, null, null);
+                }
+                else
+                {
+                    UpdateTexture(message, big, video);
+                }
+            }
+            else if (state == MessageContentState.Download)
+            {
+                Button.SetGlyph(file.Id, MessageContentState.Download);
+                Button.Progress = 0;
+
+                Button.Opacity = 1;
+
+                UpdateTexture(message, null, null);
+            }
+            else
+            {
+                if (isSecret)
+                {
+                    Button.SetGlyph(file.Id, MessageContentState.Ttl);
+                    Button.Progress = 1;
+
+                    Button.Opacity = 1;
+
+                    UpdateTexture(message, null, null);
+                }
+                else
+                {
+                    Button.Progress = 1;
+
+                    if (message.Content is MessageText text && text.LinkPreview?.Type is LinkPreviewTypeEmbeddedVideoPlayer || (message.SendingState is MessageSendingStatePending && message.MediaAlbumId != 0))
+                    {
+                        Button.SetGlyph(file.Id, message.SendingState is MessageSendingStatePending && message.MediaAlbumId != 0 ? MessageContentState.Confirm : MessageContentState.Play);
+                        Button.Opacity = 1;
+                    }
+                    else
+                    {
+                        Button.SetGlyph(file.Id, MessageContentState.Photo);
+                        Button.Opacity = 0;
+                    }
+
+                    if (hasSpoiler && _hidden)
+                    {
+                        UpdateTexture(message, null, null);
+                    }
+                    else
+                    {
+                        UpdateTexture(message, big, video);
+                    }
+                }
+            }
+        }
+
+        private int _textureId;
+
+        // Separate from _thumbnailController, which drives the blurred placeholder behind
+        // this one. The _textureId check above stays: it skips the load outright, where the
+        // controller's hash only decides whether to clear what it already holds.
+        private ThumbnailController _textureController;
+
+        private void UpdateTexture(MessageViewModel message, PhotoSize photoSize, Video video)
+        {
+            //if (video != null)
+            //{
+            //    Player.Source = new DelayedFileSource(message.ClientService, video.VideoValue);
+            //}
+
+            if (_textureId == (photoSize?.Photo.Id ?? 0))
+            {
+                return;
+            }
+
+            if (photoSize != null)
+            {
+                var width = photoSize.Width;
+                var height = photoSize.Height;
+
+                if (photoSize.Width > MaxWidth || photoSize.Height > MaxHeight)
+                {
+                    double ratioX = MaxWidth / photoSize.Width;
+                    double ratioY = MaxHeight / photoSize.Height;
+                    double ratio = Math.Max(ratioX, ratioY);
+
+                    width = (int)(photoSize.Width * ratio);
+                    height = (int)(photoSize.Height * ratio);
+                }
+
+                _textureId = photoSize.Photo.Id;
+
+                _textureController ??= new ThumbnailController(Texture);
+                _textureController.Bitmap(photoSize.Photo.Local.Path, width, height, _textureId);
+            }
+            else
+            {
+                _textureId = 0;
+                _textureController?.Recycle();
+            }
+        }
+
+        private void UpdateThumbnail(File file)
+        {
+            var photo = GetContent(_message, out _, out bool hasSpoiler, out bool isSecret, out _);
+            if (photo == null || !_templateApplied)
+            {
+                return;
+            }
+
+            UpdateThumbnail(_message, file, photo.Minithumbnail, false, isSecret, hasSpoiler);
+        }
+
+        private void UpdateThumbnail(MessageViewModel message, File file, Minithumbnail minithumbnail, bool download, bool isSecret, bool hasSpoiler)
+        {
+            _thumbnailController ??= new ThumbnailController(ThumbnailTexture);
+
+            if (file != null)
+            {
+                if (file.Local.IsDownloadingCompleted)
+                {
+                    _thumbnailController.Blur(file.Local.Path, isSecret || (hasSpoiler && _hidden) ? 15 : 3, HashCode.Combine(message.ChatId, message.Id));
+                }
+                else
+                {
+                    if (download)
+                    {
+                        if (file.Local.CanBeDownloaded && !file.Local.IsDownloadingActive)
+                        {
+                            message.ClientService.DownloadFile(file.Id, 1);
+                        }
+
+                        UpdateManager.Subscribe(this, message, file, ref _thumbnailToken, UpdateThumbnail, true);
+                    }
+
+                    if (minithumbnail != null)
+                    {
+                        _thumbnailController.Blur(minithumbnail.Data, isSecret || (hasSpoiler && _hidden) ? 15 : 3, HashCode.Combine(message.ChatId, message.Id));
+                    }
+                    else
+                    {
+                        _thumbnailController.Recycle();
+                    }
+                }
+            }
+            else if (minithumbnail != null)
+            {
+                _thumbnailController.Blur(minithumbnail.Data, isSecret || (hasSpoiler && _hidden) ? 15 : 3, HashCode.Combine(message.ChatId, message.Id));
+            }
+            else
+            {
+                _thumbnailController.Recycle();
+            }
+
+            Particles.Source = isSecret || (hasSpoiler && _hidden)
+                ? new ParticlesImageSource()
+                : null;
+        }
+
+        public void Recycle()
+        {
+            _message = null;
+            _textureId = 0;
+
+            _thumbnailController?.Recycle();
+            _textureController?.Recycle();
+
+            UpdateManager.Unsubscribe(this, ref _fileToken);
+            UpdateManager.Unsubscribe(this, ref _thumbnailToken);
+        }
+
+        public bool IsValid(MessageContent content, bool primary)
+        {
+            return content switch
+            {
+                MessagePhoto => true,
+                MessageGame game when !primary => game.Game.Photo != null,
+                MessageText text when text.LinkPreview != null && !primary => text.LinkPreview.HasPhoto(),
+                MessageInvoice invoice when invoice.PaidMedia is PaidMediaPhoto => true,
+                MessagePoll poll when poll.Media is PollMediaPhoto && !primary => true,
+                MessageSponsored { Content: MessagePhoto } when !primary => true,
+                _ => false,
+            };
+        }
+
+        private Photo GetContent(MessageViewModel message, out Video video, out bool hasSpoiler, out bool isSecret, out bool isGame)
+        {
+            video = null;
+            hasSpoiler = false;
+            isSecret = false;
+            isGame = false;
+
+            if (message?.Delegate == null)
+            {
+                return null;
+            }
+
+            if (_paidMedia != null)
+            {
+                return _paidMedia.Photo;
+            }
+
+            var content = message.GeneratedContent ?? message.Content;
+            if (content is MessagePhoto photo)
+            {
+                video = photo.Video;
+                hasSpoiler = photo.HasSpoiler;
+                isSecret = photo.IsSecret;
+                return photo.Photo;
+            }
+            else if (content is MessageGame game)
+            {
+                isGame = true;
+                return game.Game.Photo;
+            }
+            else if (content is MessageText text)
+            {
+                if (text.LinkPreview?.Type is LinkPreviewTypePhoto previewPhoto)
+                {
+                    return previewPhoto.Photo;
+                }
+                else if (text.LinkPreview?.Type is LinkPreviewTypeAlbum previewAlbum && previewAlbum.Media[0] is LinkPreviewAlbumMediaPhoto albumPhoto)
+                {
+                    return albumPhoto.Photo;
+                }
+
+                return text.LinkPreview?.Type switch
+                {
+                    LinkPreviewTypeApp app => app.Photo,
+                    LinkPreviewTypeArticle article => article.Photo,
+                    LinkPreviewTypeChannelBoost channelBoost => channelBoost.Photo.ToPhoto(),
+                    LinkPreviewTypeChat chat => chat.Photo.ToPhoto(),
+                    LinkPreviewTypeEmbeddedAudioPlayer embeddedAudioPlayer => embeddedAudioPlayer.Thumbnail,
+                    LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer => embeddedAnimationPlayer.Thumbnail,
+                    LinkPreviewTypeEmbeddedVideoPlayer embeddedVideoPlayer => embeddedVideoPlayer.Thumbnail,
+                    LinkPreviewTypeSupergroupBoost supergroupBoost => supergroupBoost.Photo.ToPhoto(),
+                    LinkPreviewTypeStoryAlbum storyAlbum => storyAlbum.PhotoIcon,
+                    LinkPreviewTypeUser user => user.Photo.ToPhoto(),
+                    LinkPreviewTypeVideoChat videoChat => videoChat.Photo.ToPhoto(),
+                    LinkPreviewTypeWebApp webApp => webApp.Photo,
+                    _ => null
+                };
+            }
+            else if (content is MessageInvoice invoice && invoice.PaidMedia is PaidMediaPhoto paidMediaPhoto)
+            {
+                return paidMediaPhoto.Photo;
+            }
+            else if (content is MessagePoll poll && poll.Media is PollMediaPhoto pollPhoto)
+            {
+                return pollPhoto.Photo;
+            }
+            else if (content is MessageSponsored { Content: MessagePhoto sponsored })
+            {
+                return sponsored.Photo;
+            }
+
+            return null;
+        }
+
+        private void Button_Click(object sender, RoutedEventArgs e)
+        {
+            var photo = GetContent(_message, out _, out bool hasSpoiler, out _, out _);
+            if (photo == null)
+            {
+                return;
+            }
+
+            var big = photo.GetBig();
+            if (big == null)
+            {
+                if (_message?.SendingState is MessageSendingStateFailed)
+                {
+                    _message.ClientService.Send(new DeleteMessages(_message.ChatId, new[] { _message.Id }, true));
+                }
+
+                return;
+            }
+
+            var file = big.Photo;
+            var state = file.GetFileState(_message);
+
+            if (state == MessageContentState.Downloading)
+            {
+                _message.ClientService.CancelDownloadFile(file);
+            }
+            else if (state == MessageContentState.Uploading)
+            {
+                if (_message.SendingState is MessageSendingStateFailed or MessageSendingStatePending)
+                {
+                    _message.ClientService.Send(new DeleteMessages(_message.ChatId, new[] { _message.Id }, true));
+                }
+                else
+                {
+                    _message.ClientService.Send(new CancelPreliminaryUploadFile(file.Id));
+                }
+            }
+            else if (state == MessageContentState.Download)
+            {
+                _message.ClientService.DownloadFile(file.Id, 30);
+            }
+            else if (_message.Content is MessageText text && text.LinkPreview.HasText())
+            {
+                _message.Delegate.OpenWebPage(_message);
+            }
+            else if (_paidMedia != null)
+            {
+                _message.Delegate.OpenPaidMedia(_message, _paidMedia, this);
+            }
+            else if (hasSpoiler && _hidden)
+            {
+                _hidden = false;
+                UpdateMessage(_message);
+            }
+            else
+            {
+                _message.Delegate.OpenMedia(_message, this);
+            }
+        }
+
+        private void Button_DragStarting(UIElement sender, DragStartingEventArgs args)
+        {
+            MessageHelper.DragStarting(_message, args);
+        }
+    }
+}

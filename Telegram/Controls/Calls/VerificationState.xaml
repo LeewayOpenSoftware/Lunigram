@@ -1,0 +1,36 @@
+﻿<UserControl x:Class="Telegram.Controls.Calls.VerificationState"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:Telegram.Controls.Calls"
+             mc:Ignorable="d"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <Grid x:Name="RootGrid"
+          Background="#FF1F1F1F"
+          CornerRadius="16"
+          Padding="4,0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <local:VerificationStateReel x:Name="Reel0" />
+        <local:VerificationStateReel x:Name="Reel1"
+                                     Grid.Column="1" />
+        <local:VerificationStateReel x:Name="Reel2"
+                                     Grid.Column="3" />
+        <local:VerificationStateReel x:Name="Reel3"
+                                     Grid.Column="4" />
+
+        <TextBlock Text="{CustomResource ConferenceEncrypted}"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   VerticalAlignment="Center"
+                   Margin="4,0"
+                   Grid.Column="2" />
+    </Grid>
+</UserControl>

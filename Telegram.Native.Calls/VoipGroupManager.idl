@@ -1,0 +1,56 @@
+import "Telegram.Native.Calls.idl";
+import "VoipGroupDescriptor.idl";
+import "VoipVideoCapture.idl";
+import "VoipVideoChannelInfo.idl";
+import "VoipVideoOutputSink.idl";
+import "GroupNetworkStateChangedEventArgs.idl";
+import "BroadcastTimeRequestedEventArgs.idl";
+import "BroadcastPartRequestedEventArgs.idl";
+import "MediaChannelDescriptionsRequestedEventArgs.idl";
+
+namespace Telegram.Native.Calls
+{
+    delegate void EmitJsonPayloadDelegate(Int32 ssrc, String payload);
+
+    // Arrays rather than IVector<byte>: this runs per frame, and the managed side hands
+    // the bytes straight to TDLib, which wants a byte[] to base64 into its JSON.
+    delegate UInt8[] EncryptGroupCallDataDelegate(VoipDataChannel dataChannel, UInt8[] data, Int32 unencryptedPrefixSize);
+    delegate UInt8[] DecryptGroupCallDataDelegate(Int64 userId, UInt8[] data);
+
+    [default_interface]
+    runtimeclass VoipGroupManager
+    {
+        VoipGroupManager(VoipGroupDescriptor descriptor);
+
+        void Stop();
+
+        void SetConnectionMode(VoipGroupConnectionMode connectionMode, Boolean keepBroadcastIfWasEnabled, Boolean isUnifiedBroadcast);
+
+        void EmitJoinPayload(EmitJsonPayloadDelegate completion);
+        void SetJoinResponsePayload(String payload);
+        void RemoveSsrcs(Windows.Foundation.Collections.IVector<Int32> ssrcs);
+
+        void AddIncomingVideoOutput(String endpointId, VoipVideoOutputSink sink);
+
+        Boolean IsMuted;
+        Boolean IsNoiseSuppressionEnabled;
+
+        void SetAudioOutputDevice(String id);
+        void SetAudioInputDevice(String id);
+        void SetVideoCapture(VoipCaptureBase videoCapture);
+
+        void SetVolume(Int32 ssrc, Double volume);
+        void SetRequestedVideoChannels(Windows.Foundation.Collections.IVector<VoipVideoChannelInfo> descriptions);
+
+        void SetEncryptDecrypt(EncryptGroupCallDataDelegate encryptData, DecryptGroupCallDataDelegate decryptData);
+
+        event Windows.Foundation.TypedEventHandler<VoipGroupManager, GroupNetworkStateChangedEventArgs> NetworkStateUpdated;
+        event Windows.Foundation.TypedEventHandler<VoipGroupManager, Windows.Foundation.Collections.IVector<VoipGroupParticipant > > AudioLevelsUpdated;
+
+        event Windows.Foundation.TypedEventHandler<VoipGroupManager, BroadcastTimeRequestedEventArgs> BroadcastTimeRequested;
+        event Windows.Foundation.TypedEventHandler<VoipGroupManager, AudioBroadcastPartRequestedEventArgs> AudioBroadcastPartRequested;
+        event Windows.Foundation.TypedEventHandler<VoipGroupManager, VideoBroadcastPartRequestedEventArgs> VideoBroadcastPartRequested;
+
+        event Windows.Foundation.TypedEventHandler<VoipGroupManager, MediaChannelDescriptionsRequestedEventArgs> MediaChannelDescriptionsRequested;
+    }
+}

@@ -1,0 +1,217 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Controls.Media;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Windows.UI;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+
+namespace Telegram.Controls.Cells.Premium
+{
+    public sealed partial class PremiumFeatureUpgradedStoriesCell : UserControl, IPremiumFeatureCell
+    {
+        public PremiumFeatureUpgradedStoriesCell()
+        {
+            InitializeComponent();
+
+            _viewChangedTimer = new DispatcherTimer();
+            _viewChangedTimer.Interval = TimeSpan.FromMilliseconds(Constants.TypingTimeout);
+            _viewChangedTimer.Tick += OnTick;
+        }
+
+        public void UpdateFeature(IClientService clientService)
+        {
+            ScrollingHost.ItemsSource = new object[]
+            {
+                new PremiumStoryFeaturePriorityOrder(),
+                new PremiumStoryFeatureStealthMode(),
+                new PremiumStoryFeatureVideoQuality(),
+                new PremiumStoryFeaturePermanentViewsHistory(),
+                new PremiumStoryFeatureCustomExpirationDuration(),
+                new PremiumStoryFeatureSaveStories(),
+                new PremiumLimitTypeStoryCaptionLength(),
+                new PremiumStoryFeatureLinksAndFormatting()
+            };
+
+            if (clientService.TryGetChat(clientService.Options.MyId, out Chat chat) &&
+                clientService.TryGetUser(chat, out User user))
+            {
+                Segments.UpdateSegments(96, 8, 8, 3);
+                Photo.Source = ProfilePictureSource.User(clientService, user);
+            }
+
+            //clientService.Send(new ViewPremiumFeature(new PremiumFeatureUpgradedStories()));
+        }
+
+        private readonly Color[] _gradient = new Color[]
+        {
+            Color.FromArgb(0xFF, 0x00, 0x7A, 0xFF),
+            Color.FromArgb(0xFF, 0x79, 0x8A, 0xFF),
+            Color.FromArgb(0xFF, 0xAC, 0x64, 0xF3),
+            Color.FromArgb(0xFF, 0xC4, 0x56, 0xAE),
+            Color.FromArgb(0xFF, 0xE9, 0x5D, 0x44),
+            Color.FromArgb(0xFF, 0xF2, 0x82, 0x2A),
+            Color.FromArgb(0xFF, 0xE7, 0xAD, 0x19)
+        };
+
+        private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.InRecycleQueue)
+            {
+                return;
+            }
+
+            var feature = args.Item;
+            var content = args.ItemContainer.ContentTemplateRoot as Grid;
+
+            var iconValue = string.Empty;
+            var titleValue = string.Empty;
+            var subtitleValue = string.Empty;
+
+            switch (feature)
+            {
+                case PremiumStoryFeaturePriorityOrder:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesPriority;
+                    subtitleValue = Strings.PremiumStoriesPriorityDescription;
+                    break;
+                case PremiumStoryFeatureStealthMode:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesStealth;
+                    subtitleValue = Strings.PremiumStoriesStealthDescription;
+                    break;
+                case PremiumStoryFeatureVideoQuality:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesQuality;
+                    subtitleValue = Strings.PremiumStoriesQualityDescription;
+                    break;
+                case PremiumStoryFeaturePermanentViewsHistory:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesViews;
+                    subtitleValue = Strings.PremiumStoriesViewsDescription;
+                    break;
+                case PremiumStoryFeatureCustomExpirationDuration:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesExpiration;
+                    subtitleValue = Strings.PremiumStoriesExpirationDescription;
+                    break;
+                case PremiumStoryFeatureSaveStories:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesSaveToGallery;
+                    subtitleValue = Strings.PremiumStoriesSaveToGalleryDescription;
+                    break;
+                case PremiumLimitTypeStoryCaptionLength:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesCaption;
+                    subtitleValue = Strings.PremiumStoriesCaptionDescription;
+                    break;
+                case PremiumStoryFeatureLinksAndFormatting:
+                    iconValue = Icons.Stories;
+                    titleValue = Strings.PremiumStoriesFormatting;
+                    subtitleValue = Strings.PremiumStoriesFormattingDescription;
+                    break;
+            }
+
+            var title = content.FindName("Title") as TextBlock;
+            var subtitle = content.FindName("Subtitle") as TextBlock;
+            var icon = content.FindName("Icon") as TextBlock;
+
+            title.Text = titleValue;
+            subtitle.Text = subtitleValue;
+            icon.Text = iconValue;
+            icon.Foreground = new SolidColorBrush(ColorsHelper.CalculateColor(_gradient, (float)args.ItemIndex / (sender.Items.Count - 1)));
+
+            args.Handled = true;
+        }
+
+        public void PlayAnimation()
+        {
+            var scrollingHost = ScrollingHost.GetScrollViewer();
+            if (scrollingHost != null)
+            {
+                _loading = false;
+                scrollingHost?.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(OnPointerWheelChangedEvent), true);
+                scrollingHost.ViewChanged += OnViewChanged;
+            }
+            else if (!_loading)
+            {
+                _loading = true;
+                ScrollingHost.Loaded += OnLoaded;
+            }
+
+            _viewChanged = false;
+        }
+
+        public void StopAnimation()
+        {
+            var scrollingHost = ScrollingHost.GetScrollViewer();
+            scrollingHost?.RemoveHandler(PointerWheelChangedEvent, new PointerEventHandler(OnPointerWheelChangedEvent));
+            scrollingHost.ViewChanged -= OnViewChanged;
+
+            _loading = false;
+            _viewChangedTimer.Stop();
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            if (_loading)
+            {
+                PlayAnimation();
+            }
+        }
+
+        private bool _loading;
+
+        private bool _viewChanged;
+        private DispatcherTimer _viewChangedTimer;
+
+        private void OnViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+        {
+            _viewChanged = true;
+            _viewChangedTimer.Stop();
+            _viewChangedTimer.Start();
+        }
+
+        private void OnTick(object sender, object e)
+        {
+            _viewChangedTimer.Stop();
+            _viewChanged = false;
+        }
+
+        private void OnPointerWheelChangedEvent(object sender, PointerRoutedEventArgs e)
+        {
+            if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse && sender is ScrollViewer scrollingHost && !_viewChanged)
+            {
+                var currentPoint = e.GetCurrentPoint(this);
+                if (currentPoint.Properties.MouseWheelDelta > 0 && scrollingHost.VerticalOffset == 0)
+                {
+                    var parent = this.GetParent<FlipView>();
+                    if (parent?.SelectedIndex > 0 && parent.SelectedItem is PremiumFeatureUpgradedStories or BusinessFeatureUpgradedStories)
+                    {
+                        parent.SelectedIndex--;
+                        StopAnimation();
+                    }
+                }
+                else if (currentPoint.Properties.MouseWheelDelta < 0 && scrollingHost.VerticalOffset.AlmostEquals(scrollingHost.ScrollableHeight))
+                {
+                    var parent = this.GetParent<FlipView>();
+                    if (parent?.SelectedIndex < parent.Items.Count - 1 && parent.SelectedItem is PremiumFeatureUpgradedStories or BusinessFeatureUpgradedStories)
+                    {
+                        parent.SelectedIndex++;
+                        StopAnimation();
+                    }
+                }
+            }
+        }
+    }
+}

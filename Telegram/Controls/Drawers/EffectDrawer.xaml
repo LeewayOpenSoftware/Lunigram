@@ -1,0 +1,211 @@
+﻿<UserControl x:Class="Telegram.Controls.Drawers.EffectDrawer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:not_win="http://uno.ui/not_win"
+             xmlns:common="using:Telegram.Common"
+             xmlns:controls="using:Telegram.Controls"
+             xmlns:selectors="using:Telegram.Selectors"
+             xmlns:viewModels="using:Telegram.ViewModels.Drawers"
+             mc:Ignorable="d not_win"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!--
+                Two rows the nested lists move their headers into on Linux: the search box out of
+                the Reactions strip, and the Reactions strip itself out of the effects list. Both
+                empty and therefore zero-high on Windows, where the headers stay where they are.
+                Telegram.Linux/Xaml/DrawerHeaderHost.cs says why they cannot stay there on Uno.
+            -->
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+        <Border x:Name="SearchHost"
+                Grid.Row="0" />
+        <Border x:Name="ReactionsHost"
+                Grid.Row="1" />
+        <GridView x:Name="List"
+                  ItemsSource="{x:Bind ViewModel.Stickers, Mode=OneWay}"
+                  common:FluidGridView.OrientationOnly="False"
+                  ChoosingItemContainer="OnChoosingItemContainer"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  IsItemClickEnabled="True"
+                  SelectionMode="None"
+                  ItemClick="Stickers_ItemClick"
+                  Loaded="Stickers_Loaded"
+                  Padding="2,0"
+                  Grid.Row="2">
+            <GridView.Header>
+                <GridView x:Name="Reactions"
+                          ItemsSource="{x:Bind ViewModel.Reactions, Mode=OneWay}"
+                          common:FluidGridView.OrientationOnly="False"
+                          ChoosingItemContainer="OnChoosingItemContainer"
+                          ContainerContentChanging="OnContainerContentChanging"
+                          ItemClick="Stickers_ItemClick"
+                          IsItemClickEnabled="True"
+                          SelectionMode="None"
+                          Grid.Row="1">
+                    <GridView.Header>
+                        <controls:EmojiSearchBox x:Name="SearchField"
+                                                 AllowFocusOnInteraction="True"
+                                                 PlaceholderText="{CustomResource Search}"
+                                                 TextChanged="SearchField_TextChanged"
+                                                 CategorySelected="SearchField_CategorySelected"
+                                                 Margin="10,8,10,0" />
+                    </GridView.Header>
+                    <GridView.Template>
+                        <ControlTemplate TargetType="GridView">
+                            <Border BorderBrush="{TemplateBinding BorderBrush}"
+                                    Background="{TemplateBinding Background}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <ItemsPresenter Header="{TemplateBinding Header}"
+                                                HeaderTemplate="{TemplateBinding HeaderTemplate}"
+                                                HeaderTransitions="{TemplateBinding HeaderTransitions}"
+                                                Footer="{TemplateBinding Footer}"
+                                                FooterTemplate="{TemplateBinding FooterTemplate}"
+                                                FooterTransitions="{TemplateBinding FooterTransitions}"
+                                                Padding="{TemplateBinding Padding}" />
+                            </Border>
+                        </ControlTemplate>
+                    </GridView.Template>
+                    <GridView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <controls:AnimatedImage x:Name="Player"
+                                                        AutoPlay="False"
+                                                        LimitFps="True"
+                                                        FrameSize="32,32"
+                                                        DecodeFrameType="Logical"
+                                                        Width="32"
+                                                        Height="32"
+                                                        Ready="Player_Ready"
+                                                        ReplacementColor="{ThemeResource TelegramForegroundAccentBrush}" />
+                                <Border HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Width="16"
+                                        Height="16"
+                                        CornerRadius="8">
+                                    <TextBlock Text="&#xE9DD;"
+                                               FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                               FontSize="12"
+                                               Foreground="#FFFFFF"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </GridView.ItemTemplate>
+                    <GridView.ItemContainerStyle>
+                        <Style TargetType="GridViewItem">
+                            <Setter Property="MinWidth"
+                                    Value="0" />
+                            <Setter Property="MinHeight"
+                                    Value="0" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GridViewItem">
+                                        <ContentPresenter HorizontalContentAlignment="Stretch"
+                                                          VerticalContentAlignment="Stretch"
+                                                          Padding="0" />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GridView.ItemContainerStyle>
+                    <GridView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </GridView.ItemContainerTransitions>
+                    <GridView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <!--
+                                Uno's ItemsWrapGrid is a shell: [NotImplemented] for __SKIA__, derived
+                                straight from Panel, no MeasureOverride and no ArrangeOverride, so it
+                                measures no width and materialises no container. Measured on a live capture
+                                of this very drawer: `ItemsWrapGrid [314,84 0x248]`, zero wide and empty,
+                                next to an ItemsStackPanel toolbar at `[55,49 3636x40]` with 32x32 items in
+                                it. Same substitution as CommonStyles' default GridView panel and the three
+                                profile grid tabs. VariableSizedWrapGrid does not virtualize.
+                                The header had to leave the list for this to help at all: see
+                                Telegram.Linux/Xaml/DrawerHeaderHost.cs.
+                            -->
+                            <win:ItemsWrapGrid Orientation="Horizontal"
+                                               AreStickyGroupHeadersEnabled="False" />
+                            <not_win:VariableSizedWrapGrid Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </GridView.ItemsPanel>
+                </GridView>
+            </GridView.Header>
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <controls:AnimatedImage x:Name="Player"
+                                                AutoPlay="False"
+                                                LimitFps="True"
+                                                FrameSize="64,64"
+                                                DecodeFrameType="Logical"
+                                                Ready="Player_Ready" />
+                        <Border HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Width="16"
+                                Height="16"
+                                CornerRadius="8">
+                            <TextBlock Text="&#xE9DD;"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       FontSize="12"
+                                       Foreground="#FFFFFF"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock TextAlignment="Right"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Bottom" />
+                    </Grid>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+            <GridView.Footer>
+                <Border Height="12" />
+            </GridView.Footer>
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem"
+                       BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                    <Setter Property="Margin"
+                            Value="0" />
+                    <Setter Property="Padding"
+                            Value="2" />
+                    <Setter Property="HorizontalContentAlignment"
+                            Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment"
+                            Value="Stretch" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemContainerTransitions>
+                <TransitionCollection />
+            </GridView.ItemContainerTransitions>
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <!--
+                        Uno's ItemsWrapGrid is a shell: [NotImplemented] for __SKIA__, derived
+                        straight from Panel, no MeasureOverride and no ArrangeOverride, so it
+                        measures no width and materialises no container. Measured on a live capture
+                        of this very drawer: `ItemsWrapGrid [314,84 0x248]`, zero wide and empty,
+                        next to an ItemsStackPanel toolbar at `[55,49 3636x40]` with 32x32 items in
+                        it. Same substitution as CommonStyles' default GridView panel and the three
+                        profile grid tabs. VariableSizedWrapGrid does not virtualize.
+                        The header had to leave the list for this to help at all: see
+                        Telegram.Linux/Xaml/DrawerHeaderHost.cs.
+                    -->
+                    <win:ItemsWrapGrid Orientation="Horizontal"
+                                       AreStickyGroupHeadersEnabled="False"
+                                       CacheLength="2" />
+                    <not_win:VariableSizedWrapGrid Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </GridView>
+    </Grid>
+</UserControl>

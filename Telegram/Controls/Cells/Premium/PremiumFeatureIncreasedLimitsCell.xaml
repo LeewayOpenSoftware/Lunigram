@@ -1,0 +1,87 @@
+﻿<UserControl x:Class="Telegram.Controls.Cells.Premium.PremiumFeatureIncreasedLimitsCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Telegram.Controls"
+             mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ContentDialogTopOverlaySolid}">
+        <ListView x:Name="ScrollingHost"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  SelectionMode="None"
+                  IsItemClickEnabled="False"
+                  Padding="0,0,0,0"
+                  Grid.Row="1">
+            <ListView.Header>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{CustomResource DoubledLimits}"
+                               Style="{StaticResource PopupTextBlockStyle}"
+                               TextAlignment="Center"
+                               VerticalAlignment="Top"
+                               Margin="12,24,12,16" />
+                </Grid>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="24,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition />
+                            <RowDefinition />
+                            <RowDefinition />
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="Title"
+                                   Style="{StaticResource BaseTextBlockStyle}" />
+                        <TextBlock x:Name="Subtitle"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   Grid.Row="1" />
+
+                        <Grid Margin="0,8,0,24"
+                              Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <Grid Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
+                                  BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                  BorderThickness="1,1,0,1"
+                                  CornerRadius="4,0,0,4"
+                                  Padding="8,4">
+                                <TextBlock Text="{CustomResource LimitFree}"
+                                           FontWeight="SemiBold" />
+
+                                <TextBlock x:Name="PrevLimit"
+                                           FontWeight="SemiBold"
+                                           Text="50"
+                                           TextAlignment="Right" />
+                            </Grid>
+                            <Grid x:Name="NextPanel"
+                                  Background="LightBlue"
+                                  CornerRadius="0,4,4,0"
+                                  Padding="8,4"
+                                  Grid.Column="1">
+                                <TextBlock Text="{CustomResource LimitPremium}"
+                                           Foreground="#FFFFFF"
+                                           FontWeight="SemiBold" />
+
+                                <TextBlock x:Name="NextLimit"
+                                           Foreground="#FFFFFF"
+                                           FontWeight="SemiBold"
+                                           Text="100"
+                                           TextAlignment="Right" />
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <controls:ScrollViewerScrim Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    ScrollingHost="{x:Bind ScrollingHost}" />
+    </Grid>
+</UserControl>

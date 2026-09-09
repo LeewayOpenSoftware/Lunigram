@@ -1,0 +1,346 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Controls.Messages.Content;
+using Telegram.Navigation;
+using Telegram.Services;
+using Windows.Foundation;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace Telegram.Controls.Messages
+{
+    public partial class MessageBubblePanel : Panel
+    {
+        // Needed for Text CanvasTextLayout
+        public bool ForceNewLine { get; set; }
+
+        // Needed for Measure
+        public MessageReply Reply { get; set; }
+
+        private bool _placeholder = true;
+        public bool Placeholder
+        {
+            get => _placeholder;
+            set
+            {
+                if (_placeholder != value)
+                {
+                    _placeholder = value;
+
+                    // TODO: removed as an experiment
+                    //InvalidateMeasure();
+                }
+            }
+        }
+
+        private Size _margin;
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            FrameworkElement text;
+            FrameworkElement media;
+            UIElement factCheck;
+            UIElement third;
+
+            var first = Children[0];
+#if LINUX
+            if (false)
+#else
+            if (first is MessageFactCheck or MessageSummary)
+#endif
+            {
+                text = Children[1] as FrameworkElement;
+                media = Children[2] as FrameworkElement;
+                third = Children[3];
+                factCheck = first;
+            }
+            else
+            {
+                text = Children[0] as FrameworkElement;
+                media = Children[1] as FrameworkElement;
+                third = Children[2];
+                factCheck = null;
+            }
+
+            MessageFooter footer;
+            ReactionsPanel reactions;
+#if LINUX
+            // Uno keeps a placeholder (ElementStub) in Children for an x:Load="False" element, so
+            // the reactions panel holds its slot from the start: `third` is that stub rather than
+            // the footer, the test below misses, footer comes out null and Grid.GetRow(null)
+            // throws right here - inside MeasureOverride, where the exception leaves every bubble
+            // unmeasured and the whole history blank. The footer is the last child of the template
+            // either way, loaded reactions or not.
+            footer = Children[^1] as MessageFooter;
+            reactions = third as ReactionsPanel;
+#else
+            if (third is ReactionsPanel)
+            {
+                footer = Children[^1] as MessageFooter;
+                reactions = third as ReactionsPanel;
+            }
+            else
+            {
+                footer = third as MessageFooter;
+                reactions = null;
+            }
+#endif
+
+            var textRow = Grid.GetRow(text);
+            var mediaRow = Grid.GetRow(media);
+            var footerRow = Grid.GetRow(footer);
+
+            text.Measure(availableSize);
+            media.Measure(availableSize);
+            factCheck?.Measure(availableSize);
+            footer.Measure(availableSize);
+
+            if (reactions != null)
+            {
+                if (reactions.Footer != footer.DesiredSize && reactions.Children.Count > 0)
+                {
+                    reactions.InvalidateMeasure();
+                }
+
+                reactions.Footer = footer.DesiredSize;
+                reactions.Measure(availableSize);
+            }
+
+            if (reactions != null && reactions.HasReactions)
+            {
+                _margin = new Size(0, 0);
+            }
+            else if (textRow == footerRow && text is MessageTextBlock blocks && blocks.Children.Count > 0)
+            {
+                _margin = Margins(availableSize.Width, blocks.DesiredSize.Width, blocks.Children[^1] as FormattedTextBlock, footer);
+            }
+            else if (mediaRow == footerRow)
+            {
+                _margin = new Size(0, 0);
+            }
+#if !LINUX
+            else if (media is Border { Child: InstantContent rich })
+            {
+                if (rich.LastBlock is FormattedTextBlock lastBlock)
+                {
+                    //_placeholder = true;
+                    _margin = Margins(availableSize.Width, lastBlock.DesiredSize.Width, lastBlock, footer);
+                    //media = text;
+                    //(media, text) = (text, media);
+                }
+                else
+                {
+                    _margin = new Size(0, footer.DesiredSize.Height);
+                }
+            }
+#endif
+            else
+            {
+                _margin = new Size(0, footer.DesiredSize.Height);
+            }
+
+            var margin = _margin;
+            var width = media.DesiredSize.Width == availableSize.Width
+                ? media.DesiredSize.Width
+                : Math.Max(media.DesiredSize.Width, text.DesiredSize.Width + margin.Width);
+
+            var reactionsWidth = reactions?.DesiredSize.Width ?? 0;
+            var reactionsHeight = reactions?.DesiredSize.Height ?? 0;
+
+            if (factCheck != null)
+            {
+                reactionsWidth = Math.Max(reactionsWidth, factCheck.DesiredSize.Width);
+                reactionsHeight += factCheck.DesiredSize.Height;
+            }
+
+            var finalWidth = Math.Max(Math.Max(reactionsWidth, footer.DesiredSize.Width), width);
+            var finalHeight = text.DesiredSize.Height + media.DesiredSize.Height + reactionsHeight + margin.Height;
+
+            Reply?.ContentWidth = finalWidth;
+
+            return new Size(finalWidth, finalHeight);
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            MessageTextBlock text;
+            FrameworkElement media;
+            UIElement factCheck;
+            UIElement third;
+
+            var first = Children[0];
+#if LINUX
+            if (false)
+#else
+            if (first is MessageFactCheck or MessageSummary)
+#endif
+            {
+                text = Children[1] as MessageTextBlock;
+                media = Children[2] as FrameworkElement;
+                third = Children[3];
+                factCheck = first;
+            }
+            else
+            {
+                text = first as MessageTextBlock;
+                media = Children[1] as FrameworkElement;
+                third = Children[2];
+                factCheck = null;
+            }
+
+            MessageFooter footer;
+            ReactionsPanel reactions;
+#if LINUX
+            // See the note in MeasureOverride: an x:Load="False" element keeps its slot in Children
+            // in Uno, so the footer is found from the end rather than by the index of `third`.
+            footer = Children[^1] as MessageFooter;
+            reactions = third as ReactionsPanel;
+#else
+            if (third is ReactionsPanel)
+            {
+                footer = Children[^1] as MessageFooter;
+                reactions = third as ReactionsPanel;
+            }
+            else
+            {
+                footer = third as MessageFooter;
+                reactions = null;
+            }
+#endif
+
+            var textRow = Grid.GetRow(text);
+            var mediaRow = Grid.GetRow(media);
+
+            if (textRow < mediaRow)
+            {
+                text.Arrange(new Rect(0, 0, finalSize.Width, text.DesiredSize.Height));
+
+                if (factCheck != null)
+                {
+                    factCheck.Arrange(new Rect(0, text.DesiredSize.Height, finalSize.Width, factCheck.DesiredSize.Height));
+                    media.Arrange(new Rect(0, text.DesiredSize.Height + factCheck.DesiredSize.Height, finalSize.Width, media.DesiredSize.Height));
+                }
+                else
+                {
+                    media.Arrange(new Rect(0, text.DesiredSize.Height, finalSize.Width, media.DesiredSize.Height));
+                }
+            }
+            else
+            {
+                media.Arrange(new Rect(0, 0, finalSize.Width, media.DesiredSize.Height));
+                text.Arrange(new Rect(0, media.DesiredSize.Height, finalSize.Width, text.DesiredSize.Height));
+
+                factCheck?.Arrange(new Rect(0, media.DesiredSize.Height + text.DesiredSize.Height, finalSize.Width, factCheck.DesiredSize.Height));
+            }
+
+            var reactionsHeight = reactions?.DesiredSize.Height ?? 0;
+
+            if (factCheck != null)
+            {
+                reactions?.Arrange(new Rect(0, text.DesiredSize.Height + media.DesiredSize.Height + factCheck.DesiredSize.Height, finalSize.Width, reactions.DesiredSize.Height));
+                reactionsHeight += factCheck.DesiredSize.Height;
+            }
+            else
+            {
+                reactions?.Arrange(new Rect(0, text.DesiredSize.Height + media.DesiredSize.Height, finalSize.Width, reactions.DesiredSize.Height));
+            }
+
+            var margin = _margin;
+            var footerWidth = footer.DesiredSize.Width /*- footer.Margin.Right + footer.Margin.Left*/;
+            var footerHeight = footer.DesiredSize.Height /*- footer.Margin.Bottom + footer.Margin.Top*/;
+            footer.Arrange(new Rect(finalSize.Width - footerWidth,
+                text.DesiredSize.Height + media.DesiredSize.Height + reactionsHeight - footerHeight + margin.Height,
+                footer.DesiredSize.Width,
+                footer.DesiredSize.Height));
+
+            return finalSize;
+        }
+
+        private Size Margins(double availableWidth, double desiredWidth, FormattedTextBlock text, MessageFooter footer)
+        {
+            var marginLeft = 0d;
+            var marginBottom = 0d;
+
+            if (text == null)
+            {
+                return new Size(0, AppSettings.Appearance.MessageFontSize * 1.33);
+            }
+            else if (_placeholder)
+            {
+                var maxWidth = availableWidth;
+                var footerWidth = footer.DesiredSize.Width + footer.Margin.Left + footer.Margin.Right;
+
+                var fontSize = AppSettings.Appearance.MessageFontSize;
+
+                if (text.HasLineEnding)
+                {
+                    return new Size(0, fontSize * 1.33);
+                }
+                else if (ForceNewLine)
+                {
+                    return new Size(Math.Max(0, footerWidth - 16), 0);
+                }
+
+                var width = desiredWidth;
+                var bounds = ContentEnd(text, fontSize * BootStrapper.Current.TextScaleFactor);
+
+                var diff = width - bounds;
+                if (diff < footerWidth /*|| _placeholderVertical*/)
+                {
+                    if (bounds + footerWidth < maxWidth /*&& !_placeholderVertical*/)
+                    {
+                        marginLeft = footerWidth - diff;
+                    }
+                    else
+                    {
+                        marginBottom = fontSize * 1.33; //18.62;
+                    }
+                }
+            }
+
+            return new Size(marginLeft, marginBottom);
+        }
+
+        private float ContentEnd(FormattedTextBlock textBlock, double fontSize)
+        {
+            if (textBlock.Text?.Paragraphs.Count == 0 || string.IsNullOrEmpty(textBlock.Text?.Text))
+            {
+                return 0;
+            }
+
+            var paragraph = textBlock.Text.Paragraphs[^1];
+
+            var text = textBlock.Text.Text.Substring(paragraph.Offset, paragraph.Length);
+            var entities = paragraph.GetParts(out text);
+
+            //var block = Children[0] is FormattedTextBlock formatted ? formatted : Children[1] as FormattedTextBlock;
+
+            var width = textBlock.LastAvailableWidth;
+            if (width <= 0)
+            {
+                return 0;
+            }
+
+            try
+            {
+                // TODO: this condition will be true whenever the message has more than a paragraph.
+
+                var bounds = Direct2D.Current.ContentEnd(text, entities, fontSize, width);
+                if (bounds.Y < textBlock.DesiredSize.Height)
+                {
+                    return bounds.X;
+                }
+            }
+            catch { }
+
+            return int.MaxValue;
+        }
+    }
+}

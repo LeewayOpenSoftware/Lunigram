@@ -1,0 +1,112 @@
+﻿<HyperlinkButton x:Class="Telegram.Controls.Chats.ChatJoinRequestsHeader"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:controls="using:Telegram.Controls"
+                 mc:Ignorable="d"
+                 d:DesignHeight="300"
+                 d:DesignWidth="400"
+                 Background="Transparent"
+                 MinHeight="40"
+                 HorizontalContentAlignment="Stretch"
+                 VerticalContentAlignment="Stretch"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Top"
+                 BorderThickness="0"
+                 Padding="0"
+                 Margin="0">
+
+    <HyperlinkButton.Template>
+        <ControlTemplate TargetType="HyperlinkButton">
+            <Grid x:Name="RootGrid"
+                  Padding="{TemplateBinding Padding}">
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup x:Name="CommonStates">
+                        <VisualState x:Name="Normal" />
+                        <VisualState x:Name="PointerOver">
+                            <Storyboard>
+                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter"
+                                                               Storyboard.TargetProperty="Background">
+                                    <DiscreteObjectKeyFrame KeyTime="0"
+                                                            Value="{ThemeResource HyperlinkButtonBackgroundPointerOver}" />
+                                </ObjectAnimationUsingKeyFrames>
+                            </Storyboard>
+                        </VisualState>
+                        <VisualState x:Name="Pressed">
+                            <Storyboard>
+                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter"
+                                                               Storyboard.TargetProperty="Background">
+                                    <DiscreteObjectKeyFrame KeyTime="0"
+                                                            Value="{ThemeResource HyperlinkButtonBackgroundPressed}" />
+                                </ObjectAnimationUsingKeyFrames>
+                            </Storyboard>
+                        </VisualState>
+                        <VisualState x:Name="Disabled">
+                            <Storyboard>
+                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter"
+                                                               Storyboard.TargetProperty="Background">
+                                    <DiscreteObjectKeyFrame KeyTime="0"
+                                                            Value="{ThemeResource HyperlinkButtonBackgroundDisabled}" />
+                                </ObjectAnimationUsingKeyFrames>
+                            </Storyboard>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <ContentPresenter x:Name="ContentPresenter"
+                                  Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTransitions="{TemplateBinding ContentTransitions}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  AutomationProperties.AccessibilityView="Raw" />
+            </Grid>
+        </ControlTemplate>
+    </HyperlinkButton.Template>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Border BorderBrush="{ThemeResource NavigationViewContentGridBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Grid.ColumnSpan="3" />
+
+        <!-- RecentUserHeadChanged is subscribed in the code-behind, not here. Uno's XAML generator
+             emits `global::MessageSender` unqualified for that delegate's second parameter (the
+             type comes from Telegram.Td.Api, a namespace another generator produces in the same
+             compilation), and the generated file will not compile: CS0400. Subscribing in C#
+             resolves the type the ordinary way, and the subscription is identical on both
+             platforms, so this is a refactor and not a divergence.
+             See Telegram.Linux/PORTING.md section 6. -->
+        <controls:RecentUserHeads x:Name="RecentUsers"
+                                  ItemSize="28"
+                                  BorderBrush="{ThemeResource PageSubHeaderBackgroundBrush}"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  Margin="12,0,0,0" />
+
+        <TextBlock x:Name="Label"
+                   Margin="8,-2,0,0"
+                   VerticalAlignment="Center"
+                   Foreground="{ThemeResource SystemControlForegroundAccentBrush}"
+                   FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                   Style="{StaticResource BaseTextBlockStyle}"
+                   Grid.Column="1" />
+
+        <!--<controls:BadgeButton x:Name="JoinButton"
+                              Content="{CustomResource VoipChatJoin}"
+                              Style="{StaticResource PillButtonStyle}"
+                              FontWeight="SemiBold"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Center"
+                              Margin="0,0,12,0"
+                              Grid.Column="1" />-->
+
+    </Grid>
+</HyperlinkButton>

@@ -1,0 +1,471 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Numerics;
+using Telegram.Common;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+
+namespace Telegram.Controls.Chats
+{
+    public sealed partial class ChatHistoryArrows : UserControl
+    {
+        public ChatHistoryArrows()
+        {
+            InitializeComponent();
+
+            if (ApiInfo.CanCreateThemeShadow)
+            {
+                var shadow = new ThemeShadow();
+                var translation = new Vector3(0, 0, Constants.BubbleElevation);
+
+                ArrowShadow.Shadow = shadow;
+                ArrowShadow.Translation = translation;
+
+                ArrowMentionsShadow.Shadow = shadow;
+                ArrowMentionsShadow.Translation = translation;
+
+                ArrowReactionsShadow.Shadow = shadow;
+                ArrowReactionsShadow.Translation = translation;
+
+                ArrowPollVotesShadow.Shadow = shadow;
+                ArrowPollVotesShadow.Translation = translation;
+            }
+
+            var pollVotes = ElementComposition.GetElementVisual(PollVotesPanel);
+            var reactions = ElementComposition.GetElementVisual(ReactionsPanel);
+            var mentions = ElementComposition.GetElementVisual(MentionsPanel);
+            var messages = ElementComposition.GetElementVisual(MessagesPanel);
+
+            pollVotes.CenterPoint = new Vector3(18, 36, 0);
+            reactions.CenterPoint = new Vector3(18, 36, 0);
+            mentions.CenterPoint = new Vector3(18, 36, 0);
+            messages.CenterPoint = new Vector3(18, 36, 0);
+
+            ElementCompositionPreview.SetIsTranslationEnabled(PollVotesPanel, true);
+            ElementCompositionPreview.SetIsTranslationEnabled(ReactionsPanel, true);
+            ElementCompositionPreview.SetIsTranslationEnabled(MentionsPanel, true);
+
+            InitializeAccessibleNames();
+        }
+
+        private void InitializeAccessibleNames()
+        {
+            AutomationProperties.SetName(PollVotesButton, Strings.AccDescrReactionMentionDown);
+            ToolTipService.SetToolTip(PollVotesButton, Strings.AccDescrReactionMentionDown);
+
+            AutomationProperties.SetName(ReactionsButton, Strings.AccDescrReactionMentionDown);
+            ToolTipService.SetToolTip(ReactionsButton, Strings.AccDescrReactionMentionDown);
+
+            AutomationProperties.SetName(MentionsButton, Strings.AccDescrMentionDown);
+            ToolTipService.SetToolTip(MentionsButton, Strings.AccDescrMentionDown);
+
+            AutomationProperties.SetName(MessagesButton, Strings.AccDescrPageDown);
+            ToolTipService.SetToolTip(MessagesButton, Strings.AccDescrPageDown);
+        }
+
+        public event RoutedEventHandler NextMention
+        {
+            add => MentionsButton.Click += value;
+            remove => MentionsButton.Click -= value;
+        }
+
+        public event RightTappedEventHandler ReadMentions
+        {
+            add => MentionsButton.RightTapped += value;
+            remove => MentionsButton.RightTapped -= value;
+        }
+
+        public event RoutedEventHandler NextReaction
+        {
+            add => ReactionsButton.Click += value;
+            remove => ReactionsButton.Click -= value;
+        }
+
+        public event RightTappedEventHandler ReadReactions
+        {
+            add => ReactionsButton.RightTapped += value;
+            remove => ReactionsButton.RightTapped -= value;
+        }
+
+        public event RoutedEventHandler NextPollVote
+        {
+            add => PollVotesButton.Click += value;
+            remove => PollVotesButton.Click -= value;
+        }
+
+        public event RightTappedEventHandler ReadPollVotes
+        {
+            add => PollVotesButton.RightTapped += value;
+            remove => PollVotesButton.RightTapped -= value;
+        }
+
+        public event RoutedEventHandler NextMessage
+        {
+            add => MessagesButton.Click += value;
+            remove => MessagesButton.Click -= value;
+        }
+
+        public event RightTappedEventHandler ReadMessages
+        {
+            add => MessagesButton.RightTapped += value;
+            remove => MessagesButton.RightTapped -= value;
+        }
+
+        public int UnreadMentionCount
+        {
+            set
+            {
+                if (value > 0)
+                {
+                    ShowHideMentions(true);
+                    Mentions.Text = value.ToString();
+                }
+                else
+                {
+                    ShowHideMentions(false);
+                }
+            }
+        }
+
+        public int UnreadReactionsCount
+        {
+            set
+            {
+                if (value > 0)
+                {
+                    ShowHideReactions(true);
+                    Reactions.Text = value.ToString();
+                }
+                else
+                {
+                    ShowHideReactions(false);
+                }
+            }
+        }
+
+        public int UnreadPollVoteCount
+        {
+            set
+            {
+                if (value > 0)
+                {
+                    ShowHidePollVotes(true);
+                    PollVotes.Text = value.ToString();
+                }
+                else
+                {
+                    ShowHidePollVotes(false);
+                }
+            }
+        }
+
+        public int UnreadCount
+        {
+            set
+            {
+                if (value > 0)
+                {
+                    Messages.Visibility = Visibility.Visible;
+                    Messages.Text = value.ToString();
+                }
+                else
+                {
+                    Messages.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+
+        public bool IsVisible
+        {
+            get => !_messagesCollapsed;
+            set => ShowHideMessages(value);
+        }
+
+        private bool _messagesCollapsed = true;
+        private void ShowHideMessages(bool show)
+        {
+            if (_messagesCollapsed != show)
+            {
+                return;
+            }
+
+            _messagesCollapsed = !show;
+            MessagesPanel.Visibility = Visibility.Visible;
+
+            var pollVotes = ElementComposition.GetElementVisual(PollVotesPanel);
+            var reactions = ElementComposition.GetElementVisual(ReactionsPanel);
+            var mentions = ElementComposition.GetElementVisual(MentionsPanel);
+            var messages = ElementComposition.GetElementVisual(MessagesPanel);
+
+            var compositor = messages.Compositor;
+
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+
+            void Completed()
+            {
+#if LINUX
+                // A finished KeyFrameAnimation keeps driving its property on Uno
+                // (Compositor.RenderRootVisual re-evaluates it every frame), so the writes below do
+                // nothing unless the animation is stopped first. PORTING.md section 6.
+                pollVotes.StopAnimation("Translation.Y");
+                reactions.StopAnimation("Translation.Y");
+                mentions.StopAnimation("Translation.Y");
+#endif
+
+                pollVotes.Properties.InsertVector3("Translation", Vector3.Zero);
+                reactions.Properties.InsertVector3("Translation", Vector3.Zero);
+                mentions.Properties.InsertVector3("Translation", Vector3.Zero);
+
+                MessagesPanel.Visibility = _messagesCollapsed
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+
+#if !LINUX
+            batch.Completed += (s, args) => Completed();
+#endif
+
+            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1.0f));
+
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.InsertKeyFrame(show ? 0 : 1, Vector3.Zero);
+            scale.InsertKeyFrame(show ? 1 : 0, Vector3.One, easing);
+            scale.Duration = Constants.SoftAnimation;
+
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(show ? 0 : 1, 0);
+            fade.InsertKeyFrame(show ? 1 : 0, 1, easing);
+            fade.Duration = Constants.SoftAnimation;
+
+            // One instance per visual: Uno's Compositor.RegisterAnimation is a Dictionary.Add
+            // keyed by the animation, so the second StartAnimation with the same one throws
+            // ArgumentException (seen in the log from here). See PORTING.md section 6.
+            ScalarKeyFrameAnimation Translate()
+            {
+                var animation = compositor.CreateScalarKeyFrameAnimation();
+                animation.InsertKeyFrame(0, show ? 36 + 16 : 0);
+                animation.InsertKeyFrame(1, show ? 0 : 36 + 16, easing);
+                animation.Duration = Constants.SoftAnimation;
+                return animation;
+            }
+
+            pollVotes.StartAnimation("Translation.Y", Translate());
+            reactions.StartAnimation("Translation.Y", Translate());
+            mentions.StartAnimation("Translation.Y", Translate());
+            messages.StartAnimation("Opacity", fade);
+            messages.StartAnimation("Scale", scale);
+
+#if LINUX
+            // batch.Completed does not fire on Uno (PORTING.md section 6). Without the handler
+            // MessagesPanel stays Visible with Opacity 0 - an invisible ~36 px hit target sitting
+            // on top of the last bubbles, since Uno's hit testing ignores Opacity - and the three
+            // panels above it keep the 52 px offset the animation gave them.
+            batch.EndWithCompleted(Constants.SoftAnimation, Completed);
+#else
+            batch.End();
+#endif
+        }
+
+        private bool _mentionsCollapsed = true;
+        private void ShowHideMentions(bool show)
+        {
+            if (_mentionsCollapsed != show)
+            {
+                return;
+            }
+
+            _mentionsCollapsed = !show;
+            MentionsPanel.Visibility = Visibility.Visible;
+
+            var pollVotes = ElementComposition.GetElementVisual(PollVotesPanel);
+            var reactions = ElementComposition.GetElementVisual(ReactionsPanel);
+            var mentions = ElementComposition.GetElementVisual(MentionsPanel);
+
+            var compositor = mentions.Compositor;
+
+            var batch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+
+            void Completed()
+            {
+#if LINUX
+                pollVotes.StopAnimation("Translation.Y");
+                reactions.StopAnimation("Translation.Y");
+#endif
+
+                pollVotes.Properties.InsertVector3("Translation", Vector3.Zero);
+                reactions.Properties.InsertVector3("Translation", Vector3.Zero);
+
+                MentionsPanel.Visibility = _mentionsCollapsed
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+
+#if !LINUX
+            batch.Completed += (s, args) => Completed();
+#endif
+
+            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1.0f));
+
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.InsertKeyFrame(show ? 0 : 1, Vector3.Zero);
+            scale.InsertKeyFrame(show ? 1 : 0, Vector3.One, easing);
+            scale.Duration = Constants.FastAnimation;
+
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(show ? 0 : 1, 0);
+            fade.InsertKeyFrame(show ? 1 : 0, 1, easing);
+            fade.Duration = Constants.FastAnimation;
+
+            var translate = compositor.CreateScalarKeyFrameAnimation();
+            translate.InsertKeyFrame(0, show ? 36 + 16 : 0);
+            translate.InsertKeyFrame(1, show ? 0 : 36 + 16, easing);
+            translate.Duration = Constants.FastAnimation;
+
+            pollVotes.StartAnimation("Translation.Y", translate);
+#if LINUX
+            // A second visual needs a second instance: Uno's Compositor.RegisterAnimation keys its
+            // dictionary on the animation object and does Dictionary.Add, so sharing this one
+            // threw ArgumentException and left the reactions button where it was (PORTING.md 6).
+            var translateReactions = compositor.CreateScalarKeyFrameAnimation();
+            translateReactions.InsertKeyFrame(0, show ? 36 + 16 : 0);
+            translateReactions.InsertKeyFrame(1, show ? 0 : 36 + 16, easing);
+            translateReactions.Duration = Constants.FastAnimation;
+
+            reactions.StartAnimation("Translation.Y", translateReactions);
+#else
+            reactions.StartAnimation("Translation.Y", translate);
+#endif
+            mentions.StartAnimation("Opacity", fade);
+            mentions.StartAnimation("Scale", scale);
+
+#if LINUX
+            batch.EndWithCompleted(Constants.FastAnimation, Completed);
+#else
+            batch.End();
+#endif
+        }
+
+        private bool _reactionsCollapsed = true;
+        private void ShowHideReactions(bool show)
+        {
+            if (_reactionsCollapsed != show)
+            {
+                return;
+            }
+
+            _reactionsCollapsed = !show;
+            ReactionsPanel.Visibility = Visibility.Visible;
+
+            var pollVotes = ElementComposition.GetElementVisual(PollVotesPanel);
+            var reactions = ElementComposition.GetElementVisual(ReactionsPanel);
+
+            var compositor = reactions.Compositor;
+
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+
+            void Completed()
+            {
+#if LINUX
+                pollVotes.StopAnimation("Translation.Y");
+#endif
+
+                pollVotes.Properties.InsertVector3("Translation", Vector3.Zero);
+
+                ReactionsPanel.Visibility = _reactionsCollapsed
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+
+#if !LINUX
+            batch.Completed += (s, args) => Completed();
+#endif
+
+            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1.0f));
+
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.InsertKeyFrame(show ? 0 : 1, Vector3.Zero);
+            scale.InsertKeyFrame(show ? 1 : 0, Vector3.One, easing);
+            scale.Duration = Constants.FastAnimation;
+
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(show ? 0 : 1, 0);
+            fade.InsertKeyFrame(show ? 1 : 0, 1, easing);
+            fade.Duration = Constants.FastAnimation;
+
+            var translate = compositor.CreateScalarKeyFrameAnimation();
+            translate.InsertKeyFrame(0, show ? 36 + 16 : 0);
+            translate.InsertKeyFrame(1, show ? 0 : 36 + 16, easing);
+            translate.Duration = Constants.FastAnimation;
+
+            pollVotes.StartAnimation("Translation.Y", translate);
+            reactions.StartAnimation("Opacity", fade);
+            reactions.StartAnimation("Scale", scale);
+
+#if LINUX
+            batch.EndWithCompleted(Constants.FastAnimation, Completed);
+#else
+            batch.End();
+#endif
+        }
+
+        private bool _pollVotesCollapsed = true;
+        private void ShowHidePollVotes(bool show)
+        {
+            if (_pollVotesCollapsed != show)
+            {
+                return;
+            }
+
+            _pollVotesCollapsed = !show;
+            PollVotesPanel.Visibility = Visibility.Visible;
+
+            var pollVotes = ElementComposition.GetElementVisual(PollVotesPanel);
+
+            var compositor = pollVotes.Compositor;
+
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+
+            void Completed()
+            {
+                PollVotesPanel.Visibility = _pollVotesCollapsed
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+
+#if !LINUX
+            batch.Completed += (s, args) => Completed();
+#endif
+
+            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1.0f));
+
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.InsertKeyFrame(show ? 0 : 1, Vector3.Zero);
+            scale.InsertKeyFrame(show ? 1 : 0, Vector3.One, easing);
+            scale.Duration = Constants.FastAnimation;
+
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(show ? 0 : 1, 0);
+            fade.InsertKeyFrame(show ? 1 : 0, 1, easing);
+            fade.Duration = Constants.FastAnimation;
+
+            pollVotes.StartAnimation("Opacity", fade);
+            pollVotes.StartAnimation("Scale", scale);
+
+#if LINUX
+            batch.EndWithCompleted(Constants.FastAnimation, Completed);
+#else
+            batch.End();
+#endif
+        }
+    }
+}

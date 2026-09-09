@@ -1,0 +1,45 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Telegram.ViewModels;
+
+namespace Telegram.Collections.Handlers
+{
+    public partial class SearchResultDiffHandler : IDiffHandler<SearchResult>
+    {
+        public bool CompareItems(SearchResult oldItem, SearchResult newItem)
+        {
+            if (oldItem.Type != newItem.Type)
+            {
+                return false;
+            }
+
+            // A public chat's subtitle is the @username the query selected, highlighted over the
+            // query's length, so the same chat found by a different query is not the same row.
+            if (oldItem.IsPublic && !string.Equals(oldItem.Query, newItem.Query))
+            {
+                return false;
+            }
+
+            if (oldItem.Chat != null && newItem.Chat != null)
+            {
+                return oldItem.Chat.Id == newItem.Chat.Id;
+            }
+            else if (oldItem.User != null && newItem.User != null)
+            {
+                return oldItem.User.Id == newItem.User.Id;
+            }
+
+            return false;
+        }
+
+        public void UpdateItem(SearchResult oldItem, SearchResult newItem)
+        {
+            oldItem.Query = newItem.Query;
+        }
+    }
+}

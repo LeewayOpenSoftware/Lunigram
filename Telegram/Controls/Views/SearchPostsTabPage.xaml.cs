@@ -1,0 +1,248 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Microsoft.Graphics.Canvas.Geometry;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using Telegram.Common;
+using Telegram.Controls.Cells;
+using Telegram.Controls.Media;
+using Telegram.Controls.Views;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.Views.Profile
+{
+    public sealed partial class SearchPostsTabPage : ProfileTabPage
+    {
+        public new SearchPostsViewModel ViewModel => DataContext as SearchPostsViewModel;
+
+        private DispatcherTimer _nextFreeQueryTimer;
+
+        public SearchPostsTabPage()
+        {
+            InitializeComponent();
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            base.OnNavigatedTo(e);
+
+            //ScrollingHost.Style = BootStrapper.Current.Resources["DefaultListViewStyle"] as Style;
+            //ScrollingHost.Padding = new Thickness(0);
+            //ScrollingHost.ItemContainerCornerRadius = new CornerRadius(0);
+
+            ViewModel.PropertyChanged += OnPropertyChanged;
+
+            UpdateState(ViewModel.State);
+            UpdateQueryString(ViewModel.QueryString);
+            UpdateLimits(ViewModel.Limits);
+        }
+
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            base.OnNavigatedFrom(e);
+
+            ViewModel.PropertyChanged -= OnPropertyChanged;
+        }
+
+        private void OnPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ViewModel.Limits))
+            {
+                UpdateLimits(ViewModel.Limits);
+            }
+            else if (e.PropertyName == nameof(ViewModel.QueryString))
+            {
+                UpdateQueryString(ViewModel.QueryString);
+            }
+            else if (e.PropertyName == nameof(ViewModel.State))
+            {
+                UpdateState(ViewModel.State);
+            }
+        }
+
+        private void UpdateState(SearchPostsState state)
+        {
+            InitialState.Visibility = state == SearchPostsState.Empty
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            if (state == SearchPostsState.NotFound)
+            {
+                FindName(nameof(NotFoundState));
+            }
+            else
+            {
+                UnloadObject(NotFoundState);
+            }
+
+            if (state == SearchPostsState.Loading)
+            {
+                FindName(nameof(LoadingState));
+            }
+            else
+            {
+                UnloadObject(LoadingState);
+            }
+        }
+
+        private void UpdateQueryString(string query)
+        {
+            if (ViewModel.IsPremium)
+            {
+                ActionButton.Visibility = string.IsNullOrWhiteSpace(query)
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+            else
+            {
+                ActionButton.Visibility = Visibility.Visible;
+            }
+        }
+
+        private void UpdateLimits(PublicPostSearchLimits limits)
+        {
+            if (limits == null)
+            {
+                return;
+            }
+
+            if (ViewModel.IsPremium)
+            {
+                if (limits.RemainingFreeQueryCount > 0 || limits.IsCurrentQueryFree)
+                {
+                    Title.Text = Strings.SearchPostsTitle;
+                    Subtitle.Text = Strings.SearchPostsText;
+
+                    SearchInfo.Text = Locale.Declension(Strings.R.SearchPostsFreeSearches, limits.RemainingFreeQueryCount);
+
+                    SearchButton.Opacity = 1;
+                    PaidButton.Opacity = 0;
+                }
+                else
+                {
+                    Title.Text = Strings.SearchPostsLimitReached;
+                    Subtitle.Text = Locale.Declension(Strings.R.SearchPostsLimitReachedText, limits.DailyFreeQueryCount);
+
+                    PaidButton.Text = Locale.Declension(Strings.R.SearchPostsButtonPay, limits.StarCount).ReplaceStar(Icons.Premium);
+
+                    SearchInfo.Text = string.Format(Strings.SearchPostsFreeSearchUnlocksIn, TimeSpan.FromSeconds(limits.NextFreeQueryIn).ToDuration());
+
+                    SearchButton.Opacity = 0;
+                    PaidButton.Opacity = 1;
+                }
+
+                PremiumButton.Opacity = 0;
+                PremiumInfo.Visibility = Visibility.Collapsed;
+
+                SearchInfo.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                Title.Text = Strings.SearchPostsTitle;
+                Subtitle.Text = Strings.SearchPostsText;
+
+                PremiumButton.Opacity = 1;
+                PremiumInfo.Visibility = Visibility.Visible;
+
+                SearchButton.Opacity = 0;
+                SearchInfo.Visibility = Visibility.Collapsed;
+
+                PaidButton.Opacity = 0;
+            }
+        }
+
+        private void UpdateNextFreeQueryIn(int nextFreeQueryIn)
+        {
+            if (_nextFreeQueryTimer == null)
+            {
+                _nextFreeQueryTimer = new DispatcherTimer();
+                _nextFreeQueryTimer.Interval = TimeSpan.FromSeconds(1);
+            }
+        }
+
+        private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.InRecycleQueue || ViewModel == null)
+            {
+                return;
+            }
+            else if (args.ItemContainer.ContentRoot() is ChatCell cell && args.Item is Message message)
+            {
+                // ContentRoot(), not ContentTemplateRoot: the latter is always null in Uno for a
+                // templated container, so every post result would draw as an empty row with no
+                // error anywhere (PORTING.md 6).
+                cell.UpdateMessage(ViewModel.ClientService, message, false);
+                args.Handled = true;
+            }
+#if LINUX
+            else if (args.ItemContainer is SelectorItem container && args.Item is Message pending)
+            {
+                // Uno raises this from PrepareContainerForIndex, before the container is in the
+                // visual tree and therefore before the item template has been expanded, so a
+                // brand new container has no cell to find yet. Same second half of the bind as
+                // Controls/ChatListListView and SearchChatsView.
+                void loaded(object sender, RoutedEventArgs e)
+                {
+                    container.Loaded -= loaded;
+
+                    if (container.ContentRoot() is ChatCell late && container.Content is Message message)
+                    {
+                        late.UpdateMessage(ViewModel.ClientService, message, false);
+                    }
+                }
+
+                container.Loaded -= loaded;
+                container.Loaded += loaded;
+            }
+#endif
+        }
+
+        private void EmptyState_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is TextBlock textBlock)
+            {
+                textBlock.Text = string.Format(Strings.SearchPostsNotFoundText, ViewModel.Query);
+            }
+        }
+
+        private void LoadingState_Loaded(object sender, RoutedEventArgs e)
+        {
+            var size = ScrollingHost.ActualSize;
+            var itemHeight = 8 + 48 + 8;
+
+            var rows = Math.Min(10, Math.Ceiling(size.Y / itemHeight));
+            var shapes = new List<CanvasGeometry>();
+
+            var maxWidth = (int)Math.Clamp(size.X - 32 - 12 - 12 - 48 - 12, 80, 280);
+            var random = new Random();
+
+            for (int i = 0; i < rows; i++)
+            {
+                var y = itemHeight * i;
+
+                shapes.Add(CanvasGeometry.CreateEllipse(null, 12 + 24, y + 8 + 24, 24, 24));
+                shapes.Add(CanvasGeometry.CreateRoundedRectangle(null, 12 + 48 + 8, y + 12, random.Next(80, maxWidth), 18, 4, 4));
+                shapes.Add(CanvasGeometry.CreateRoundedRectangle(null, 12 + 48 + 8, y + 12 + 22, random.Next(80, maxWidth), 14, 4, 4));
+            }
+
+            VisualUtilities.SetSkeleton(LoadingState, size, shapes.ToArray());
+        }
+
+        private void OnItemClick(object sender, ItemClickEventArgs e)
+        {
+            var view = this.GetParent<SearchChatsView>();
+            view?.RaiseItemClick(e);
+        }
+    }
+}

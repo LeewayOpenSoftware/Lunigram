@@ -1,0 +1,387 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.Controls.Media;
+using Telegram.Converters;
+using Telegram.Streams;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+#if LINUX
+using AutomaticDragHelper = Telegram.Native.Controls.AutomaticDragHelper;
+#endif
+
+namespace Telegram.Controls.Messages.Content
+{
+    public sealed partial class AnimationContent : Control, IContent, IPlayerView
+    {
+        private MessageViewModel _message;
+        public MessageViewModel Message => _message;
+
+        private long _fileToken;
+        private long _thumbnailToken;
+
+        private ThumbnailController _thumbnailController;
+
+        public AnimationContent(MessageViewModel message)
+        {
+            _message = message;
+
+            DefaultStyleKey = typeof(AnimationContent);
+            Telegram.Common.Instrumentation.Register(this);
+        }
+
+        #region InitializeComponent
+
+        private AutomaticDragHelper ButtonDrag;
+
+        private AspectView LayoutRoot;
+        private ImageBrush ThumbnailTexture;
+        private FileButton Button;
+        private AnimatedImage Player;
+        private Border Overlay;
+        private TextBlock Subtitle;
+        private bool _templateApplied;
+
+        protected override void OnApplyTemplate()
+        {
+            LayoutRoot = GetTemplateChild(nameof(LayoutRoot)) as AspectView;
+            ThumbnailTexture = LayoutRoot.Background as ImageBrush;
+            Button = GetTemplateChild(nameof(Button)) as FileButton;
+            Player = GetTemplateChild(nameof(Player)) as AnimatedImage;
+            Overlay = GetTemplateChild(nameof(Overlay)) as Border;
+            Subtitle = GetTemplateChild(nameof(Subtitle)) as TextBlock;
+
+            ButtonDrag = new AutomaticDragHelper(Button, true);
+            ButtonDrag.StartDetectingDrag();
+
+            Button.Click += Button_Click;
+            Button.DragStarting += Button_DragStarting;
+
+            _templateApplied = true;
+
+            if (_message != null)
+            {
+                UpdateMessage(_message);
+            }
+        }
+
+        #endregion
+
+        public void UpdateMessage(MessageViewModel message)
+        {
+            _message = message;
+
+            var animation = GetContent(message, out bool isSecret, out _);
+            if (animation == null || !_templateApplied)
+            {
+                return;
+            }
+
+            LayoutRoot.Constraint = isSecret ? Constants.SecretSize : message;
+
+            UpdateThumbnail(message, animation, animation.Thumbnail?.File, true, isSecret);
+
+            UpdateManager.Subscribe(this, message, animation.AnimationValue, ref _fileToken, UpdateFile);
+            UpdateFile(message, animation.AnimationValue);
+        }
+
+        private void UpdateFile(File file)
+        {
+            UpdateFile(_message, file);
+        }
+
+        private void UpdateFile(MessageViewModel message, File file)
+        {
+            var animation = GetContent(message, out bool isSecret, out bool isGame);
+            if (animation == null || !_templateApplied)
+            {
+                return;
+            }
+
+            if (animation.AnimationValue.Id != file.Id)
+            {
+                return;
+            }
+
+            var size = Math.Max(file.Size, file.ExpectedSize);
+            var state = file.GetFileState(message, animation);
+
+            if (state == MessageContentState.Downloading)
+            {
+                Button.SetGlyph(file.Id, MessageContentState.Downloading);
+                Button.Progress = (double)file.Local.DownloadedSize / size;
+
+                Subtitle.Text = isGame ? Strings.AttachGame : string.Format("{0} / {1}", FileSizeConverter.Convert(file.Local.DownloadedSize, size), FileSizeConverter.Convert(size));
+                Overlay.Opacity = 1;
+
+                Player.Source = null;
+            }
+            else if (state == MessageContentState.Uploading)
+            {
+                Button.SetGlyph(file.Id, MessageContentState.Uploading);
+                Button.Progress = (double)file.Remote.UploadedSize / size;
+
+                Subtitle.Text = isGame ? Strings.AttachGame : string.Format("{0} / {1}", FileSizeConverter.Convert(file.Remote.UploadedSize, size), FileSizeConverter.Convert(size));
+                Overlay.Opacity = 1;
+
+                Player.Source = null;
+            }
+            else if (state == MessageContentState.Download)
+            {
+                Button.SetGlyph(file.Id, MessageContentState.Download);
+                Button.Progress = 0;
+
+                Subtitle.Text = isGame ? Strings.AttachGame : (Strings.AttachGif + ", " + FileSizeConverter.Convert(size));
+                Overlay.Opacity = 1;
+
+                Player.Source = null;
+            }
+            else
+            {
+                if (isSecret)
+                {
+                    Button.SetGlyph(file.Id, MessageContentState.Ttl);
+                    Button.Progress = 1;
+
+                    if (message.SelfDestructType is MessageSelfDestructTypeTimer timer)
+                    {
+                        Subtitle.Text = Icons.PlayFilled12 + "\u2004\u200A" + Locale.FormatTtl(Math.Max(timer.SelfDestructTime, animation.Duration), true);
+                    }
+                    else
+                    {
+                        Subtitle.Text = Icons.ArrowClockwiseFilled12 + "\u2004\u200A1";
+                    }
+
+                    Overlay.Opacity = 1;
+
+                    Player.Source = null;
+                }
+                else
+                {
+                    Button.SetGlyph(file.Id, MessageContentState.Animation);
+                    Button.Progress = 1;
+
+                    Subtitle.Text = isGame ? Strings.AttachGame : Strings.AttachGif;
+                    Overlay.Opacity = 1;
+
+                    Player.Source = new LocalFileSource(file);
+                    message.Delegate.ViewVisibleMessages();
+                }
+            }
+
+            Button.Opacity = Player.Source == null ? 1 : 0;
+        }
+
+        private void UpdateThumbnail(File file)
+        {
+            var animation = GetContent(_message, out bool isSecret, out _);
+            if (animation == null || !_templateApplied)
+            {
+                return;
+            }
+
+            UpdateThumbnail(_message, animation, animation.Thumbnail?.File, false, isSecret);
+        }
+
+        private void UpdateThumbnail(MessageViewModel message, Animation animation, File file, bool download, bool isSecret)
+        {
+            _thumbnailController ??= new ThumbnailController(ThumbnailTexture);
+
+            if (animation.Thumbnail is { Format: ThumbnailFormatJpeg })
+            {
+                if (file.Local.IsDownloadingCompleted)
+                {
+                    _thumbnailController.Blur(file.Local.Path, isSecret ? 15 : 3, HashCode.Combine(message.ChatId, message.Id));
+                }
+                else
+                {
+                    if (download)
+                    {
+                        if (file.Local.CanBeDownloaded && !file.Local.IsDownloadingActive)
+                        {
+                            message.ClientService.DownloadFile(file.Id, 1);
+                        }
+
+                        UpdateManager.Subscribe(this, message, file, ref _thumbnailToken, UpdateThumbnail, true);
+                    }
+
+                    if (animation.Minithumbnail != null)
+                    {
+                        _thumbnailController.Blur(animation.Minithumbnail.Data, isSecret ? 15 : 3, HashCode.Combine(message.ChatId, message.Id));
+                    }
+                    else
+                    {
+                        _thumbnailController.Recycle();
+                    }
+                }
+            }
+            else if (animation.Minithumbnail != null)
+            {
+                _thumbnailController.Blur(animation.Minithumbnail.Data, isSecret ? 15 : 3, HashCode.Combine(message.ChatId, message.Id));
+            }
+            else
+            {
+                _thumbnailController.Recycle();
+            }
+        }
+
+        public void Recycle()
+        {
+            _message = null;
+            _thumbnailController?.Recycle();
+
+            UpdateManager.Unsubscribe(this, ref _fileToken);
+            UpdateManager.Unsubscribe(this, ref _thumbnailToken);
+
+            if (_templateApplied)
+            {
+                Player.Source = null;
+            }
+        }
+
+        public bool IsValid(MessageContent content, bool primary)
+        {
+            return content switch
+            {
+                MessageAnimation => true,
+                MessageGame game when !primary => game.Game.Animation != null,
+                MessageText text when text.LinkPreview != null && !primary => text.LinkPreview.Type is LinkPreviewTypeAnimation or LinkPreviewTypeEmbeddedAnimationPlayer { Animation: not null },
+                MessagePoll poll when poll.Media is PollMediaAnimation && !primary => true,
+                MessageSponsored { Content: MessageAnimation } when !primary => true,
+                _ => false,
+            };
+        }
+
+        private Animation GetContent(MessageViewModel message, out bool isSecret, out bool isGame)
+        {
+            isSecret = false;
+            isGame = false;
+
+            if (message?.Delegate == null)
+            {
+                return null;
+            }
+
+            var content = message.Content;
+            switch (content)
+            {
+                case MessageAnimation animation:
+                    isSecret = animation.IsSecret;
+                    return animation.Animation;
+                case MessageGame game:
+                    isGame = true;
+                    return game.Game.Animation;
+                case MessageText text:
+                    {
+                        if (text.LinkPreview?.Type is LinkPreviewTypeAnimation previewAnimation)
+                        {
+                            return previewAnimation.Animation;
+                        }
+                        else if (text.LinkPreview?.Type is LinkPreviewTypeEmbeddedAnimationPlayer embeddedAnimationPlayer)
+                        {
+                            return embeddedAnimationPlayer.Animation;
+                        }
+
+                        break;
+                    }
+                case MessagePoll poll when poll.Media is PollMediaAnimation pollAnimation:
+                    return pollAnimation.Animation;
+                case MessageSponsored { Content: MessageAnimation sponsored }:
+                    return sponsored.Animation;
+            }
+
+            return null;
+        }
+
+        public IPlayerView GetPlaybackElement()
+        {
+            return Player;
+        }
+
+        private void Button_Click(object sender, RoutedEventArgs e)
+        {
+            var animation = GetContent(_message, out _, out _);
+            if (animation == null)
+            {
+                return;
+            }
+
+            var file = animation.AnimationValue;
+            var state = file.GetFileState(_message);
+
+            if (state == MessageContentState.Downloading)
+            {
+                _message.ClientService.CancelDownloadFile(file);
+            }
+            else if (state == MessageContentState.Uploading)
+            {
+                if (_message.SendingState is MessageSendingStateFailed or MessageSendingStatePending)
+                {
+                    _message.ClientService.Send(new DeleteMessages(_message.ChatId, new[] { _message.Id }, true));
+                }
+                else
+                {
+                    _message.ClientService.Send(new CancelPreliminaryUploadFile(file.Id));
+                }
+            }
+            else if (state == MessageContentState.Download)
+            {
+                _message.ClientService.DownloadFile(file.Id, 30);
+            }
+            else if (_message.Content is MessageText text && text.LinkPreview.HasText())
+            {
+                _message.Delegate.OpenWebPage(_message);
+            }
+            else
+            {
+                _message.Delegate.OpenMedia(_message, this);
+            }
+        }
+
+        private void Button_DragStarting(UIElement sender, DragStartingEventArgs args)
+        {
+            MessageHelper.DragStarting(_message, args);
+        }
+
+        #region IPlaybackView
+
+        public int LoopCount => Player?.LoopCount ?? 1;
+
+        private bool _withinViewport;
+
+        public void ViewportChanged(bool within)
+        {
+            if (within && !_withinViewport)
+            {
+                _withinViewport = true;
+                Play();
+            }
+            else if (_withinViewport && !within)
+            {
+                _withinViewport = false;
+                Pause();
+            }
+        }
+
+        public void Play()
+        {
+            Player?.Play();
+        }
+
+        public void Pause()
+        {
+            Player?.Pause();
+        }
+
+        #endregion
+    }
+}

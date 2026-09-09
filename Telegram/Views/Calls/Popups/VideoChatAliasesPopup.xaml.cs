@@ -1,0 +1,153 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Linq;
+using Telegram.Controls;
+using Telegram.Controls.Cells;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace Telegram.Views.Calls.Popups
+{
+    public sealed partial class VideoChatAliasesPopup : ContentPopup
+    {
+        private readonly IClientService _clientService;
+        private readonly bool _canSchedule;
+        private readonly bool _channel;
+
+        public VideoChatAliasesPopup(IClientService clientService, Chat chat, bool canSchedule, Vector<MessageSender> senders)
+        {
+            InitializeComponent();
+
+            _clientService = clientService;
+            _canSchedule = canSchedule;
+            _channel = chat.Type is ChatTypeSupergroup super && super.IsChannel;
+
+            CloseButtonClick += Schedule_Click;
+
+            var already = senders.FirstOrDefault(x => x.AreTheSame(chat.VideoChat.DefaultParticipantId));
+
+            Title = chat.VideoChat.GroupCallId != 0
+                ? Strings.VoipGroupDisplayAs
+                : _channel
+                ? Strings.StartVoipChannelTitle
+                : Strings.StartVoipChatTitle;
+
+            MessageLabel.Text = _channel
+                ? Strings.VoipGroupStartAsInfo
+                : Strings.VoipGroupStartAsInfoGroup;
+
+            if (canSchedule)
+            {
+                CloseButtonText = _channel
+                    ? Strings.VoipChannelScheduleVoiceChat
+                    : Strings.VoipGroupScheduleVoiceChat;
+            }
+
+            PrimaryButtonText = _channel
+                ? Strings.VoipChannelStartVoiceChat
+                : Strings.VoipGroupStartVoiceChat;
+
+            ScrollingHost.ItemsSource = senders.ToList();
+            ScrollingHost.SelectedItem = already ?? senders.FirstOrDefault();
+
+            if (clientService.TryGetSupergroup(chat, out Supergroup supergroup))
+            {
+                StartWith.Visibility = canSchedule && supergroup.CanManageVideoChats()
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+            else if (clientService.TryGetBasicGroup(chat, out BasicGroup basicGroup))
+            {
+                StartWith.Visibility = canSchedule && basicGroup.CanManageVideoChats()
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+            else
+            {
+                StartWith.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        public bool IsScheduleSelected { get; private set; }
+
+        public bool IsStartWithSelected { get; private set; }
+
+        // u-groupcall-compile-clean: `internal`, not `public`, for the same reason as
+        // GroupCallParticipantGridCell's TDLib-typed properties. Uno's
+        // BindableTypeProvidersSourceGenerator walks PUBLIC properties and emits
+        // typeof(global::MessageSender) for a type it cannot see, because source
+        // generators do not observe each other's output and MessageSender comes from the
+        // TDLib generator -> CS0400 in BindableMetadata.g.cs. Nothing binds this from
+        // XAML; its three consumers (VoipCoordinator:314/379, VoipGroupCall:603 -- the
+        // join path's alias picker) are C# in this same assembly.
+        internal MessageSender SelectedSender => ScrollingHost.SelectedItem as MessageSender;
+
+        #region Recycle
+
+        private void OnChoosingItemContainer(ListViewBase sender, ChoosingItemContainerEventArgs args)
+        {
+            if (args.ItemContainer == null)
+            {
+                args.ItemContainer = new MultipleListViewItem(sender, false);
+                args.ItemContainer.Style = ScrollingHost.ItemContainerStyle;
+                args.ItemContainer.ContentTemplate = ScrollingHost.ItemTemplate;
+            }
+
+            args.IsContainerPrepared = true;
+        }
+
+        private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.InRecycleQueue)
+            {
+                return;
+            }
+            else if (args.ItemContainer.ContentTemplateRoot is ChatShareCell content)
+            {
+                content.UpdateState(args.ItemContainer.IsSelected, false, true);
+                content.UpdateMessageSender(_clientService, args, OnContainerContentChanging);
+            }
+        }
+
+        #endregion
+
+        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ScrollingHost.SelectedItem is MessageSender messageSender)
+            {
+                if (_clientService.TryGetUser(messageSender, out User user))
+                {
+                    PrimaryButtonText = string.Format(Strings.VoipGroupContinueAs, user.FullName());
+                }
+                else if (_clientService.TryGetChat(messageSender, out Chat chat))
+                {
+                    PrimaryButtonText = string.Format(Strings.VoipGroupContinueAs, _clientService.GetTitle(chat));
+                }
+
+                IsPrimaryButtonEnabled = true;
+            }
+            else
+            {
+                IsPrimaryButtonEnabled = false;
+            }
+        }
+
+        private void Schedule_Click(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            IsScheduleSelected = true;
+        }
+
+        private void StartWith_Click(object sender, TextUrlClickEventArgs e)
+        {
+            IsStartWithSelected = true;
+            Hide(ContentDialogResult.Primary);
+        }
+    }
+}

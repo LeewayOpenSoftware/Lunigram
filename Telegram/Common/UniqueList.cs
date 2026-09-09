@@ -1,0 +1,143 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+
+namespace Telegram.Common
+{
+    public partial class UniqueList<TKey, TValue> : IList<TValue>
+    {
+        private readonly Func<TValue, TKey> _selector;
+        private readonly SortedList<TKey, TValue> _inner;
+
+        public UniqueList(Func<TValue, TKey> selector, IComparer<TKey> comparer = null)
+        {
+            _selector = selector;
+            _inner = new SortedList<TKey, TValue>(comparer);
+        }
+
+        public IList<TKey> Keys => _inner.Keys;
+
+        public TValue this[int index]
+        {
+            get => _inner.Values[index];
+            set { }
+        }
+
+        public int Count
+        {
+            get
+            {
+                return _inner.Count;
+            }
+        }
+
+        public bool IsReadOnly
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        public bool Add(TValue item)
+        {
+            var key = _selector(item);
+            if (_inner.ContainsKey(key))
+            {
+                return false;
+            }
+
+            _inner.Add(key, item);
+            return true;
+        }
+
+        public void Clear()
+        {
+            _inner.Clear();
+        }
+
+        public bool Contains(TValue item)
+        {
+            return _inner.ContainsKey(_selector(item));
+        }
+
+        public bool ContainsKey(TKey key)
+        {
+            return _inner.ContainsKey(key);
+        }
+
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            return _inner.TryGetValue(key, out value);
+        }
+
+        public void CopyTo(TValue[] array, int arrayIndex)
+        {
+            _inner.Values.CopyTo(array, arrayIndex);
+        }
+
+        public IEnumerator<TValue> GetEnumerator()
+        {
+            return _inner.Values.GetEnumerator();
+        }
+
+        public int IndexOf(TValue item)
+        {
+            return _inner.Values.IndexOf(item);
+        }
+
+        public void Insert(int index, TValue item)
+        {
+            var key = _selector(item);
+            if (_inner.ContainsKey(key))
+            {
+                return;
+            }
+
+            _inner.Add(key, item);
+        }
+
+        public bool Remove(TValue item)
+        {
+            return _inner.Remove(_selector(item));
+        }
+
+        public bool Remove(TKey key)
+        {
+            return _inner.Remove(key);
+        }
+
+        public void RemoveAt(int index)
+        {
+            _inner.RemoveAt(index);
+        }
+
+        public bool TryRemove(TKey key, out TValue value)
+        {
+            if (_inner.TryGetValue(key, out value))
+            {
+                _inner.Remove(key);
+                return true;
+            }
+
+            return false;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return _inner.Values.GetEnumerator();
+        }
+
+        void ICollection<TValue>.Add(TValue item)
+        {
+            Add(item);
+        }
+    }
+}

@@ -1,0 +1,319 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Td.Api;
+
+namespace Telegram.Services.Settings
+{
+    [Flags]
+    public enum AutoDownloadMode
+    {
+        None = 0,
+
+        CellularContacts = 1 << 0,
+        WifiContacts = 1 << 1,
+
+        CellularPrivateChats = 1 << 2,
+        WifiPrivateChats = 1 << 3,
+
+        CellularGroups = 1 << 4,
+        WifiGroups = 1 << 5,
+
+        CellularChannels = 1 << 6,
+        WifiChannels = 1 << 7,
+
+        AutosavePhotosAll = CellularContacts | CellularPrivateChats | CellularGroups | CellularChannels,
+
+        AllPrivateChats = CellularContacts | WifiContacts | CellularPrivateChats | WifiPrivateChats,
+        AllGroups = CellularGroups | WifiGroups | CellularChannels | WifiChannels,
+        All = CellularContacts | WifiContacts | CellularPrivateChats | WifiPrivateChats | CellularGroups | WifiGroups | CellularChannels | WifiChannels
+    }
+
+    public enum AutoDownloadType
+    {
+        Photos,
+        Videos,
+        Documents,
+    }
+
+    public enum AutoDownloadChat
+    {
+        Contact,
+        OtherPrivateChat,
+        Group,
+        Channel
+    }
+
+    public partial class AutoDownloadSettings
+    {
+        private AutoDownloadSettings()
+        {
+
+        }
+
+        public AutoDownloadSettings(ISettingsStore store)
+        {
+            _disabled = GetBoolean(store, "disabled", false);
+            _photos = (AutoDownloadMode)GetInt32(store, "photos", (int)AutoDownloadMode.All);
+            _videos = (AutoDownloadMode)GetInt32(store, "videos", (int)AutoDownloadMode.All);
+            _maximumVideoSize = GetInt64(store, "maxVideoSize", 10 * 1024 * 1024);
+            _documents = (AutoDownloadMode)GetInt32(store, "documents", (int)AutoDownloadMode.All);
+            _maximumDocumentSize = GetInt64(store, "maxDocumentSize", 3 * 1024 * 1024);
+            _preloadLargeVideos = GetBoolean(store, "preloadVideos", true);
+        }
+
+        public void Save(ISettingsStore store)
+        {
+            store.SetValue("disabled", _disabled);
+            store.SetValue("photos", (int)_photos);
+            store.SetValue("videos", (int)_videos);
+            store.SetValue("maxVideoSize", _maximumVideoSize);
+            store.SetValue("documents", (int)_documents);
+            store.SetValue("maxDocumentSize", _maximumDocumentSize);
+            store.SetValue("preloadVideos", _preloadLargeVideos);
+        }
+
+        private static bool GetBoolean(ISettingsStore store, string key, bool defaultValue)
+        {
+            return store.TryGetValue(key, out object value) && value is bool result ? result : defaultValue;
+        }
+
+        private static int GetInt32(ISettingsStore store, string key, int defaultValue)
+        {
+            return store.TryGetValue(key, out object value) && value is int result ? result : defaultValue;
+        }
+
+        // maxVideoSize and maxDocumentSize were written as Int32 by older builds.
+        private static long GetInt64(ISettingsStore store, string key, long defaultValue)
+        {
+            if (store.TryGetValue(key, out object value))
+            {
+                if (value is long result64)
+                {
+                    return result64;
+                }
+                else if (value is int result32)
+                {
+                    return result32;
+                }
+            }
+
+            return defaultValue;
+        }
+
+        public static AutoDownloadSettings Default
+        {
+            get
+            {
+                var preferences = new AutoDownloadSettings();
+                preferences._photos = AutoDownloadMode.All;
+                preferences._videos = AutoDownloadMode.All;
+                preferences._maximumVideoSize = 10 * 1024 * 1024;
+                preferences._documents = AutoDownloadMode.All;
+                preferences._maximumDocumentSize = 3 * 1024 * 1024;
+                preferences._preloadLargeVideos = true;
+                return preferences;
+            }
+        }
+
+        public static AutoDownloadSettings FromPreset(Telegram.Td.Api.AutoDownloadSettings preset)
+        {
+            var preferences = new AutoDownloadSettings();
+            preferences._disabled = !preset.IsAutoDownloadEnabled;
+            preferences._photos = AutoDownloadMode.All;
+            preferences._videos = AutoDownloadMode.All;
+            preferences._maximumVideoSize = preset.MaxVideoFileSize;
+            preferences._documents = AutoDownloadMode.All;
+            preferences._maximumDocumentSize = preset.MaxOtherFileSize;
+            preferences._preloadLargeVideos = preset.PreloadLargeVideos;
+            return preferences;
+        }
+
+        public bool IsDefault => _photos == AutoDownloadMode.All
+            && _videos == AutoDownloadMode.All
+            && _maximumVideoSize == 10 * 1024 * 1024
+            && _documents == AutoDownloadMode.All
+            && _maximumDocumentSize == 3 * 1024 * 1024
+            && _preloadLargeVideos == true;
+
+        private bool _disabled;
+        public bool Disabled => _disabled;
+
+        private AutoDownloadMode _photos;
+        public AutoDownloadMode Photos => _photos;
+
+        private AutoDownloadMode _videos;
+        public AutoDownloadMode Videos => _videos;
+
+        private long _maximumVideoSize;
+        public long MaximumVideoSize => _maximumVideoSize;
+
+        private AutoDownloadMode _documents;
+        public AutoDownloadMode Documents => _documents;
+
+        private long _maximumDocumentSize;
+        public long MaximumDocumentSize => _maximumDocumentSize;
+
+        private bool _preloadLargeVideos;
+        public bool PreloadLargeVideos => _preloadLargeVideos;
+
+        public AutoDownloadSettings UpdateDisabled(bool disabled)
+        {
+            var preferences = new AutoDownloadSettings();
+            preferences._disabled = disabled;
+            preferences._photos = _photos;
+            preferences._videos = _videos;
+            preferences._maximumVideoSize = _maximumVideoSize;
+            preferences._documents = _documents;
+            preferences._maximumDocumentSize = _maximumDocumentSize;
+            preferences._preloadLargeVideos = _preloadLargeVideos;
+            return preferences;
+        }
+
+        public AutoDownloadSettings UpdatePhotosMode(AutoDownloadMode mode)
+        {
+            var preferences = new AutoDownloadSettings();
+            preferences._photos = mode;
+            preferences._videos = _videos;
+            preferences._maximumVideoSize = _maximumVideoSize;
+            preferences._documents = _documents;
+            preferences._maximumDocumentSize = _maximumDocumentSize;
+            preferences._preloadLargeVideos = _preloadLargeVideos;
+            return preferences;
+        }
+
+        public AutoDownloadSettings UpdateVideosMode(AutoDownloadMode mode, long maximumSize, bool preload)
+        {
+            var preferences = new AutoDownloadSettings();
+            preferences._photos = _photos;
+            preferences._videos = mode;
+            preferences._maximumVideoSize = maximumSize;
+            preferences._documents = _documents;
+            preferences._maximumDocumentSize = _maximumDocumentSize;
+            preferences._preloadLargeVideos = preload;
+            return preferences;
+        }
+
+        public AutoDownloadSettings UpdateDocumentsMode(AutoDownloadMode mode, long maximumSize)
+        {
+            var preferences = new AutoDownloadSettings();
+            preferences._photos = _photos;
+            preferences._videos = _videos;
+            preferences._maximumVideoSize = _maximumVideoSize;
+            preferences._documents = mode;
+            preferences._maximumDocumentSize = maximumSize;
+            preferences._preloadLargeVideos = _preloadLargeVideos;
+            return preferences;
+        }
+
+
+
+        public bool ShouldDownload(AutoDownloadMode mode, AutoDownloadChat chat, NetworkType networkType = null)
+        {
+            bool isWiFi = networkType is NetworkTypeWiFi or null;
+            bool isCellular = !isWiFi && networkType is not NetworkTypeNone;
+
+            bool shouldDownload = false;
+            switch (chat)
+            {
+                case AutoDownloadChat.Contact:
+                    if (isCellular)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.CellularContacts) != 0;
+                    }
+                    else if (isWiFi)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.WifiContacts) != 0;
+                    }
+
+                    break;
+
+                case AutoDownloadChat.OtherPrivateChat:
+                    if (isCellular)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.CellularPrivateChats) != 0;
+                    }
+                    else if (isWiFi)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.WifiPrivateChats) != 0;
+                    }
+
+                    break;
+
+                case AutoDownloadChat.Group:
+                    if (isCellular)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.CellularGroups) != 0;
+                    }
+                    else if (isWiFi)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.WifiGroups) != 0;
+                    }
+
+                    break;
+
+                case AutoDownloadChat.Channel:
+                    if (isCellular)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.CellularChannels) != 0;
+                    }
+                    else if (isWiFi)
+                    {
+                        shouldDownload = (mode & AutoDownloadMode.WifiChannels) != 0;
+                    }
+
+                    break;
+
+                default:
+                    break;
+            }
+
+            return shouldDownload;
+        }
+
+        public bool ShouldDownloadPhoto(AutoDownloadChat chat, NetworkType networkType = null)
+        {
+            if (_disabled)
+            {
+                return false;
+            }
+
+            return ShouldDownload(_photos, chat, networkType);
+        }
+
+        public bool ShouldDownloadVideo(AutoDownloadChat chat, long size, NetworkType networkType = null)
+        {
+            if (_disabled)
+            {
+                return false;
+            }
+
+            if (size > _maximumVideoSize)
+            {
+                return false;
+            }
+
+            return ShouldDownload(_videos, chat, networkType);
+        }
+
+        public bool ShouldDownloadDocument(AutoDownloadChat chat, long size, NetworkType networkType = null)
+        {
+            if (_disabled)
+            {
+                return false;
+            }
+
+            if (size > _maximumDocumentSize)
+            {
+                return false;
+            }
+
+            return ShouldDownload(_documents, chat, networkType);
+        }
+    }
+}

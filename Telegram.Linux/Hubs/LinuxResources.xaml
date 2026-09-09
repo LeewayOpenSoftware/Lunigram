@@ -1,0 +1,30 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Keys that WinUI's XamlControlsResources defines and App.xaml derives from, which Uno's
+        Fluent theme does not carry. Merged from App.xaml through the not_win conditional prefix,
+        so the Windows build never sees this file.
+    -->
+
+    <Style x:Key="DefaultListViewItemStyle"
+           TargetType="ListViewItem" />
+
+    <Style x:Key="BaseRichTextBlockStyle"
+           TargetType="RichTextBlock">
+        <Setter Property="FontSize"
+                Value="14" />
+        <Setter Property="FontWeight"
+                Value="SemiBold" />
+        <Setter Property="TextWrapping"
+                Value="Wrap" />
+    </Style>
+
+    <Style x:Key="BodyRichTextBlockStyle"
+           TargetType="RichTextBlock"
+           BasedOn="{StaticResource BaseRichTextBlockStyle}">
+        <Setter Property="FontWeight"
+                Value="Normal" />
+    </Style>
+
+</ResourceDictionary>

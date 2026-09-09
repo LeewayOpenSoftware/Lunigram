@@ -1,0 +1,83 @@
+﻿<UserControl x:Class="Telegram.Controls.Cells.Premium.PremiumFeatureUpgradedStoriesCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Telegram.Controls"
+             mc:Ignorable="d"
+             Padding="0">
+
+    <Grid Background="{ThemeResource ContentDialogTopOverlaySolid}">
+        <ListView x:Name="ScrollingHost"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  SelectionMode="None"
+                  Padding="12,0,12,0">
+            <ListView.Header>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <controls:ActiveStoriesSegments x:Name="Segments"
+                                                    TopColor="#FFc36eff"
+                                                    BottomColor="#FF8b60fa"
+                                                    Width="96"
+                                                    Height="96"
+                                                    Margin="0,24,0,8">
+                        <controls:ProfilePicture x:Name="Photo"
+                                                 Size="96" />
+                    </controls:ActiveStoriesSegments>
+
+                    <TextBlock Text="{CustomResource UpgradedStories}"
+                               Style="{StaticResource PopupTextBlockStyle}"
+                               TextAlignment="Center"
+                               VerticalAlignment="Top"
+                               Margin="0,0,0,8"
+                               Grid.Row="1" />
+                </Grid>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="12,8,12,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border x:Name="IconPanel"
+                                VerticalAlignment="Top"
+                                Margin="0,0,12,0"
+                                Width="24"
+                                Height="24"
+                                CornerRadius="4"
+                                Grid.RowSpan="2">
+                            <TextBlock x:Name="Icon"
+                                       Foreground="#FFFFFF"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       FontSize="20" />
+                        </Border>
+
+                        <TextBlock x:Name="Title"
+                                   VerticalAlignment="Top"
+                                   Margin="0,-2,0,0"
+                                   Grid.Column="1" />
+
+                        <TextBlock x:Name="Subtitle"
+                                   Style="{StaticResource InfoCaptionTextBlockStyle}"
+                                   Grid.Column="1"
+                                   Grid.Row="1" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <controls:ScrollViewerScrim Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    ScrollingHost="{x:Bind ScrollingHost}" />
+    </Grid>
+</UserControl>

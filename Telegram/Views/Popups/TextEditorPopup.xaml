@@ -1,0 +1,490 @@
+﻿<controls:ContentPopup x:Class="Telegram.Views.Popups.TextEditorPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       xmlns:common="using:Telegram.Common"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:cells="using:Telegram.Controls.Cells"
+                       xmlns:local="using:Telegram.Views.Popups"
+                       mc:Ignorable="d"
+                       Padding="0,24,0,0"
+                       IsDismissButtonVisible="True"
+                       ButtonsLayout="Vertical"
+                       PrimaryButtonClick="ContentDialog_PrimaryButtonClick">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+        <controls:TopNavView x:Name="Navigation"
+                             Height="32"
+                             Margin="12,0">
+            <controls:TopNavView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Grid VerticalAlignment="Center"
+                          HorizontalAlignment="Stretch"
+                          Background="{ThemeResource LayerOnMicaBaseAltFillColorSecondaryBrush}"
+                          Padding="0,0,0,4"
+                          Height="32"
+                          CornerRadius="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition />
+                            <ColumnDefinition />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                    </Grid>
+                </ItemsPanelTemplate>
+            </controls:TopNavView.ItemsPanel>
+            <!--<controls:TopNavView.ItemContainerStyle>
+                <Style TargetType="controls:TopNavViewItem">
+                    <Setter Property="HorizontalAlignment"
+                            Value="Stretch" />
+                    <Setter Property="VerticalAlignment"
+                            Value="Stretch" />
+                    <Setter Property="HorizontalContentAlignment"
+                            Value="Center" />
+                    <Setter Property="VerticalContentAlignment"
+                            Value="Center" />
+                    <Setter Property="UseSystemFocusVisuals"
+                            Value="True" />
+                    <Setter Property="FocusVisualMargin"
+                            Value="-3" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="controls:TopNavViewItem">
+                                <Grid x:Name="ContentBorder"
+                                      Background="Transparent">
+                                    <ContentPresenter x:Name="ContentPresenter"
+                                                      Grid.Column="1"
+                                                      Margin="12,1,12,0"
+                                                      TextWrapping="NoWrap"
+                                                      FontWeight="SemiBold"
+                                                      Foreground="{TemplateBinding Foreground}"
+                                                      ContentTransitions="{TemplateBinding ContentTransitions}"
+                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                      Content="{TemplateBinding Content}"
+                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+                                                      VerticalAlignment="Center"
+                                                      AutomationProperties.AccessibilityView="Raw"
+                                                      Canvas.ZIndex="1" />
+                                    <Grid x:Name="SelectionIndicatorGrid"
+                                          Control.IsTemplateFocusTarget="True"
+                                          Margin="4,4,4,0"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Center"
+                                          Height="24"
+                                          CornerRadius="12">
+                                        <Rectangle x:Name="SelectionIndicator"
+                                                   Fill="{ThemeResource ContentDialogTopOverlaySolid}"
+                                                   Opacity="0"
+                                                   RadiusX="12"
+                                                   RadiusY="12" />
+                                    </Grid>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </controls:TopNavView.ItemContainerStyle>-->
+            <controls:TopNavViewItem Content="{CustomResource AIEditorTabTranslate}" />
+            <controls:TopNavViewItem Content="{CustomResource AIEditorTabStyle}"
+                                     Grid.Column="1" />
+            <controls:TopNavViewItem Content="{CustomResource AIEditorTabFix}"
+                                     Grid.Column="2" />
+        </controls:TopNavView>
+
+        <Grid x:Name="TabTranslate"
+              Background="{ThemeResource LayerOnMicaBaseAltFillColorSecondaryBrush}"
+              CornerRadius="16"
+              Margin="12"
+              Visibility="Collapsed"
+              Grid.Row="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          VerticalScrollMode="Auto">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="TabTranslateFrom"
+                               Text="{CustomResource AIEditorOriginalText}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               Margin="12,8,0,4" />
+
+                    <controls:FormattedTextBlock x:Name="TabTranslateOriginal"
+                                                 Margin="12,0,12,12"
+                                                 Grid.Row="1" />
+
+                    <Border BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                            BorderThickness="0,1,0,0"
+                            Grid.Row="2" />
+
+                    <TextBlock x:Name="TabTranslateTo"
+                               Text="{CustomResource AIEditorTo}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               VerticalAlignment="Top"
+                               Margin="12,12,0,4"
+                               Grid.Row="3" />
+                    <CheckBox x:Name="TabTranslateEmoji"
+                              Checked="TabTranslateEmoji_Checked"
+                              Unchecked="TabTranslateEmoji_Checked"
+                              Content="{CustomResource AIEditorEmojify}"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Bottom"
+                              Margin="0,0,12,-4"
+                              MinWidth="0"
+                              Grid.Row="3" />
+
+                    <controls:FormattedTextBlock x:Name="TabTranslateOutput"
+                                                 Margin="12,0,12,12"
+                                                 Grid.Row="4" />
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid x:Name="TabStyle"
+              Background="{ThemeResource LayerOnMicaBaseAltFillColorSecondaryBrush}"
+              CornerRadius="16"
+              Margin="12"
+              Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition />
+            </Grid.RowDefinitions>
+            <controls:TopNavView x:Name="TabStyleItems"
+                                 SelectionChanged="TabStyleItems_SelectionChanged"
+                                 ChoosingItemContainer="TabStyleItems_ChoosingItemContainer"
+                                 ContainerContentChanging="TabStyleItems_ContainerContentChanging"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                 ScrollViewer.HorizontalScrollMode="Auto"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollMode="Disabled"
+                                 BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                                 BorderThickness="0,0,0,1"
+                                 Height="Auto">
+                <controls:TopNavView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="0,8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <controls:AnimatedImage Width="28"
+                                                    Height="28"
+                                                    FrameSize="28,28"
+                                                    DecodeFrameType="Logical" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       Margin="8,0"
+                                       Grid.Row="1" />
+                        </Grid>
+                    </DataTemplate>
+                </controls:TopNavView.ItemTemplate>
+                <controls:TopNavView.ItemContainerStyle>
+                    <Style TargetType="controls:TopNavViewItem">
+                        <Setter Property="HorizontalAlignment"
+                                Value="Stretch" />
+                        <Setter Property="VerticalAlignment"
+                                Value="Stretch" />
+                        <Setter Property="HorizontalContentAlignment"
+                                Value="Center" />
+                        <Setter Property="VerticalContentAlignment"
+                                Value="Center" />
+                        <Setter Property="UseSystemFocusVisuals"
+                                Value="True" />
+                        <Setter Property="FontFamily"
+                                Value="{ThemeResource ContentControlThemeFontFamily}" />
+                        <Setter Property="MinHeight"
+                                Value="0" />
+                        <Setter Property="MinWidth"
+                                Value="0" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="controls:TopNavViewItem">
+                                    <Grid x:Name="ContentBorder"
+                                          Background="Transparent"
+                                          RenderTransformOrigin="0.5,0.5">
+                                        <Grid.RenderTransform>
+                                            <ScaleTransform x:Name="ContentBorderScale" />
+                                        </Grid.RenderTransform>
+                                        <VisualStateManager.CustomVisualStateManager>
+                                            <controls:TopNavViewItemManager />
+                                        </VisualStateManager.CustomVisualStateManager>
+                                        <VisualStateManager.VisualStateGroups>
+                                            <VisualStateGroup>
+                                                <VisualState x:Name="Normal" />
+                                                <VisualState x:Name="PointerOver" />
+                                                <VisualState x:Name="Pressed" />
+                                                <VisualState x:Name="Selected">
+                                                    <VisualState.Setters>
+                                                        <Setter Target="ContentPresenter.Foreground"
+                                                                Value="{ThemeResource AccentButtonBackground}" />
+                                                    </VisualState.Setters>
+                                                </VisualState>
+                                                <VisualState x:Name="PointerOverSelected">
+                                                    <VisualState.Setters>
+                                                        <Setter Target="ContentPresenter.Foreground"
+                                                                Value="{ThemeResource AccentButtonBackground}" />
+                                                    </VisualState.Setters>
+                                                </VisualState>
+                                                <VisualState x:Name="PressedSelected">
+                                                    <VisualState.Setters>
+                                                        <Setter Target="ContentPresenter.Foreground"
+                                                                Value="{ThemeResource AccentButtonBackground}" />
+                                                    </VisualState.Setters>
+                                                </VisualState>
+                                            </VisualStateGroup>
+                                            <VisualStateGroup x:Name="ReorderHintStates">
+                                                <VisualState x:Name="NoReorderHint" />
+                                                <VisualState x:Name="BottomReorderHint">
+                                                    <Storyboard>
+                                                        <DragOverThemeAnimation TargetName="ContentBorder"
+                                                                                ToOffset="{ThemeResource ListViewItemReorderHintThemeOffset}"
+                                                                                Direction="Bottom" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="TopReorderHint">
+                                                    <Storyboard>
+                                                        <DragOverThemeAnimation TargetName="ContentBorder"
+                                                                                ToOffset="{ThemeResource ListViewItemReorderHintThemeOffset}"
+                                                                                Direction="Top" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="RightReorderHint">
+                                                    <Storyboard>
+                                                        <DragOverThemeAnimation TargetName="ContentBorder"
+                                                                                ToOffset="{ThemeResource ListViewItemReorderHintThemeOffset}"
+                                                                                Direction="Right" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="LeftReorderHint">
+                                                    <Storyboard>
+                                                        <DragOverThemeAnimation TargetName="ContentBorder"
+                                                                                ToOffset="{ThemeResource ListViewItemReorderHintThemeOffset}"
+                                                                                Direction="Left" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualStateGroup.Transitions>
+                                                    <VisualTransition To="NoReorderHint"
+                                                                      GeneratedDuration="0:0:0.2" />
+                                                </VisualStateGroup.Transitions>
+                                            </VisualStateGroup>
+                                            <VisualStateGroup x:Name="DragStates">
+                                                <VisualState x:Name="NotDragging" />
+                                                <VisualState x:Name="Dragging">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="ContentBorder"
+                                                                         Storyboard.TargetProperty="Opacity"
+                                                                         Duration="0"
+                                                                         To="{ThemeResource ListViewItemDragThemeOpacity}" />
+                                                        <DragItemThemeAnimation TargetName="ContentBorder" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="DraggingTarget" />
+                                                <VisualState x:Name="MultipleDraggingPrimary" />
+                                                <VisualState x:Name="MultipleDraggingSecondary" />
+                                                <VisualState x:Name="DraggedPlaceholder" />
+                                                <VisualState x:Name="Reordering">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="ContentBorder"
+                                                                         Storyboard.TargetProperty="Opacity"
+                                                                         Duration="0:0:0.240"
+                                                                         To="{ThemeResource ListViewItemReorderThemeOpacity}" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="ReorderingTarget">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="ContentBorder"
+                                                                         Storyboard.TargetProperty="Opacity"
+                                                                         Duration="0:0:0.240"
+                                                                         To="{ThemeResource ListViewItemReorderTargetThemeOpacity}" />
+                                                        <DoubleAnimation Storyboard.TargetName="ContentBorderScale"
+                                                                         Storyboard.TargetProperty="ScaleX"
+                                                                         Duration="0:0:0.240"
+                                                                         To="{ThemeResource ListViewItemReorderTargetThemeScale}" />
+                                                        <DoubleAnimation Storyboard.TargetName="ContentBorderScale"
+                                                                         Storyboard.TargetProperty="ScaleY"
+                                                                         Duration="0:0:0.240"
+                                                                         To="{ThemeResource ListViewItemReorderTargetThemeScale}" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="MultipleReorderingPrimary" />
+                                                <VisualState x:Name="ReorderedPlaceholder">
+                                                    <Storyboard>
+                                                        <FadeOutThemeAnimation TargetName="ContentBorder" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualState x:Name="DragOver">
+                                                    <Storyboard>
+                                                        <DropTargetItemThemeAnimation TargetName="ContentBorder" />
+                                                    </Storyboard>
+                                                </VisualState>
+                                                <VisualStateGroup.Transitions>
+                                                    <VisualTransition To="NotDragging"
+                                                                      GeneratedDuration="0:0:0.2" />
+                                                </VisualStateGroup.Transitions>
+                                            </VisualStateGroup>
+                                        </VisualStateManager.VisualStateGroups>
+                                        <ContentPresenter x:Name="ContentPresenter"
+                                                          Grid.Column="1"
+                                                          Margin="4,1,4,0"
+                                                          TextWrapping="NoWrap"
+                                                          FontWeight="SemiBold"
+                                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                          ContentTransitions="{TemplateBinding ContentTransitions}"
+                                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                          Content="{TemplateBinding Content}"
+                                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+                                                          VerticalAlignment="Center"
+                                                          AutomationProperties.AccessibilityView="Raw"
+                                                          Canvas.ZIndex="1" />
+                                        <Grid x:Name="SelectionIndicatorGrid"
+                                              Margin="4,4,4,4"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch"
+                                              Opacity="0.15">
+                                            <Rectangle x:Name="SelectionIndicator"
+                                                       Fill="{ThemeResource AccentButtonBackground}"
+                                                       Opacity="0"
+                                                       RadiusX="12"
+                                                       RadiusY="12" />
+                                        </Grid>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </controls:TopNavView.ItemContainerStyle>
+                <controls:TopNavView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </controls:TopNavView.ItemsPanel>
+                <controls:TopNavView.Header>
+                    <Button x:Name="TabStyleCreate"
+                            Click="TabStyleCreate_Click"
+                            Style="{StaticResource ListEmptyButtonStyle}">
+                        <Grid Padding="0,8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="&#xF164;"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       FontSize="24"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{CustomResource AIEditorStyleCreate}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Margin="8,0"
+                                       Grid.Row="1" />
+                        </Grid>
+                    </Button>
+                </controls:TopNavView.Header>
+                <!--<controls:TopNavView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <local:TabStylePanel />
+                    </ItemsPanelTemplate>
+                </controls:TopNavView.ItemsPanel>-->
+            </controls:TopNavView>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          VerticalScrollMode="Auto"
+                          Grid.Row="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="TabStyleState"
+                               Text="{CustomResource AIEditorOriginal}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               VerticalAlignment="Top"
+                               Margin="12,12,0,4" />
+                    <CheckBox x:Name="TabStyleEmoji"
+                              Checked="TabStyleEmoji_Checked"
+                              Unchecked="TabStyleEmoji_Checked"
+                              Content="{CustomResource AIEditorEmojify}"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Bottom"
+                              Margin="0,0,12,-4"
+                              MinWidth="0" />
+
+                    <controls:FormattedTextBlock x:Name="TabStyleOutput"
+                                                 Margin="12,0,12,12"
+                                                 Grid.Row="1" />
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid x:Name="TabFix"
+              Visibility="Collapsed"
+              Background="{ThemeResource LayerOnMicaBaseAltFillColorSecondaryBrush}"
+              CornerRadius="16"
+              Margin="12"
+              Grid.Row="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          VerticalScrollMode="Auto">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{CustomResource AIEditorOriginal}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               Margin="12,8,0,4" />
+
+                    <controls:FormattedTextBlock x:Name="TabFixOriginal"
+                                                 Margin="12,0,12,12"
+                                                 Grid.Row="1" />
+
+                    <Border BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                            BorderThickness="0,1,0,0"
+                            Grid.Row="2" />
+
+                    <TextBlock Text="{CustomResource AIEditorResult}"
+                               Style="{StaticResource BaseTextBlockStyle}"
+                               Margin="12,8,0,4"
+                               Grid.Row="3" />
+
+                    <controls:FormattedTextBlock x:Name="TabFixLoading"
+                                                 Padding="12,0,12,12"
+                                                 Grid.Row="4" />
+
+                    <RichEditBox x:Name="TabFixResult"
+                                 Padding="12,0,12,12"
+                                 Grid.Row="4">
+                        <RichEditBox.Template>
+                            <ControlTemplate TargetType="RichEditBox">
+                                <Grid>
+                                    <ScrollViewer x:Name="ContentElement"
+                                                  HorizontalScrollMode="{TemplateBinding ScrollViewer.HorizontalScrollMode}"
+                                                  HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                                  VerticalScrollMode="{TemplateBinding ScrollViewer.VerticalScrollMode}"
+                                                  VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                                                  IsHorizontalRailEnabled="{TemplateBinding ScrollViewer.IsHorizontalRailEnabled}"
+                                                  IsVerticalRailEnabled="{TemplateBinding ScrollViewer.IsVerticalRailEnabled}"
+                                                  IsDeferredScrollingEnabled="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  IsTabStop="False"
+                                                  AutomationProperties.AccessibilityView="Raw"
+                                                  ZoomMode="Disabled" />
+                                </Grid>
+                            </ControlTemplate>
+                        </RichEditBox.Template>
+                    </RichEditBox>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</controls:ContentPopup>

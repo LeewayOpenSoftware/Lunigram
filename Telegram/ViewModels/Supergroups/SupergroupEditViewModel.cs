@@ -1,0 +1,584 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+using Telegram.Views;
+using Telegram.Views.Chats;
+using Telegram.Views.Chats.Popups;
+using Telegram.Views.Popups;
+using Telegram.Views.Supergroups;
+using Telegram.Views.Supergroups.Popups;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Supergroups
+{
+    public partial class SupergroupEditViewModel : ViewModelBase, IDelegable<ISupergroupEditDelegate>, IHandle
+    {
+        public ISupergroupEditDelegate Delegate { get; set; }
+
+        private readonly IProfilePhotoService _profilePhotoService;
+
+        public SupergroupEditViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, IProfilePhotoService profilePhotoService)
+            : base(clientService, settingsService, aggregator)
+        {
+            _profilePhotoService = profilePhotoService;
+        }
+
+        protected Chat _chat;
+        public Chat Chat
+        {
+            get => _chat;
+            set => Set(ref _chat, value);
+        }
+
+        private string _title;
+        public string Title
+        {
+            get => _title;
+            set => Set(ref _title, value);
+        }
+
+        private string _about;
+        public string About
+        {
+            get => _about;
+            set => Set(ref _about, value);
+        }
+
+        private bool _isAllHistoryAvailable;
+        public int IsAllHistoryAvailable
+        {
+            get => Array.IndexOf(_allHistoryAvailableIndexer, _isAllHistoryAvailable);
+            set
+            {
+                if (value >= 0 && value < _allHistoryAvailableIndexer.Length && _isAllHistoryAvailable != _allHistoryAvailableIndexer[value])
+                {
+                    _isAllHistoryAvailable = _allHistoryAvailableIndexer[value];
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private readonly bool[] _allHistoryAvailableIndexer = new[]
+        {
+            true,
+            false,
+        };
+
+        public List<SettingsOptionItem<bool>> AllHistoryAvailableOptions { get; } = new()
+        {
+            new SettingsOptionItem<bool>(true, Strings.ChatHistoryVisible),
+            new SettingsOptionItem<bool>(false, Strings.ChatHistoryHidden)
+        };
+
+        private ChatBoostStatus _boostStatus;
+
+        private bool _hasAutomaticTranslation;
+        public bool HasAutomaticTranslation
+        {
+            get => _hasAutomaticTranslation;
+            set => Set(ref _hasAutomaticTranslation, value);
+        }
+
+        private bool _hasAutomaticTransationLock;
+        public bool HasAutomaticTransationLock
+        {
+            get => _hasAutomaticTransationLock;
+            set => Set(ref _hasAutomaticTransationLock, value);
+        }
+
+        public async void ChangeHasAutomaticTranslation()
+        {
+            var response1 = await ClientService.SendAsync(new GetChatBoostFeatures(Chat.Type is ChatTypeSupergroup { IsChannel: true }));
+            if (response1 is not ChatBoostFeatures features)
+            {
+                return;
+            }
+
+            if (_boostStatus?.Level >= features.MinAutomaticTranslationBoostLevel && Chat?.Type is ChatTypeSupergroup supergroup)
+            {
+                HasAutomaticTranslation = !HasAutomaticTranslation;
+                ClientService.Send(new ToggleSupergroupHasAutomaticTranslation(supergroup.SupergroupId, HasAutomaticTranslation));
+            }
+            else if (_boostStatus != null)
+            {
+                var response2 = await ClientService.SendAsync(new GetAvailableChatBoostSlots());
+                if (response2 is ChatBoostSlots slots)
+                {
+                    NavigationService.ShowPopup(new ChatBoostFeaturesPopup(ClientService, NavigationService, Chat, _boostStatus, slots, features, ChatBoostFeature.AutoTranslate, features.MinAutomaticTranslationBoostLevel));
+                }
+            }
+        }
+
+        private int _inviteLinksCount;
+        public int InviteLinksCount
+        {
+            get => _inviteLinksCount;
+            set => Set(ref _inviteLinksCount, value);
+        }
+
+        public long DirectMessagesChatId { get; private set; }
+
+        #region Initialize
+
+        protected override Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            var chatId = (long)parameter;
+
+            Chat = ClientService.GetChat(chatId);
+
+            var chat = _chat;
+            if (chat == null)
+            {
+                return Task.CompletedTask;
+            }
+
+            Delegate?.UpdateChat(chat);
+
+            ClientService.Send(new LoadChatWelcomeMessages(chat.Id));
+
+            if (chat.Type is ChatTypeSupergroup super)
+            {
+                var item = ClientService.GetSupergroup(super.SupergroupId);
+                var cache = ClientService.GetSupergroupFull(super.SupergroupId);
+
+                Delegate?.UpdateSupergroup(chat, item, cache);
+
+                if (cache == null)
+                {
+                    ClientService.Send(new GetSupergroupFullInfo(super.SupergroupId));
+                }
+                else
+                {
+                    DirectMessagesChatId = cache.DirectMessagesChatId;
+                }
+            }
+            else if (chat.Type is ChatTypeBasicGroup basic)
+            {
+                var item = ClientService.GetBasicGroup(basic.BasicGroupId);
+                var cache = ClientService.GetBasicGroupFull(basic.BasicGroupId);
+
+                Delegate?.UpdateBasicGroup(chat, item, cache);
+
+                if (cache == null)
+                {
+                    ClientService.Send(new GetBasicGroupFullInfo(basic.BasicGroupId));
+                }
+            }
+
+            InitializeInviteLinksCount(chatId);
+            InitializeBoostStatus(chatId);
+
+            return Task.CompletedTask;
+        }
+
+        private async void InitializeInviteLinksCount(long chatId)
+        {
+            var response = await ClientService.SendAsync(new GetChatInviteLinks(chatId, ClientService.Options.MyId, false, 0, string.Empty, 1));
+            if (response is ChatInviteLinks inviteLinks)
+            {
+                InviteLinksCount = inviteLinks.TotalCount;
+            }
+        }
+
+        private async void InitializeBoostStatus(long chatId)
+        {
+            var response1 = await ClientService.SendAsync(new GetChatBoostFeatures(Chat.Type is ChatTypeSupergroup { IsChannel: true }));
+            if (response1 is not ChatBoostFeatures features)
+            {
+                return;
+            }
+
+            var response3 = await ClientService.SendAsync(new GetChatBoostStatus(chatId));
+            if (response3 is ChatBoostStatus boostStatus)
+            {
+                _boostStatus = boostStatus;
+                HasAutomaticTransationLock = boostStatus.Level < features.MinAutomaticTranslationBoostLevel;
+            }
+        }
+
+        public override void Subscribe()
+        {
+            Aggregator.Subscribe<UpdateChatPhoto>(this, Handle)
+                .Subscribe<UpdateChatWelcomeMessages>(Handle)
+                .Subscribe<UpdateSupergroup>(Handle)
+                .Subscribe<UpdateSupergroupFullInfo>(Handle)
+                .Subscribe<UpdateBasicGroup>(Handle)
+                .Subscribe<UpdateBasicGroupFullInfo>(Handle);
+        }
+
+        public void Handle(UpdateChatPhoto update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Id == update.ChatId)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatPhoto(chat));
+            }
+        }
+
+        public void Handle(UpdateChatWelcomeMessages update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Id == update.ChatId)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatWelcomeMessages(chat, update.Messages));
+            }
+        }
+
+        public void Handle(UpdateSupergroup update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeSupergroup super && super.SupergroupId == update.Supergroup.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateSupergroup(chat, update.Supergroup, ClientService.GetSupergroupFull(update.Supergroup.Id)));
+            }
+        }
+
+        public void Handle(UpdateSupergroupFullInfo update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeSupergroup super && super.SupergroupId == update.SupergroupId)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateSupergroup(chat, ClientService.GetSupergroup(update.SupergroupId), update.SupergroupFullInfo));
+            }
+        }
+
+        public void Handle(UpdateBasicGroup update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeBasicGroup basic && basic.BasicGroupId == update.BasicGroup.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateBasicGroup(chat, update.BasicGroup, ClientService.GetBasicGroupFull(update.BasicGroup.Id)));
+            }
+        }
+
+        public void Handle(UpdateBasicGroupFullInfo update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeBasicGroup basic && basic.BasicGroupId == update.BasicGroupId)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateBasicGroup(chat, ClientService.GetBasicGroup(update.BasicGroupId), update.BasicGroupFullInfo));
+            }
+        }
+
+        #endregion
+
+        public async void Continue()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var about = _about.Format();
+            var title = _title.Trim();
+            string oldAbout = null;
+            Supergroup supergroup = null;
+            SupergroupFullInfo fullInfo = null;
+
+            if (chat.Type is ChatTypeSupergroup)
+            {
+                var item = ClientService.GetSupergroup(chat);
+                var cache = ClientService.GetSupergroupFull(chat);
+
+                if (item == null || cache == null)
+                {
+                    return;
+                }
+
+                oldAbout = cache.Description;
+                supergroup = item;
+                fullInfo = cache;
+            }
+            else if (chat.Type is ChatTypeBasicGroup basicGroup)
+            {
+                var item = ClientService.GetBasicGroup(basicGroup.BasicGroupId);
+                var cache = ClientService.GetBasicGroupFull(basicGroup.BasicGroupId);
+
+                oldAbout = cache.Description;
+            }
+
+            if (!string.Equals(title, chat.Title))
+            {
+                var response = await ClientService.SendAsync(new SetChatTitle(chat.Id, title));
+                if (response is Error)
+                {
+                    // TODO:
+                }
+            }
+
+            if (!string.Equals(about, oldAbout))
+            {
+                var response = await ClientService.SendAsync(new SetChatDescription(chat.Id, about));
+                if (response is Error)
+                {
+                    // TODO:
+                }
+            }
+
+            if (_isAllHistoryAvailable && chat.Type is ChatTypeBasicGroup)
+            {
+                var response = await ClientService.SendAsync(new UpgradeBasicGroupChatToSupergroupChat(chat.Id));
+                if (response is Chat result && result.Type is ChatTypeSupergroup super)
+                {
+                    chat = result;
+                    supergroup = await ClientService.SendAsync(new GetSupergroup(super.SupergroupId)) as Supergroup;
+                    fullInfo = await ClientService.SendAsync(new GetSupergroupFullInfo(super.SupergroupId)) as SupergroupFullInfo;
+                }
+                else if (response is Error error)
+                {
+                    if (error.MessageEquals(ErrorType.CHANNELS_TOO_MUCH))
+                    {
+                        NavigationService.ShowLimitReached(new PremiumLimitTypeSupergroupCount());
+                    }
+                    else
+                    {
+                        AlertsService.ShowAddUserAlert(XamlRoot, error.Message, false);
+                    }
+
+                    return;
+                }
+            }
+
+            if (supergroup != null && fullInfo != null && _isAllHistoryAvailable != fullInfo.IsAllHistoryAvailable)
+            {
+                var response = await ClientService.SendAsync(new ToggleSupergroupIsAllHistoryAvailable(supergroup.Id, _isAllHistoryAvailable));
+                if (response is Error)
+                {
+                    // TODO:
+                }
+            }
+
+            NavigationService.GoBack();
+        }
+
+        public async void SetPhoto()
+        {
+            await _profilePhotoService.SetPhotoAsync(NavigationService, Chat.Id);
+        }
+
+        public async void CreatePhoto()
+        {
+            await _profilePhotoService.CreatePhotoAsync(NavigationService, Chat.Id);
+        }
+
+        public void EditType()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupEditTypePage), chat.Id);
+            }
+        }
+
+        public void EditLinkedChat()
+        {
+            if (_chat is Chat chat)
+            {
+                var supergroup = ClientService.GetSupergroup(chat);
+                if (supergroup == null)
+                {
+                    return;
+                }
+
+                NavigationService.Navigate(typeof(SupergroupEditLinkedChatPage), chat.Id);
+            }
+        }
+
+        public void EditColor()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupProfileColorPage), chat.Id);
+            }
+        }
+
+        public void Topics()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupTopicsPage), chat.Id);
+            }
+        }
+
+        public void DirectMessagesGroup()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupDirectMessagesPage), chat.Id);
+            }
+        }
+
+        public void OpenDirectMessagesGroup()
+        {
+            if (_chat is Chat chat && ClientService.TryGetSupergroupFull(chat, out SupergroupFullInfo fullInfo))
+            {
+                NavigationService.NavigateToChat(fullInfo.DirectMessagesChatId);
+            }
+        }
+
+        public void InviteLinks()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(ChatInviteLinksPage), chat.Id);
+            }
+        }
+
+        public void Statistics()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(RevenuePage), chat.Id);
+            }
+        }
+
+        public void EventLog()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(ChatEventLogPage), chat.Id);
+            }
+        }
+
+        public void AffiliatePrograms()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(ChatAffiliatePage), new AffiliateTypeChannel(chat.Id));
+            }
+        }
+
+        public async void Delete()
+        {
+            if (_chat is Chat chat)
+            {
+                Logger.Info(chat.Type);
+
+                var updated = await ClientService.SendAsync(new GetChat(chat.Id)) as Chat ?? chat;
+                var popup = new DeleteChatPopup(ClientService, updated, null, false, true);
+
+                var confirm = await ShowPopupAsync(popup);
+                if (confirm != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+
+                Function request;
+                if (popup.IsChecked)
+                {
+                    request = new DeleteChat(chat.Id);
+                }
+                else
+                {
+                    request = new LeaveChat(chat.Id);
+                }
+
+                var response = await ClientService.SendAsync(request);
+                if (response is Ok)
+                {
+                    NavigationService.RemoveChatFromStack(chat.Id);
+                }
+                else if (response is Error error)
+                {
+                    // TODO: ...
+                }
+            }
+        }
+
+        #region Navigation
+
+        public void Reactions()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.ShowPopupAsync(new SupergroupReactionsPopup(), chat.Id);
+            }
+        }
+
+        public void WelcomeMessages()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(ChatWelcomeMessagesPage), chat.Id);
+            }
+        }
+
+        public void Admins()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupAdministratorsPage), chat.Id);
+            }
+        }
+
+        public void Banned()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupBannedPage), chat.Id);
+            }
+        }
+
+        public void Kicked()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupPermissionsPage), chat.Id);
+            }
+        }
+
+        public void Members()
+        {
+            if (_chat is Chat chat)
+            {
+                NavigationService.Navigate(typeof(SupergroupMembersPage), chat.Id);
+            }
+        }
+
+        #endregion
+    }
+}

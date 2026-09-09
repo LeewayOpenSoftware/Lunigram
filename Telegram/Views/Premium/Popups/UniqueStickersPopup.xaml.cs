@@ -1,0 +1,28 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Telegram.Controls;
+using Telegram.Services;
+using Telegram.Td.Api;
+
+namespace Telegram.Views.Premium.Popups
+{
+    public sealed partial class UniqueStickersPopup : ContentPopup
+    {
+        public UniqueStickersPopup(IClientService clientService, Sticker sticker)
+        {
+            InitializeComponent();
+
+            Presenter.UpdateFeature(clientService, new[] { sticker });
+        }
+
+        private void Purchase_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+
+        }
+    }
+}

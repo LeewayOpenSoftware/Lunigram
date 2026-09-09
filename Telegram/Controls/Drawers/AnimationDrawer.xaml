@@ -1,0 +1,169 @@
+﻿<UserControl x:Class="Telegram.Controls.Drawers.AnimationDrawer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:Telegram.Controls.Drawers"
+             xmlns:viewModels="using:Telegram.ViewModels.Drawers"
+             xmlns:common="using:Telegram.Common"
+             xmlns:controls="using:Telegram.Controls"
+             xmlns:selectors="using:Telegram.Selectors"
+             xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:not_win="http://uno.ui/not_win"
+             mc:Ignorable="d not_win"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <!--
+                The row the drawer's search box moves into on Linux. Empty and therefore zero-high
+                on Windows, where the box stays the list's Header and nothing changes.
+                Telegram.Linux/Xaml/DrawerHeaderHost.cs says why it cannot stay there on Uno.
+            -->
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+        <Border x:Name="SearchHost"
+                Grid.Row="1" />
+        <GridView x:Name="List"
+                  ItemsSource="{x:Bind ConvertItems(ViewModel.Items), Mode=OneWay}"
+                  common:FluidGridView.OrientationOnly="False"
+                  common:FluidGridView.Padding="0,0,2,0"
+                  ChoosingItemContainer="OnChoosingItemContainer"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  IsItemClickEnabled="True"
+                  SelectionMode="None"
+                  ItemClick="OnItemClick"
+                  Padding="2,0,0,0"
+                  Grid.Row="2">
+            <GridView.Header>
+                <controls:EmojiSearchBox x:Name="SearchField"
+                                         AllowFocusOnInteraction="True"
+                                         PlaceholderText="{CustomResource Search}"
+                                         TextChanged="SearchField_TextChanged"
+                                         CategorySelected="SearchField_CategorySelected"
+                                         Margin="10,8,12,8" />
+            </GridView.Header>
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Border>
+                        <controls:AnimatedImage x:Name="Player"
+                                                AutoPlay="False"
+                                                IsCachingEnabled="False"
+                                                ResizeMode="Fill"
+                                                FrameSize="0,0"
+                                                LimitFps="True"
+                                                DecodeFrameType="Logical"
+                                                Stretch="UniformToFill"
+                                                Ready="Player_Ready" />
+                    </Border>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+            <GridView.Footer>
+                <Border Height="12" />
+            </GridView.Footer>
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem"
+                       BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                    <Setter Property="Margin"
+                            Value="0,0,2,2" />
+                    <Setter Property="Padding"
+                            Value="0" />
+                    <Setter Property="HorizontalContentAlignment"
+                            Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment"
+                            Value="Stretch" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemContainerTransitions>
+                <TransitionCollection />
+            </GridView.ItemContainerTransitions>
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <!--
+                        Uno's ItemsWrapGrid is a shell: [NotImplemented] for __SKIA__, derived
+                        straight from Panel, no MeasureOverride and no ArrangeOverride, so it
+                        measures no width and materialises no container. Measured on a live capture
+                        of this very drawer: `ItemsWrapGrid [314,84 0x248]`, zero wide and empty,
+                        next to an ItemsStackPanel toolbar at `[55,49 3636x40]` with 32x32 items in
+                        it. Same substitution as CommonStyles' default GridView panel and the three
+                        profile grid tabs. VariableSizedWrapGrid does not virtualize.
+                        The header had to leave the list for this to help at all: see
+                        Telegram.Linux/Xaml/DrawerHeaderHost.cs.
+                    -->
+                    <win:ItemsWrapGrid Orientation="Horizontal"
+                                       AreStickyGroupHeadersEnabled="False"
+                                       CacheLength="2" />
+                    <not_win:VariableSizedWrapGrid Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </GridView>
+
+        <Grid x:Name="ToolbarContainer">
+            <Border x:Name="Separator" />
+            <!--
+                    Background="{ThemeResource PageSubHeaderBackgroundBrush}"-->
+            <GridView x:Name="Toolbar"
+                      ItemsSource="{x:Bind ViewModel.Sets}"
+                      SelectedItem="{x:Bind ViewModel.SelectedSet, Mode=TwoWay}"
+                      ContainerContentChanging="Toolbar_ContainerContentChanging"
+                      Height="40"
+                      IsItemClickEnabled="True"
+                      ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                      ScrollViewer.HorizontalScrollMode="Auto"
+                      ScrollViewer.IsHorizontalScrollChainingEnabled="False"
+                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                      ScrollViewer.VerticalScrollMode="Disabled"
+                      Padding="4,0,0,0"
+                      Grid.Row="0">
+                <GridView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </GridView.ItemsPanel>
+                <GridView.ItemContainerStyle>
+                    <Style TargetType="GridViewItem"
+                           BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                        <Setter Property="Margin"
+                                Value="0,4,2,4" />
+                        <Setter Property="MinHeight"
+                                Value="0" />
+                        <Setter Property="MinWidth"
+                                Value="0" />
+                        <Setter Property="Height"
+                                Value="32" />
+                        <Setter Property="Width"
+                                Value="32" />
+                    </Style>
+                </GridView.ItemContainerStyle>
+                <GridView.ItemTemplateSelector>
+                    <selectors:StickerSetTemplateSelector>
+                        <selectors:StickerSetTemplateSelector.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <TextBlock FontFamily="{StaticResource EmojiThemeFontFamily}"
+                                               TextAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontSize="16" />
+                                </Grid>
+                            </DataTemplate>
+                        </selectors:StickerSetTemplateSelector.ItemTemplate>
+                        <selectors:StickerSetTemplateSelector.IconTemplate>
+                            <DataTemplate>
+                                <Grid Background="Transparent">
+                                    <FontIcon FontFamily="{StaticResource TelegramThemeFontFamily}" />
+                                </Grid>
+                            </DataTemplate>
+                        </selectors:StickerSetTemplateSelector.IconTemplate>
+                    </selectors:StickerSetTemplateSelector>
+                </GridView.ItemTemplateSelector>
+                <GridView.ItemContainerTransitions>
+                    <TransitionCollection />
+                </GridView.ItemContainerTransitions>
+            </GridView>
+        </Grid>
+    </Grid>
+</UserControl>

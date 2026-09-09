@@ -1,0 +1,271 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Collections;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Controls.Cells;
+using Telegram.Controls.Media;
+using Telegram.ViewModels;
+#if !LINUX
+using Telegram.ViewModels.Stories;
+#endif
+using Telegram.Views.Create;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+
+namespace Telegram.Views.Popups
+{
+    public sealed partial class ContactsPopup : ContentPopup
+    {
+        public ContactsViewModel ViewModel => DataContext as ContactsViewModel;
+
+        public ContactsPopup()
+        {
+            InitializeComponent();
+            InitializeSearch();
+
+            Title = Strings.Contacts;
+        }
+
+        private void InitializeSearch()
+        {
+            var debouncer = new EventDebouncer<TextChangedEventArgs>(Constants.TypingTimeout, handler => SearchField.TextChanged += new TextChangedEventHandler(handler));
+            debouncer.Invoked += async (s, args) =>
+            {
+                // u-091: the twin of the sticker drawer's debouncer, and it fails the same way -
+                // an async void lambda whose throw cannot reach the debouncer, is swallowed by
+                // NativeDispatcher.RunAction (review/probes/AsyncVoidLanding.cs), and leaves
+                // contact search unresponsive for the rest of the popup's life.
+                try
+                {
+                    // 12.10.2 replaced the two LoadMoreItemsAsync calls with these named ones; the
+                    // guard and the try/catch are ours and stay (see the comment above).
+                    var items = ViewModel.Search;
+                    if (items != null && string.Equals(SearchField.Text, items.Query))
+                    {
+                        await items.SearchChatsOnServerAsync();
+                        await items.SearchPublicChatsAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex);
+                }
+            };
+        }
+
+        private void OnChoosingItemContainer(ListViewBase sender, ChoosingItemContainerEventArgs args)
+        {
+            if (args.ItemContainer == null)
+            {
+                args.ItemContainer = new TextListViewItem();
+                args.ItemContainer.Style = sender.ItemContainerStyle;
+                args.ItemContainer.ContentTemplate = sender.ItemTemplate;
+                args.ItemContainer.ContextRequested += OnContextRequested;
+            }
+
+            args.IsContainerPrepared = true;
+        }
+
+        private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+#if LINUX
+            // Same three PORTING.md §6 traps as everywhere else this pattern shows up (see
+            // SettingsBlockedChatsPage): ChoosingItemContainer never fires, ContentTemplateRoot is
+            // always null until the container has been through a layout pass, and
+            // ContainerContentChanging is raised once with no further phases. ProfileTabContainer
+            // covers all three from the single callback Uno actually raises.
+            //
+            // ViewModel.Items is a SortedObservableCollection<User> - it never yields an
+            // ActiveStoriesViewModel, so upstream's first branch (below) is dead for this popup
+            // specifically and is not carried over here.
+            ProfileTabContainer.Bind<ProfileCell>(sender, args, OnContextRequested, (content, item) =>
+            {
+                if (item is User user)
+                {
+                    content.UpdateUserInflated(ViewModel.ClientService, user);
+                }
+            });
+#else
+            if (args.InRecycleQueue)
+            {
+                //var photo = content.Children[0] as ProfilePicture;
+                //photo.Source = null;
+
+                return;
+            }
+
+            var content = args.ItemContainer.ContentTemplateRoot as ProfileCell;
+
+            if (args.Item is ActiveStoriesViewModel activeStories)
+            {
+                content.UpdateActiveStories(ViewModel.ClientService, activeStories, args, OnContainerContentChanging);
+            }
+            else if (args.Item is User user)
+            {
+                content.UpdateUser(ViewModel.ClientService, user, args, OnContainerContentChanging);
+            }
+#endif
+        }
+
+        private void DialogsSearchListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+#if LINUX
+            ProfileTabContainer.Bind<ProfileCell>(sender, args, OnContextRequested, (content, item) =>
+            {
+                if (item is SearchResult result)
+                {
+                    content.UpdateSearchResultInflated(ViewModel.ClientService, result);
+                }
+            });
+#else
+            if (args.ItemContainer.ContentTemplateRoot is ProfileCell content)
+            {
+                if (args.InRecycleQueue)
+                {
+                    content.RecycleSearchResult();
+                }
+                else
+                {
+                    content.UpdateSearchResult(ViewModel.ClientService, args, DialogsSearchListView_ContainerContentChanging);
+                }
+            }
+#endif
+        }
+
+        private void OnContextRequested(UIElement sender, ContextRequestedEventArgs args)
+        {
+            var item = ScrollingHost.ItemFromContainer(sender);
+            var user = item as User;
+
+            if (item is SearchResult result)
+            {
+                if (result.Chat != null)
+                {
+                    user = ViewModel.ClientService.GetUser(result.Chat);
+                }
+                else
+                {
+                    user = result.User;
+                }
+            }
+
+            if (user != null)
+            {
+                var flyout = new MenuFlyout();
+                flyout.CreateFlyoutItem(ViewModel.SendMessage, user, Strings.SendMessage, Icons.ChatEmpty);
+                flyout.CreateFlyoutItem(ViewModel.CreateSecretChat, user, Strings.StartEncryptedChat, Icons.Timer);
+                flyout.CreateFlyoutItem(ViewModel.VoiceCall, user, Strings.Call, Icons.Call);
+                flyout.CreateFlyoutItem(ViewModel.VideoCall, user, Strings.VideoCall, Icons.Video);
+                flyout.CreateFlyoutItem(ViewModel.Delete, user, Strings.DeleteContact, Icons.Delete, destructive: true);
+                flyout.ShowAt(sender, args);
+            }
+        }
+
+        private void OnItemClick(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is User user)
+            {
+                Hide();
+                ViewModel.SendMessage(user);
+            }
+            else if (e.ClickedItem is SearchResult result)
+            {
+                Hide();
+
+                if (result.Chat != null)
+                {
+                    ViewModel.NavigationService.NavigateToChat(result.Chat);
+                }
+                else if (result.User != null)
+                {
+                    ViewModel.SendMessage(result.User);
+                }
+            }
+        }
+
+        private void NewGroup_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            _ = ViewModel.NavigationService.ShowPopupAsync(new NewGroupPopup());
+        }
+
+        private void NewContact_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            _ = ViewModel.NavigationService.ShowPopupAsync(new NewContactPopup());
+        }
+
+        private void NewChannel_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            _ = ViewModel.NavigationService.ShowPopupAsync(new NewChannelPopup());
+        }
+
+        #region Search
+
+        private void Search_Click(object sender, RoutedEventArgs e)
+        {
+            if (SearchField.FocusState == FocusState.Keyboard && sender == SearchField)
+            {
+                return;
+            }
+
+            Search_TextChanged(null, null);
+        }
+
+        private void Search_LostFocus(object sender, RoutedEventArgs e)
+        {
+            SearchReset();
+        }
+
+        private async void Search_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (SearchField.FocusState == FocusState.Unfocused && string.IsNullOrWhiteSpace(SearchField.Text))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(SearchField.Text))
+            {
+                SearchReset();
+            }
+            else
+            {
+                ContactsPanel.Visibility = Visibility.Collapsed;
+                FindName(nameof(ContactsSearchListView));
+
+                var items = ViewModel.Search = new SearchUsersCollection(ViewModel.ClientService, SearchField.Text);
+                await items.SearchContactsAsync();
+            }
+        }
+
+        private void SearchReset()
+        {
+            SearchField.Text = string.Empty;
+
+            ContactsPanel?.Visibility = Visibility.Visible;
+
+            ViewModel.Search = null;
+        }
+
+        #endregion
+
+        private void ScrollingHeader_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            EmptyState?.Margin = new Thickness(0, e.NewSize.Height - 36, 0, 0);
+        }
+
+        private void EmptyState_Loaded(object sender, RoutedEventArgs e)
+        {
+            EmptyState.Margin = new Thickness(0, ScrollingHeader.ActualHeight - 36, 0, 0);
+        }
+    }
+}

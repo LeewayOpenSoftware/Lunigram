@@ -1,0 +1,13 @@
+import "AI/RecognizedWord.idl";
+
+namespace Telegram.Native.AI
+{
+    [default_interface]
+    runtimeclass RecognizedLine : IOcrObject
+    {
+        RecognizedLine(String text, RecognizedTextBoundingBox boundingBox, Windows.Foundation.Collections.IVector<RecognizedWord> words, Boolean isBarcode);
+        String Text{ get; };
+        Windows.Foundation.Collections.IVector<RecognizedWord> Words{ get; };
+        Boolean IsBarcode{ get; };
+    }
+}

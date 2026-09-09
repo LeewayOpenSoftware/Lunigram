@@ -1,0 +1,107 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Supergroups.SupergroupTopicsPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:local="using:Telegram.Views"
+                  mc:Ignorable="d">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <!--<local:HostedPage.Action>
+        <Button Content="{CustomResource Done}"
+                Click="{x:Bind ViewModel.Continue}"
+                Style="{StaticResource AccentButtonStyle}" />
+    </local:HostedPage.Action>-->
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <ScrollViewer x:Name="ScrollingHost"
+                      VerticalScrollBarVisibility="Auto"
+                      VerticalScrollMode="Auto">
+            <controls:SettingsPanel>
+                <controls:SettingsHeadline Text="{CustomResource TopicsInfo}"
+                                           Source="ms-appx:///Assets/Animations/SupergroupTopics.tgs" />
+
+                <controls:HeaderedControl>
+                    <controls:FauxCheckBox IsChecked="{x:Bind ViewModel.IsEnabled, Mode=TwoWay}"
+                                           Content="{CustomResource TopicsEnable}"
+                                           Style="{StaticResource SettingsCheckBoxStyle}" />
+                </controls:HeaderedControl>
+
+                <controls:HeaderedControl Header="{CustomResource TopicsLayout}"
+                                          Footer="{CustomResource TopicsLayoutInfo}"
+                                          Background="{ThemeResource SettingsItemBackground}"
+                                          BorderBrush="{ThemeResource SettingsItemBorderBrush}"
+                                          BorderThickness="1"
+                                          CornerRadius="4"
+                                          Visibility="{x:Bind ViewModel.IsEnabled, Mode=OneWay}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  HorizontalScrollMode="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  VerticalScrollMode="Disabled"
+                                  HorizontalAlignment="Center">
+                        <StackPanel Margin="12,0"
+                                    Orientation="Horizontal">
+                            <StackPanel Margin="0,12,12,12">
+                                <RadioButton Checked="Tabs_Checked"
+                                             IsChecked="{x:Bind ViewModel.UseTabsLayout, Mode=TwoWay}"
+                                             AutomationProperties.Name="{CustomResource TopicsLayoutTabs}"
+                                             GroupName="Layout"
+                                             Height="180"
+                                             MinWidth="180"
+                                             Padding="0"
+                                             Style="{StaticResource ChatListRadioButtonStyle}">
+                                    <Grid CornerRadius="8">
+                                        <controls:AnimatedImage x:Name="TabsAnimated"
+                                                                ReplacementColor="{ThemeResource SystemColorControlAccentBrush}"
+                                                                Source="ms-appx:///Assets/Animations/SupergroupTopicsTabs.tgs"
+                                                                AutoPlay="True"
+                                                                LoopCount="1"
+                                                                ResizeMode="Fill"
+                                                                DecodeFrameType="Logical" />
+                                    </Grid>
+                                </RadioButton>
+                                <TextBlock Text="{CustomResource TopicsLayoutTabs}"
+                                           TextAlignment="Center"
+                                           Margin="0,4,0,0"
+                                           Style="{StaticResource BodyTextBlockStyle}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,12,0,12">
+                                <RadioButton Checked="List_Checked"
+                                             IsChecked="{x:Bind ViewModel.UseListLayout, Mode=TwoWay}"
+                                             AutomationProperties.Name="{CustomResource TopicsLayoutList}"
+                                             GroupName="Layout"
+                                             Height="180"
+                                             MinWidth="180"
+                                             Padding="0"
+                                             Style="{StaticResource ChatListRadioButtonStyle}">
+                                    <Grid CornerRadius="8">
+                                        <controls:AnimatedImage x:Name="ListAnimated"
+                                                                ReplacementColor="{ThemeResource SystemColorControlAccentBrush}"
+                                                                Source="ms-appx:///Assets/Animations/SupergroupTopicsList.tgs"
+                                                                AutoPlay="True"
+                                                                LoopCount="1"
+                                                                ResizeMode="Fill"
+                                                                DecodeFrameType="Logical" />
+                                    </Grid>
+                                </RadioButton>
+                                <TextBlock Text="{CustomResource TopicsLayoutList}"
+                                           TextAlignment="Center"
+                                           Margin="0,4,0,0"
+                                           Style="{StaticResource BodyTextBlockStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </controls:HeaderedControl>
+            </controls:SettingsPanel>
+        </ScrollViewer>
+    </Grid>
+</local:HostedPage>

@@ -1,0 +1,122 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Linq;
+using System.Threading.Tasks;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels
+{
+    public partial class ChatNotificationsViewModel : ChooseSoundViewModel
+    {
+        public ChatNotificationsViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+        }
+
+        private long _chatId;
+
+        private string _title;
+        public string Title
+        {
+            get => _title;
+            set => Set(ref _title, value);
+        }
+
+        private bool _alwaysAlert;
+        public bool AlwaysAlert
+        {
+            get => _alwaysAlert;
+            set => Set(ref _alwaysAlert, value);
+        }
+
+        private bool? _alwaysPreview;
+        public bool? AlwaysPreview
+        {
+            get => _alwaysPreview;
+            set => Set(ref _alwaysPreview, value);
+        }
+
+        private bool _useNoSound;
+        public bool UseNoSound
+        {
+            get => _useNoSound;
+            set => Set(ref _useNoSound, value);
+        }
+
+        private bool _useDefault;
+        public bool UseDefault
+        {
+            get => _useDefault;
+            set => Set(ref _useDefault, value);
+        }
+
+        protected override async Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            await base.OnNavigatedToAsync(parameter, mode, state);
+
+            if (parameter is long chatId && ClientService.TryGetChat(chatId, out Chat chat))
+            {
+                _chatId = chat.Id;
+                Title = ClientService.GetTitle(chat);
+
+                AlwaysAlert = !Settings.Notifications.IsMuted(chat);
+
+                if (chat.NotificationSettings.UseDefaultShowPreview)
+                {
+                    AlwaysPreview = null;
+                }
+                else
+                {
+                    AlwaysPreview = chat.NotificationSettings.ShowPreview;
+                }
+
+                var soundId = Settings.Notifications.GetSoundId(chat);
+                if (soundId == -1)
+                {
+                    UseDefault = true;
+                }
+                else if (soundId == 0)
+                {
+                    UseNoSound = true;
+                }
+                else
+                {
+                    var sound = Items.FirstOrDefault(x => x.Id == soundId);
+                    sound?.IsSelected = true;
+                }
+            }
+        }
+
+        public void Confirm(long? soundId)
+        {
+            var defaultPreview = true;
+            var preview = true;
+
+            if (AlwaysPreview is bool alwaysPreview)
+            {
+                defaultPreview = false;
+                preview = alwaysPreview;
+            }
+
+            ClientService.Send(new SetChatNotificationSettings(_chatId, new ChatNotificationSettings
+            {
+                UseDefaultMuteFor = false,
+                MuteFor = AlwaysAlert ? 0 : int.MaxValue,
+                UseDefaultShowPreview = defaultPreview,
+                ShowPreview = preview,
+                UseDefaultSound = soundId == null,
+                SoundId = soundId ?? 0,
+                UseDefaultDisableMentionNotifications = true,
+                UseDefaultDisablePinnedMessageNotifications = true,
+            }));
+        }
+    }
+}

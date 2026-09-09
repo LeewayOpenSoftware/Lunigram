@@ -1,0 +1,97 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Controls;
+using Telegram.Services;
+using Telegram.Td.Api;
+
+namespace Telegram.ViewModels.Gallery
+{
+    // TODO: reactor the whole GalleryMedia to just have two classes with different constructors
+    // GalleryMedia
+    //      |------- GalleryPhoto
+    //      |
+    // GalleryVideo
+    public abstract class GalleryMedia
+    {
+        protected readonly IClientService _clientService;
+
+        public GalleryMedia(IClientService clientService)
+        {
+            _clientService = clientService;
+        }
+
+        public IClientService ClientService => _clientService;
+
+        public RotationAngle RotationAngle { get; set; }
+
+        public File File { get; protected set; }
+
+        public File Thumbnail { get; protected set; }
+
+        public Minithumbnail Minithumbnail { get; protected set; }
+
+        public virtual bool IsHls()
+        {
+            return false;
+        }
+
+        public virtual Vector<AlternativeVideo> AlternativeVideos => Array.Empty<AlternativeVideo>();
+
+        public virtual object Constraint { get; protected set; }
+
+        public virtual object From { get; private set; }
+
+        public virtual FormattedText Caption { get; private set; }
+
+        public virtual int Date { get; private set; }
+
+        public virtual int Duration { get; private set; }
+
+        public bool IsPhoto => !IsVideo;
+
+        public bool IsMedia { get; protected set; } = true;
+
+        public virtual bool IsVideo { get; private set; }
+        public virtual bool IsStreamable { get; private set; } = true;
+        public virtual bool IsLoopingEnabled { get; private set; }
+        public virtual bool IsVideoNote { get; private set; }
+
+        public virtual bool HasStickers { get; private set; }
+
+        public virtual bool CanBeShared { get; private set; }
+        public virtual bool CanBeViewed { get; private set; }
+
+        public virtual bool CanBeSaved { get; private set; }
+        public virtual bool CanBeCopied { get; private set; }
+
+        public virtual bool HasProtectedContent { get; private set; } = false;
+
+        public virtual bool IsPublic { get; protected set; }
+        public virtual bool IsPersonal { get; protected set; }
+
+#if LINUX
+        // MEDIDO 2026-08-27: esta propiedad era `IsPhoto && !HasProtectedContent`, o sea CIERTA para
+        // cualquier foto normal, y de ella cuelga el `x:Load` del boton «escanear texto» de la
+        // galeria (GalleryWindow.xaml:121). El comentario de GalleryContent.RecognizeText() daba por
+        // hecho lo contrario -- «el boton ni se crea»-- y por eso el metodo se dejo vacio. El
+        // resultado era el peor de los tres: el boton se dibujaba en TODAS las fotos, su
+        // Recognize_Loaded sacaba el globo `ScanTextFirstTime` la primera vez ofreciendo la funcion,
+        // y al pulsarlo no pasaba nada. Telegram.Native.AI no tiene lado Linux, asi que la salida
+        // honrada es que el boton no exista.
+        public bool CanRecognizeText => false;
+#else
+        public bool CanRecognizeText => IsPhoto && !HasProtectedContent;
+#endif
+
+        public virtual InputMessageContent ToInput()
+        {
+            return null;
+        }
+    }
+}

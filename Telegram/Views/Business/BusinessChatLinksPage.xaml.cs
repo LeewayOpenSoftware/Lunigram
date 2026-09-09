@@ -1,0 +1,128 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Controls.Cells.Business;
+using Telegram.Controls.Media;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Business;
+using Telegram.ViewModels.Delegates;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.Views.Business
+{
+    public sealed partial class BusinessChatLinksPage : HostedPage, IBusinessChatLinksDelegate
+    {
+        public BusinessChatLinksViewModel ViewModel => DataContext as BusinessChatLinksViewModel;
+
+        public BusinessChatLinksPage()
+        {
+            InitializeComponent();
+            Title = Strings.BusinessLinks;
+        }
+
+        protected override async void OnNavigatedTo(NavigationEventArgs e)
+        {
+            if (ViewModel.ClientService.TryGetUser(ViewModel.ClientService.Options.MyId, out User user))
+            {
+                var restrictPhoneNumber = await ViewModel.ClientService.HasPrivacySettingsRuleAsync<UserPrivacySettingRuleRestrictAll>(new UserPrivacySettingShowPhoneNumber());
+                var hasPhoneNumber = !restrictPhoneNumber;
+                var hasUsername = user.HasActiveUsername(out string username);
+
+                string text;
+                if (hasPhoneNumber && hasUsername)
+                {
+                    text = string.Format(Strings.BusinessLinksFooterWithUsername, "t.me/" + username, "t.me/+" + user.PhoneNumber);
+                }
+                else if (hasPhoneNumber)
+                {
+                    text = string.Format(Strings.BusinessLinksFooterNoUsername, "t.me/+" + user.PhoneNumber);
+                }
+                else if (hasUsername)
+                {
+                    text = string.Format(Strings.BusinessLinksFooterNoUsername, "t.me/" + username);
+                }
+                else
+                {
+                    CreateFooter.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                // TODO: links
+                //var markdown = ClientEx.ParseMarkdown(text);
+
+                CreateFooter.Text = text;
+            }
+        }
+
+        private void OnChoosingItemContainer(ListViewBase sender, ChoosingItemContainerEventArgs args)
+        {
+            if (args.ItemContainer == null)
+            {
+                args.ItemContainer = new TableListViewItem();
+                args.ItemContainer.Style = sender.ItemContainerStyle;
+                args.ItemContainer.ContentTemplate = sender.ItemTemplate;
+                args.ItemContainer.ContextRequested += OnContextRequested;
+            }
+
+            args.IsContainerPrepared = true;
+        }
+
+        private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.InRecycleQueue)
+            {
+                return;
+            }
+            else if (args.ItemContainer.ContentTemplateRoot is BusinessChatLinkCell cell && args.Item is BusinessChatLink chatLink)
+            {
+                cell.UpdateContent(ViewModel.ClientService, chatLink);
+            }
+        }
+
+        private void OnContextRequested(UIElement sender, ContextRequestedEventArgs args)
+        {
+            var chatLink = ScrollingHost.ItemFromContainer(sender) as BusinessChatLink;
+            if (chatLink is null)
+            {
+                return;
+            }
+
+            var flyout = new MenuFlyout();
+
+            flyout.CreateFlyoutItem(ViewModel.Copy, chatLink, Strings.Copy, Icons.Copy);
+            //flyout.CreateFlyoutItem(ViewModel.Share, chatLink, Strings.ShareFile, Icons.Share);
+            flyout.CreateFlyoutItem(ViewModel.Rename, chatLink, Strings.Rename, Icons.Edit);
+            flyout.CreateFlyoutItem(ViewModel.Delete, chatLink, Strings.Delete, Icons.Delete, destructive: true);
+
+            flyout.ShowAt(sender, args);
+        }
+
+        private void OnItemClick(object sender, ItemClickEventArgs e)
+        {
+            ViewModel.Open(e.ClickedItem as BusinessChatLink);
+        }
+
+        private void CreateFooter_Click(object sender, TextUrlClickEventArgs e)
+        {
+            MessageHelper.CopyLink(XamlRoot, "https://" + e.Url);
+        }
+
+        public void UpdateBusinessChatLink(BusinessChatLink chatLink)
+        {
+            var container = ScrollingHost.ContainerFromItem(chatLink) as SelectorItem;
+            var content = container?.ContentTemplateRoot as BusinessChatLinkCell;
+
+            content?.UpdateContent(ViewModel.ClientService, chatLink);
+        }
+    }
+}

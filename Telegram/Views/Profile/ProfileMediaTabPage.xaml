@@ -1,0 +1,143 @@
+﻿<local:ProfileTabPage x:Class="Telegram.Views.Profile.ProfileMediaTabPage"
+                      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                      xmlns:common="using:Telegram.Common"
+                      xmlns:controls="using:Telegram.Controls"
+                      xmlns:cells="using:Telegram.Controls.Cells"
+                      xmlns:local="using:Telegram.Views.Profile"
+                      xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                      xmlns:not_win="http://uno.ui/not_win"
+                      mc:Ignorable="d not_win"
+                      ItemsSource="{x:Bind ViewModel.Media.ItemsView, Mode=OneWay}">
+
+    <Grid>
+        <Grid x:Name="TestGrid"
+              VerticalAlignment="Top"
+              MaxWidth="1000"
+              Margin="24,0,16,0" />
+
+        <controls:SelectGridView x:Name="ScrollingHost"
+                                 IsItemClickEnabled="True"
+                                 ItemClick="OnItemClick"
+                                 SelectionMode="None"
+                                 ChoosingItemContainer="OnChoosingItemContainer"
+                                 ContainerContentChanging="OnContainerContentChanging"
+                                 Padding="24,0,16,8"
+                                 common:FluidGridView.Padding="0,0,4,0"
+                                 common:FluidGridView.MaxLength="1008"
+                                 common:FluidGridView.OrientationOnly="False">
+            <common:SelectedItemsBinder.Attached>
+                <common:SelectedItemsBinder IsItemClickEnabled="True"
+                                            SelectionMode="Auto"
+                                            SelectedItems="{x:Bind ViewModel.SelectedItems}" />
+            </common:SelectedItemsBinder.Attached>
+            <common:FluidGridView.Triggers>
+                <common:LengthGridViewTrigger x:Name="Test"
+                                              ItemLength="120" />
+            </common:FluidGridView.Triggers>
+            <GridView.Template>
+                <ControlTemplate TargetType="GridView">
+                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                            Background="{TemplateBinding Background}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                        <ItemsPresenter Header="{TemplateBinding Header}"
+                                        HeaderTemplate="{TemplateBinding HeaderTemplate}"
+                                        HeaderTransitions="{TemplateBinding HeaderTransitions}"
+                                        Footer="{TemplateBinding Footer}"
+                                        FooterTemplate="{TemplateBinding FooterTemplate}"
+                                        FooterTransitions="{TemplateBinding FooterTransitions}"
+                                        Padding="{TemplateBinding Padding}" />
+                    </Border>
+                </ControlTemplate>
+            </GridView.Template>
+            <GridView.ItemContainerTransitions>
+                <TransitionCollection>
+                    <AddDeleteThemeTransition />
+                    <ContentThemeTransition />
+                    <ReorderThemeTransition />
+                </TransitionCollection>
+            </GridView.ItemContainerTransitions>
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem"
+                       BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                    <Setter Property="Margin"
+                            Value="0,4,4,0" />
+                    <Setter Property="Padding"
+                            Value="0" />
+                    <Setter Property="HorizontalContentAlignment"
+                            Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment"
+                            Value="Stretch" />
+                    <!--<Setter Property="MinWidth"
+                            Value="0" />
+                    <Setter Property="MinHeight"
+                            Value="0" />-->
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.Header>
+                <Border x:Name="Header" />
+            </GridView.Header>
+            <GridView.Footer>
+                <Border Height="60" />
+            </GridView.Footer>
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <cells:SharedMediaCell />
+                </DataTemplate>
+            </GridView.ItemTemplate>
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <!--
+                        Uno's ItemsWrapGrid is a shell. Read off the deployed Uno.UI.dll 6.6.184:
+                        the type is [NotImplemented], it derives straight from Panel (not from a
+                        virtualizing panel), it declares NO MeasureOverride and NO ArrangeOverride,
+                        every OnXxxChanged callback is a bare `ret`, FirstVisibleIndex and the two
+                        cache indexes throw, and the ItemsWrapGridLayout it forwards its
+                        DependencyProperties to derives from System.Object, not from
+                        VirtualizingPanelLayout. In other words it stores ItemWidth and forgets it,
+                        and Panel's own arrange would stack every thumbnail at 0,0.
+
+                        VariableSizedWrapGrid is the one Uno really implements: no
+                        [NotImplemented], a 412-byte MeasureOverride and an ArrangeOverride of its
+                        own, and the same ItemWidth / ItemHeight / MaximumRowsOrColumns /
+                        Orientation surface - which FluidGridView.WrapGridReference already drives,
+                        it has had a VariableSizedWrapGrid case all along. What it does not do is
+                        virtualize: it is a Panel, so every loaded item is realized. See the open
+                        issues in the handoff for what that costs and what would replace it.
+                    -->
+                    <win:ItemsWrapGrid Orientation="Horizontal"
+                                       MaxWidth="1008" />
+                    <!--
+                        ItemWidth/ItemHeight are not decoration here, they are what stops Uno
+                        throwing. Read off the deployed Uno.UI 6.6.184: VariableSizedWrapGrid.
+                        ComputeBounds falls back PER AXIS to child 0's DesiredSize when they are
+                        unset (both default to NaN), and CalculateOccupancyMap then divides by the
+                        cell size on both axes:
+                          itemsPerLine = (int)(available.Direct / itemSize.Direct)
+                          lineCount    = (int)Math.Floor(available.Indirect / itemSize.Indirect)
+                        A zero on either axis makes that quotient infinite, the int cast underflows,
+                        Math.Max(1, .) clamps it to 1, and a 1-wide or 1-tall occupancy map with N
+                        items sends FindAndFillNextAvailableRect off the end of the block:
+                          System.IndexOutOfRangeException
+                            at VariableSizedWrapGrid.OccupancyBlock.GetItem
+                            at VariableSizedWrapGrid.OccupancyMap.GetCurrentItemRect
+                        unhandled on the dispatcher tick, every tick, which is the hard freeze.
+                        Setting ONE axis is not enough: the other still collapses the map.
+                        Measured and fixed first by Oscar on the sticker drawer (78711ff).
+                        120 = this tab's own LengthGridViewTrigger ItemLength. With
+                        FluidGridView.OrientationOnly="False" FluidGridView rewrites both axes to
+                        the responsive value on the first completed pass, so this pair is the seed
+                        that lets that pass happen at all.
+                    -->
+                    <not_win:VariableSizedWrapGrid Orientation="Horizontal"
+                                                   ItemWidth="120"
+                                                   ItemHeight="120"
+                                                   MaxWidth="1008" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </controls:SelectGridView>
+    </Grid>
+</local:ProfileTabPage>

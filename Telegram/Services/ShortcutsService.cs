@@ -1,0 +1,837 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using Telegram.Collections;
+using Telegram.Navigation;
+#if LINUX
+using System.IO;
+using System.Text.Json;
+#else
+using Windows.Data.Json;
+#endif
+using Windows.Storage;
+using Windows.UI.Core;
+using Microsoft.UI.Xaml.Input;
+
+namespace Telegram.Services
+{
+    public interface IShortcutsService
+    {
+        InvokedShortcut Process(AcceleratorKeyEventArgs args, out VirtualKeyModifiers modifiers);
+#if LINUX
+        // Uno has no CoreDispatcher.AcceleratorKeyActivated; the window listens to CoreWindow.KeyDown.
+        InvokedShortcut Process(VirtualKey key, out VirtualKeyModifiers modifiers);
+#endif
+
+        bool TryGetShortcut(KeyRoutedEventArgs args, out Shortcut shortcut);
+
+        IList<ShortcutList> GetShortcuts();
+        IList<ShortcutList> Update(Shortcut shortcut, ShortcutCommand command);
+    }
+
+    public partial class InvokedShortcut : Shortcut
+    {
+        public IList<ShortcutCommand> Commands { get; }
+
+        public InvokedShortcut(VirtualKeyModifiers modifiers, VirtualKey key, IList<ShortcutCommand> commands)
+            : base(modifiers, key)
+        {
+            Commands = commands;
+        }
+    }
+
+    public partial class ShortcutsService : IShortcutsService
+    {
+        #region Const
+
+        private readonly ShortcutCommand[] _autoRepeatCommands = new[]
+        {
+            //ShortcutCommand.MediaPrevious,
+            //ShortcutCommand.MediaNext,
+            ShortcutCommand.ChatRecentPrevious,
+            ShortcutCommand.ChatRecentNext,
+            ShortcutCommand.ChatPrevious,
+            ShortcutCommand.ChatNext,
+            ShortcutCommand.ChatFirst,
+            ShortcutCommand.ChatLast,
+        };
+
+        //private readonly ShortcutCommand[] _mediaCommands = new[]
+        //{
+        //    ShortcutCommand.MediaPlay,
+        //    ShortcutCommand.MediaPause,
+        //    ShortcutCommand.MediaPlayPause,
+        //    ShortcutCommand.MediaStop,
+        //    ShortcutCommand.MediaPrevious,
+        //    ShortcutCommand.MediaNext,
+        //};
+
+        //private readonly ShortcutCommand[] _supportCommands = new[]
+        //{
+        //    ShortcutCommand.SupportReloadTemplates,
+        //    ShortcutCommand.SupportToggleMuted,
+        //    ShortcutCommand.SupportScrollToCurrent,
+        //    ShortcutCommand.SupportHistoryBack,
+        //    ShortcutCommand.SupportHistoryForward,
+        //};
+
+        private readonly ShortcutCommand[] _foldersCommands = new[]
+        {
+            ShortcutCommand.ShowAllChats,
+            ShortcutCommand.ShowFolder1,
+            ShortcutCommand.ShowFolder2,
+            ShortcutCommand.ShowFolder3,
+            ShortcutCommand.ShowFolder4,
+            ShortcutCommand.ShowFolder5,
+            ShortcutCommand.ShowFolder6,
+            ShortcutCommand.ShowFolderLast,
+        };
+
+        private readonly Dictionary<string, ShortcutCommand> _commandByName = new()
+        {
+            { "close_telegram"      , ShortcutCommand.Close },
+            { "lock_telegram"       , ShortcutCommand.Lock },
+            { "minimize_telegram"   , ShortcutCommand.Minimize },
+            { "quit_telegram"       , ShortcutCommand.Quit },
+
+            //{ "media_play"        , ShortcutCommand.MediaPlay },
+            //{ "media_pause"       , ShortcutCommand.MediaPause },
+            //{ "media_playpause"   , ShortcutCommand.MediaPlayPause },
+            { "media_stop"        , ShortcutCommand.MediaStop },
+            //{ "media_previous"    , ShortcutCommand.MediaPrevious },
+            //{ "media_next"        , ShortcutCommand.MediaNext },
+
+            { "search"              , ShortcutCommand.Search },
+
+            { "previous_chat"       , ShortcutCommand.ChatPrevious },
+            { "next_chat"           , ShortcutCommand.ChatNext },
+            { "previous_recent_chat", ShortcutCommand.ChatRecentPrevious },
+            { "next_recent_chat"    , ShortcutCommand.ChatRecentNext },
+            { "first_chat"          , ShortcutCommand.ChatFirst },
+            { "last_chat"           , ShortcutCommand.ChatLast },
+            { "self_chat"           , ShortcutCommand.ChatSelf },
+
+            { "previous_folder"     , ShortcutCommand.FolderPrevious },
+            { "next_folder"         , ShortcutCommand.FolderNext },
+            { "all_chats"           , ShortcutCommand.ShowAllChats },
+
+            { "folder1"             , ShortcutCommand.ShowFolder1 },
+            { "folder2"             , ShortcutCommand.ShowFolder2 },
+            { "folder3"             , ShortcutCommand.ShowFolder3 },
+            { "folder4"             , ShortcutCommand.ShowFolder4 },
+            { "folder5"             , ShortcutCommand.ShowFolder5 },
+            { "folder6"             , ShortcutCommand.ShowFolder6 },
+            { "last_folder"         , ShortcutCommand.ShowFolderLast },
+
+            { "show_archive"        , ShortcutCommand.ShowArchive },
+
+            { "set_status"          , ShortcutCommand.SetStatus },
+            { "downloads"           , ShortcutCommand.Downloads },
+
+            // Shortcuts that have no default values.
+            { "message"             , ShortcutCommand.JustSendMessage },
+            { "message_silently"    , ShortcutCommand.SendSilentMessage },
+            { "message_scheduled"   , ShortcutCommand.ScheduleMessage },
+            //
+        };
+
+        private readonly Dictionary<ShortcutCommand, string> _commandNames = new()
+        {
+            { ShortcutCommand.Close             , "close_telegram" },
+            { ShortcutCommand.Lock              , "lock_telegram" },
+            { ShortcutCommand.Minimize          , "minimize_telegram" },
+            { ShortcutCommand.Quit              , "quit_telegram" },
+
+            //{ ShortcutCommand.MediaPlay      , "media_play" },
+            //{ ShortcutCommand.MediaPause     , "media_pause" },
+            //{ ShortcutCommand.MediaPlayPause , "media_playpause" },
+            { ShortcutCommand.MediaStop      , "media_stop" },
+            //{ ShortcutCommand.MediaPrevious  , "media_previous" },
+            //{ ShortcutCommand.MediaNext      , "media_next" },
+
+            { ShortcutCommand.Search            , "search" },
+
+            { ShortcutCommand.ChatPrevious      , "previous_chat" },
+            { ShortcutCommand.ChatNext          , "next_chat" },
+            { ShortcutCommand.ChatRecentPrevious, "previous_recent_chat" },
+            { ShortcutCommand.ChatRecentNext    , "next_recent_chat" },
+            { ShortcutCommand.ChatFirst         , "first_chat" },
+            { ShortcutCommand.ChatLast          , "last_chat" },
+            { ShortcutCommand.ChatSelf          , "self_chat" },
+
+            { ShortcutCommand.FolderPrevious    , "previous_folder" },
+            { ShortcutCommand.FolderNext        , "next_folder" },
+            { ShortcutCommand.ShowAllChats      , "all_chats" },
+
+            { ShortcutCommand.ShowFolder1       , "folder1" },
+            { ShortcutCommand.ShowFolder2       , "folder2" },
+            { ShortcutCommand.ShowFolder3       , "folder3" },
+            { ShortcutCommand.ShowFolder4       , "folder4" },
+            { ShortcutCommand.ShowFolder5       , "folder5" },
+            { ShortcutCommand.ShowFolder6       , "folder6" },
+            { ShortcutCommand.ShowFolderLast    , "last_folder" },
+
+            { ShortcutCommand.ShowArchive       , "show_archive" },
+            { ShortcutCommand.SetStatus         , "set_status" },
+            { ShortcutCommand.Downloads         , "downloads" },
+
+            { ShortcutCommand.CallAccept        , "call_accept" },
+            { ShortcutCommand.CallReject        , "call_reject" },
+            { ShortcutCommand.CallToggleCamera  , "call_camera" },
+            { ShortcutCommand.CallToggleMicrophone , "call_microphone" },
+        };
+
+        #endregion
+
+        private readonly Dictionary<Shortcut, List<ShortcutCommand>> _commands = new();
+
+        public ShortcutsService()
+        {
+            InitializeDefault();
+            InitializeCustom();
+        }
+
+        public InvokedShortcut Process(AcceleratorKeyEventArgs args, out VirtualKeyModifiers modifiers)
+        {
+            modifiers = WindowContext.KeyModifiers();
+
+            if (args.VirtualKey is >= VirtualKey.NumberPad0 and <= VirtualKey.NumberPad9)
+            {
+                return Process(modifiers, VirtualKey.Number0 + (args.VirtualKey - VirtualKey.NumberPad0));
+            }
+
+            return Process(modifiers, args.VirtualKey);
+        }
+
+#if LINUX
+        public InvokedShortcut Process(VirtualKey key, out VirtualKeyModifiers modifiers)
+        {
+            modifiers = WindowContext.KeyModifiers();
+
+            if (key is >= VirtualKey.NumberPad0 and <= VirtualKey.NumberPad9)
+            {
+                return Process(modifiers, VirtualKey.Number0 + (key - VirtualKey.NumberPad0));
+            }
+
+            return Process(modifiers, key);
+        }
+#endif
+
+        private InvokedShortcut Process(VirtualKeyModifiers modifiers, VirtualKey key)
+        {
+            var shortcut = new Shortcut(modifiers, key);
+            if (_commands.TryGetValue(shortcut, out var value))
+            {
+                return new InvokedShortcut(modifiers, key, value);
+            }
+
+            return null;
+        }
+
+
+        //int nonVirtualKey = MapVirtualKey((uint)args.VirtualKey, 2);
+        //char mappedChar = Convert.ToChar(nonVirtualKey);
+
+        public bool TryGetShortcut(KeyRoutedEventArgs args, out Shortcut shortcut)
+        {
+            return TryGetShortcut(WindowContext.KeyModifiers(), args.Key, out shortcut);
+        }
+
+        private bool TryGetShortcut(VirtualKeyModifiers modifiers, VirtualKey key, out Shortcut shortcut)
+        {
+            if (key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl)
+            {
+                shortcut = null;
+                return false;
+            }
+            else if (key is VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu)
+            {
+                shortcut = null;
+                return false;
+            }
+            else if (key is VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift)
+            {
+                shortcut = null;
+                return false;
+            }
+
+            if (modifiers == VirtualKeyModifiers.None && (key < VirtualKey.F1 || key > VirtualKey.F24))
+            {
+                shortcut = null;
+                return false;
+            }
+
+            shortcut = new Shortcut(modifiers, key);
+            return Enum.IsDefined(typeof(VirtualKey), key);
+        }
+
+        public IList<ShortcutList> GetShortcuts()
+        {
+            var temp = new List<ShortcutInfo>();
+            var result = new List<ShortcutList>();
+
+            foreach (var commands in _commands)
+            {
+                foreach (var value in commands.Value)
+                {
+                    if (IsSpecialShortcut(commands.Key, value))
+                    {
+                        continue;
+                    }
+
+                    temp.Add(new ShortcutInfo(commands.Key, value));
+                }
+            }
+
+            var categories = new Dictionary<string, IList<ShortcutCommand>>
+            {
+                {
+                    "App", new[]
+                    {
+                        ShortcutCommand.Close              ,
+                        ShortcutCommand.Lock               ,
+                        ShortcutCommand.Minimize           ,
+                        ShortcutCommand.Quit               ,
+                        ShortcutCommand.Search
+                    }
+                },
+
+                //{ ShortcutCommand.MediaPlay      , "media_play" },
+                //{ ShortcutCommand.MediaPause     , "media_pause" },
+                //{ ShortcutCommand.MediaPlayPause , "media_playpause" },
+                //{ ShortcutCommand.MediaStop      , "media_stop" },
+                //{ ShortcutCommand.MediaPrevious  , "media_previous" },
+                //{ ShortcutCommand.MediaNext      , "media_next" },
+                //{
+                //    "App", new[] { ShortcutCommand.Search }
+                //},
+                {
+                    "Chats", new[]
+                    {
+                        ShortcutCommand.ChatPrevious       ,
+                        ShortcutCommand.ChatNext           ,
+                        ShortcutCommand.ChatFirst          ,
+                        ShortcutCommand.ChatLast           ,
+                        ShortcutCommand.ChatSelf           ,
+                        ShortcutCommand.ChatRecentPrevious ,
+                        ShortcutCommand.ChatRecentNext     ,
+                    }
+                },
+                {
+                    "Folders", new[]
+                    {
+                        ShortcutCommand.FolderPrevious     ,
+                        ShortcutCommand.FolderNext         ,
+                        ShortcutCommand.ShowAllChats       ,
+                        ShortcutCommand.ShowFolder1        ,
+                        ShortcutCommand.ShowFolder2        ,
+                        ShortcutCommand.ShowFolder3        ,
+                        ShortcutCommand.ShowFolder4        ,
+                        ShortcutCommand.ShowFolder5        ,
+                        ShortcutCommand.ShowFolder6        ,
+                        ShortcutCommand.ShowFolderLast     ,
+                        ShortcutCommand.ShowArchive        ,
+                    }
+                }
+            };
+
+            foreach (var category in categories)
+            {
+                var items = new ShortcutList(category.Key);
+
+                foreach (var command in category.Value)
+                {
+                    var item = temp.FirstOrDefault(x => x.Command == command);
+                    if (item != null)
+                    {
+                        items.Add(item);
+                    }
+                }
+
+                if (items.Count > 0)
+                {
+                    result.Add(items);
+                }
+            }
+
+            return result;
+        }
+
+        public IList<ShortcutList> Update(Shortcut shortcut, ShortcutCommand command)
+        {
+            Set(shortcut, command, true);
+            return GetShortcuts();
+        }
+
+        private bool IsSpecialShortcut(Shortcut shortcut, ShortcutCommand command)
+        {
+            if (shortcut.Modifiers == VirtualKeyModifiers.Control && shortcut.Key == VirtualKey.F4)
+            {
+                return command == ShortcutCommand.Close;
+            }
+            else if (shortcut.Modifiers == VirtualKeyModifiers.None && shortcut.Key == VirtualKey.Search)
+            {
+                return command == ShortcutCommand.Search;
+            }
+
+            return false;
+        }
+
+        private void InitializeDefault()
+        {
+            Set("ctrl+w", ShortcutCommand.Close);
+            Set("ctrl+f4", ShortcutCommand.Close);
+            Set("ctrl+l", ShortcutCommand.Lock);
+            Set("ctrl+m", ShortcutCommand.Minimize);
+            Set("ctrl+q", ShortcutCommand.Quit);
+
+            Set("ctrl+shift+w", ShortcutCommand.MediaStop);
+
+            Set("ctrl+shift+f", ShortcutCommand.SearchChats);
+            Set("ctrl+e", ShortcutCommand.SearchChats);
+            Set("ctrl+f", ShortcutCommand.Search);
+            Set("search", ShortcutCommand.Search);
+
+            Set("ctrl+pgdown", ShortcutCommand.ChatNext);
+            Set("alt+down", ShortcutCommand.ChatNext);
+            Set("ctrl+pgup", ShortcutCommand.ChatPrevious);
+            Set("alt+up", ShortcutCommand.ChatPrevious);
+
+            Set("ctrl+tab", ShortcutCommand.ChatRecentNext);
+            Set("ctrl+shift+tab", ShortcutCommand.ChatRecentPrevious);
+
+            Set("ctrl+alt+home", ShortcutCommand.ChatFirst);
+            Set("ctrl+alt+end", ShortcutCommand.ChatLast);
+
+            Set("ctrl+1", ShortcutCommand.ChatPinned1);
+            Set("ctrl+2", ShortcutCommand.ChatPinned2);
+            Set("ctrl+3", ShortcutCommand.ChatPinned3);
+            Set("ctrl+4", ShortcutCommand.ChatPinned4);
+            Set("ctrl+5", ShortcutCommand.ChatPinned5);
+
+            for (int i = 0; i < _foldersCommands.Length; i++)
+            {
+                Set($"ctrl+{i + 1}", _foldersCommands[i]);
+            }
+
+            Set("ctrl+shift+down", ShortcutCommand.FolderNext);
+            Set("ctrl+shift+up", ShortcutCommand.FolderPrevious);
+
+            Set("ctrl+0", ShortcutCommand.ChatSelf);
+
+            Set("ctrl+9", ShortcutCommand.ShowArchive);
+
+            Set("ctrl+shift+y", ShortcutCommand.SetStatus);
+            Set("ctrl+j", ShortcutCommand.Downloads);
+
+            Set("ctrl+home", ShortcutCommand.CallAccept);
+            Set("ctrl+end", ShortcutCommand.CallReject);
+            Set("ctrl+pgdown", ShortcutCommand.CallToggleMicrophone);
+            Set("ctrl+pgup", ShortcutCommand.CallToggleCamera);
+        }
+
+#if LINUX
+        private void InitializeCustom()
+        {
+            var path = Path.Combine(ApplicationData.Current.LocalFolder.Path, "shortcuts.json");
+            if (!System.IO.File.Exists(path))
+            {
+                return;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(System.IO.File.ReadAllText(path));
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    return;
+                }
+
+                foreach (var item in document.RootElement.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object
+                        || !item.TryGetProperty("keys", out JsonElement keys)
+                        || !item.TryGetProperty("command", out JsonElement command)
+                        || keys.ValueKind != JsonValueKind.String
+                        || command.ValueKind != JsonValueKind.String)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(keys.GetString()) || string.IsNullOrEmpty(command.GetString()))
+                    {
+                        continue;
+                    }
+
+                    if (_commandByName.TryGetValue(command.GetString(), out ShortcutCommand value))
+                    {
+                        Set(keys.GetString(), value, true);
+                    }
+                }
+            }
+            catch
+            {
+                // A malformed shortcuts.json is ignored, the defaults stay in place.
+            }
+        }
+#else
+        private async void InitializeCustom()
+        {
+            var file = await ApplicationData.Current.LocalFolder.TryGetItemAsync("shortcuts.json") as StorageFile;
+            if (file == null)
+            {
+                return;
+            }
+
+            var text = await FileIO.ReadTextAsync(file);
+
+            if (JsonArray.TryParse(text, out JsonArray commands))
+            {
+                foreach (var data in commands)
+                {
+                    if (data.ValueType != JsonValueType.Object)
+                    {
+                        continue;
+                    }
+
+                    var item = data.GetObject();
+                    if (item.ContainsKey("keys") && item.ContainsKey("command"))
+                    {
+                        var keys = item.GetNamedString("keys", string.Empty);
+                        var command = item.GetNamedString("command", string.Empty);
+
+                        if (string.IsNullOrEmpty(keys) || string.IsNullOrEmpty(command))
+                        {
+                            continue;
+                        }
+
+                        if (_commandByName.TryGetValue(command, out ShortcutCommand value))
+                        {
+                            Set(keys, value, true);
+                        }
+                    }
+                }
+            }
+        }
+#endif
+
+        private void Set(string keys, ShortcutCommand command, bool replace = false)
+        {
+            var shortcut = ParseKeys(keys);
+            if (shortcut == null)
+            {
+                return;
+            }
+
+            Set(shortcut, command, replace);
+        }
+
+        private void Set(Shortcut shortcut, ShortcutCommand command, bool replace = false)
+        {
+            List<ShortcutCommand> commands;
+            if (_commands.ContainsKey(shortcut))
+            {
+                if (replace)
+                {
+                    commands = _commands[shortcut] = new List<ShortcutCommand>();
+                }
+                else
+                {
+                    commands = _commands[shortcut];
+                }
+            }
+            else
+            {
+                commands = _commands[shortcut] = new List<ShortcutCommand>();
+            }
+
+            commands.Add(command);
+        }
+
+        private Shortcut ParseKeys(string keys)
+        {
+            var split = keys.Split('+');
+
+            if (int.TryParse(split[^1], out int number))
+            {
+                split[^1] = $"number{number}";
+            }
+            else if (string.Equals(split[^1], "pgdown", StringComparison.OrdinalIgnoreCase))
+            {
+                split[^1] = "pagedown";
+            }
+            else if (string.Equals(split[^1], "pgup", StringComparison.OrdinalIgnoreCase))
+            {
+                split[^1] = "pageup";
+            }
+
+            if (Enum.TryParse(split[^1], true, out VirtualKey result))
+            {
+                var modifiers = VirtualKeyModifiers.None;
+                var key = result;
+
+                for (int i = 0; i < split.Length - 1; i++)
+                {
+                    if (string.Equals(split[i], "ctrl", StringComparison.OrdinalIgnoreCase))
+                    {
+                        split[i] = "control";
+                    }
+                    else if (string.Equals(split[i], "alt", StringComparison.OrdinalIgnoreCase))
+                    {
+                        split[i] = "menu";
+                    }
+
+                    if (Enum.TryParse(split[i], true, out VirtualKeyModifiers modifier))
+                    {
+                        modifiers |= modifier;
+                    }
+                }
+
+                //if (modifiers == VirtualKeyModifiers.None)
+                //{
+                //    return null;
+                //}
+
+                return new Shortcut(modifiers, key);
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        private Shortcut ParseMediaKeys(string keys)
+        {
+            switch (keys.ToLower())
+            {
+                case "media play":
+                case "media pause":
+                case "toggle media play/pause":
+                case "media stop":
+                case "media previous":
+                case "media next":
+                    break;
+            }
+
+            return null;
+        }
+
+        public static string GetStringRepresentation(VirtualKey key, VirtualKeyModifiers modifiers = VirtualKeyModifiers.None)
+        {
+            var builder = new StringBuilder();
+
+            static void ConcatVirtualKey(VirtualKey key, StringBuilder builder)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.Append("+");
+                }
+
+                builder.Append(key switch
+                {
+                    VirtualKey.Control => Strings.VirtualKeyModifiersControl,
+                    VirtualKey.Menu => Strings.VirtualKeyModifiersMenu,
+                    VirtualKey.Shift => Strings.VirtualKeyModifiersShift,
+                    (VirtualKey)190 => '.',
+                    _ => key.ToString()
+                });
+            }
+
+            if ((modifiers & VirtualKeyModifiers.Control) != 0)
+            {
+                ConcatVirtualKey(VirtualKey.Control, builder);
+            }
+
+            if ((modifiers & VirtualKeyModifiers.Menu) != 0)
+            {
+                ConcatVirtualKey(VirtualKey.Menu, builder);
+            }
+
+            if ((modifiers & VirtualKeyModifiers.Shift) != 0)
+            {
+                ConcatVirtualKey(VirtualKey.Shift, builder);
+            }
+
+            ConcatVirtualKey(key, builder);
+            return builder.ToString();
+        }
+    }
+
+    public sealed partial class ShortcutList : KeyedList<string, ShortcutInfo>
+    {
+        public ShortcutList(string key)
+            : base(key)
+        {
+        }
+    }
+
+    public sealed partial class ShortcutInfo : BindableBase
+    {
+        public ShortcutInfo(Shortcut shortcut, ShortcutCommand command)
+        {
+            Shortcut = shortcut;
+            Command = command;
+        }
+
+        public ShortcutCommand Command { get; private set; }
+
+        private Shortcut _shortcut;
+        public Shortcut Shortcut
+        {
+            get => _shortcut;
+            set => Set(ref _shortcut, value);
+        }
+
+        public override string ToString()
+        {
+            return $"{{ {Command}, {_shortcut} }}";
+        }
+    }
+
+    public partial class Shortcut
+    {
+        public VirtualKeyModifiers Modifiers { get; }
+        public VirtualKey Key { get; }
+
+        public string[] Components { get; }
+
+        public Shortcut(VirtualKeyModifiers modifiers, VirtualKey key)
+        {
+            Modifiers = modifiers;
+            Key = key;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is Shortcut shortcut)
+            {
+                return shortcut.Modifiers == Modifiers
+                    && shortcut.Key == Key;
+            }
+
+            return base.Equals(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(Modifiers, Key);
+        }
+
+        public override string ToString()
+        {
+            var builder = new StringBuilder();
+
+            foreach (var key in GetComponents())
+            {
+                if (builder.Length > 0)
+                {
+                    builder.Append("+");
+                }
+
+                builder.Append(key);
+            }
+
+            return builder.ToString();
+        }
+
+        private string[] GetComponents()
+        {
+            var parts = new List<string>();
+
+            if (Modifiers.HasFlag(VirtualKeyModifiers.Control))
+            {
+                parts.Add("Ctrl");
+            }
+            if (Modifiers.HasFlag(VirtualKeyModifiers.Menu))
+            {
+                parts.Add("Alt");
+            }
+            if (Modifiers.HasFlag(VirtualKeyModifiers.Shift))
+            {
+                parts.Add("Shift");
+            }
+
+            if (Key is >= VirtualKey.Number0 and <= VirtualKey.Number9)
+            {
+                parts.Add($"{Key - VirtualKey.Number0}");
+            }
+            else
+            {
+                parts.Add(Key.ToString());
+            }
+
+            return parts.ToArray();
+        }
+    }
+
+    public enum ShortcutCommand
+    {
+        Close,
+        Lock,
+        Minimize,
+        Quit,
+
+        //MediaPlay,
+        //MediaPause,
+        //MediaPlayPause,
+        MediaStop,
+        //MediaPrevious,
+        //MediaNext,
+
+        Search,
+        SearchChats,
+
+        ChatPrevious,
+        ChatNext,
+        ChatRecentPrevious,
+        ChatRecentNext,
+        ChatFirst,
+        ChatLast,
+        ChatSelf,
+        ChatPinned1,
+        ChatPinned2,
+        ChatPinned3,
+        ChatPinned4,
+        ChatPinned5,
+
+        ShowAllChats,
+        ShowFolder1,
+        ShowFolder2,
+        ShowFolder3,
+        ShowFolder4,
+        ShowFolder5,
+        ShowFolder6,
+        ShowFolderLast,
+
+        FolderNext,
+        FolderPrevious,
+
+        ShowArchive,
+
+        JustSendMessage,
+        SendSilentMessage,
+        ScheduleMessage,
+
+        SetStatus,
+        Downloads,
+
+        CallAccept,
+        CallReject,
+        CallToggleMicrophone,
+        CallToggleCamera,
+
+        //SupportReloadTemplates,
+        //SupportToggleMuted,
+        //SupportScrollToCurrent,
+        //SupportHistoryBack,
+        //SupportHistoryForward,
+    }
+}

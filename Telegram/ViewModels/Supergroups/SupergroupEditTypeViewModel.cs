@@ -1,0 +1,169 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.Views.Chats;
+using Telegram.Views.Supergroups;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Supergroups
+{
+    public partial class SupergroupEditTypeViewModel : SupergroupEditViewModelBase
+    {
+        public SupergroupEditTypeViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+        }
+
+        private bool _navigateToChat;
+
+        private bool _joinToSendMessages;
+        public bool JoinToSendMessages
+        {
+            get => _joinToSendMessages;
+            set => Set(ref _joinToSendMessages, value);
+        }
+
+        private bool _joinByRequest;
+        public bool JoinByRequest
+        {
+            get => _joinByRequest;
+            set => Set(ref _joinByRequest, value);
+        }
+
+        private bool _hasProtectedContent;
+        public bool HasProtectedContent
+        {
+            get => _hasProtectedContent;
+            set => Set(ref _hasProtectedContent, value);
+        }
+
+        private Usernames _usernames;
+        public Usernames Usernames
+        {
+            get => _usernames;
+            set => Set(ref _usernames, value);
+        }
+
+        protected override async Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            if (parameter is SupergroupEditTypeArgs args)
+            {
+                _navigateToChat = args.IsNewChat;
+                parameter = args.ChatId;
+            }
+
+            await base.OnNavigatedToAsync(parameter, mode, state);
+            HasProtectedContent = Chat?.HasProtectedContent ?? false;
+
+            if (ClientService.TryGetSupergroup(Chat, out Supergroup supergroup))
+            {
+                JoinToSendMessages = supergroup.JoinToSendMessages;
+                JoinByRequest = supergroup.JoinByRequest;
+            }
+        }
+
+        public void InviteLinks()
+        {
+            NavigationService.Navigate(typeof(ChatInviteLinksPage), Chat.Id);
+        }
+
+        public override async void Continue()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.HasProtectedContent != HasProtectedContent)
+            {
+                await ClientService.SendAsync(new ToggleChatHasProtectedContent(Chat.Id, HasProtectedContent));
+            }
+
+            var username = _isPublic ? (Username?.Trim() ?? string.Empty) : string.Empty;
+
+            // If we're editing a basic group and the user wants to set an username to it,
+            // then we need to upgrade it to a supergroup first.
+            if (chat.Type is ChatTypeBasicGroup && !string.IsNullOrEmpty(username))
+            {
+                chat = await UpgradeAsync(chat);
+            }
+
+            if (chat.Type is ChatTypeSupergroup)
+            {
+                var item = ClientService.GetSupergroup(chat);
+                var cache = ClientService.GetSupergroupFull(chat);
+
+                if (item == null || cache == null)
+                {
+                    return;
+                }
+
+                if (item.JoinToSendMessages != _joinToSendMessages)
+                {
+                    var joinToSendMessages = await ClientService.SendAsync(new ToggleSupergroupJoinToSendMessages(item.Id, _joinToSendMessages));
+                    if (joinToSendMessages is Error error)
+                    {
+                        ShowToast(error);
+                        return;
+                    }
+                }
+
+                if (item.JoinByRequest != _joinByRequest)
+                {
+                    var response = await ClientService.SendAsync(new GetChatInviteLinks(chat.Id, ClientService.Options.MyId, false, 0, string.Empty, 1));
+                    if (response is ChatInviteLinks inviteLinks)
+                    {
+                        var message = item.IsChannel
+                            ? Locale.Declension(_joinByRequest ? Strings.R.ApproveNewMembersEnableForLinksChannel : Strings.R.ApproveNewMembersDisableForLinksChannel, inviteLinks.TotalCount)
+                            : Locale.Declension(_joinByRequest ? Strings.R.ApproveNewMembersEnableForLinks : Strings.R.ApproveNewMembersDisableForLinks, inviteLinks.TotalCount);
+
+                        var confirm = await ShowPopupAsync(message, Strings.ApproveNewMembersApplyToLinksTitle, Strings.ApproveNewMembersApplyToLinksApply, Strings.ApproveNewMembersApplyToLinksDontApply);
+
+                        var joinByRequest = await ClientService.SendAsync(new ToggleSupergroupJoinByRequest(item.Id, _joinByRequest, cache.GuardBotUserId, confirm == ContentDialogResult.Primary));
+                        if (joinByRequest is Error error)
+                        {
+                            ShowToast(error);
+                            return;
+                        }
+                    }
+                }
+
+                if (!string.Equals(username, item.EditableUsername()))
+                {
+                    var response = await ClientService.SendAsync(new SetSupergroupUsername(item.Id, username));
+                    if (response is Error error)
+                    {
+                        if (error.MessageEquals(ErrorType.CHANNELS_ADMIN_PUBLIC_TOO_MUCH))
+                        {
+                            HasTooMuchUsernames = true;
+                            NavigationService.ShowLimitReached(new PremiumLimitTypeCreatedPublicChatCount());
+                        }
+                        // TODO:
+
+                        return;
+                    }
+                }
+            }
+
+            if (_navigateToChat)
+            {
+                NavigationService.NavigateToChat(chat);
+            }
+            else
+            {
+                NavigationService.GoBack();
+            }
+        }
+    }
+}

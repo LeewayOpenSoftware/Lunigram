@@ -1,0 +1,2387 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Microsoft.UI.Xaml.Controls;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.Linq;
+using Telegram.Common;
+using Telegram.Controls.Media;
+using Telegram.Controls.Messages;
+using Telegram.Native;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td;
+using Telegram.Td.Api;
+using Telegram.Views.Popups;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
+using Windows.UI;
+using Windows.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using UnderlineType = Microsoft.UI.Text.UnderlineType;
+using TextRangeUnit = Microsoft.UI.Text.TextRangeUnit;
+using TextGetOptions = Microsoft.UI.Text.TextGetOptions;
+using TextSetOptions = Microsoft.UI.Text.TextSetOptions;
+using ITextCharacterFormat = Microsoft.UI.Text.ITextCharacterFormat;
+using ITextRange = Microsoft.UI.Text.ITextRange;
+using FontWeights = Microsoft.UI.Text.FontWeights;
+using Colors = Microsoft.UI.Colors;
+
+namespace Telegram.Controls
+{
+    [Flags]
+    public enum FormattedTextEntity
+    {
+        None = 0,
+        Bold = 1,
+        Italic = 2,
+        Underline = 4,
+        Strikethrough = 8,
+        Mono = 16,
+        Spoiler = 32,
+        Quote = 64,
+        TextUrl = 128,
+        CustomEmoji = 256,
+        Mention = 512,
+        Date = 1024,
+        All = Bold | Italic | Underline | Strikethrough | Mono | Spoiler | Quote | TextUrl | CustomEmoji | Mention | Date,
+        Checklist = Bold | Italic | Underline | Strikethrough | Spoiler | CustomEmoji
+    }
+
+    public partial class FormattedTextBox : RichEditBox
+    {
+        private readonly FormattedTextFlyout _selectionFlyout;
+        private readonly MenuFlyoutSubItem _formattingFlyout;
+
+        private bool _updateLocked;
+        private bool _fromTextChanging;
+        private bool _isContentChanging;
+        private int _undoGroup;
+
+        private int _selectionIndex;
+
+        private ITextRange _reusableRange;
+        private ITextRange _reusableProbe;
+
+        private List<EmojiPosition> _emojiPositions;
+
+        public CustomEmojiCanvas CustomEmoji { get; set; }
+        private Grid Blocks;
+        private ScrollViewer ContentElement;
+
+        protected int _blockPadding = 24;
+
+        public FormattedTextBox()
+        {
+            DefaultStyleKey = typeof(FormattedTextBox);
+
+            ClipboardCopyFormat = RichEditClipboardFormat.PlainText;
+
+            CopyingToClipboard += OnCopyingToClipboard;
+            CuttingToClipboard += OnCuttingToClipboard;
+
+            Paste += OnPaste;
+            PreviewKeyDown += OnPreviewKeyDown;
+
+            // RichEditBox consumes the character and marks the event handled, so a plain += never
+            // fires - handledEventsToo is the only way in. The character is already in the
+            // document by then, which is what the emoticon match below reads backwards from.
+            AddHandler(CharacterReceivedEvent,
+                new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(OnCharacterReceived), true);
+
+            _formattingFlyout = new MenuFlyoutSubItem
+            {
+                Text = Strings.Formatting,
+                Icon = MenuFlyoutHelper.CreateIcon(Icons.TextFont)
+            };
+
+            SelectionFlyout = new Flyout
+            {
+                Content = _selectionFlyout = new FormattedTextFlyout(this),
+
+                AllowFocusOnInteraction = false,
+                ShouldConstrainToRootBounds = false,
+                ShowMode = FlyoutShowMode.TransientWithDismissOnPointerMoveAway,
+                FlyoutPresenterStyle = BootStrapper.Current.Resources["CommandFlyoutPresenterStyle"] as Style,
+            };
+            SelectionFlyout.Opening += OnSelectionFlyoutOpening;
+            SelectionFlyout.Closing += OnSelectionFlyoutClosing;
+
+            ContextFlyout = new MenuFlyout();
+            ContextFlyout.Opening += OnContextFlyoutOpening;
+            ContextFlyout.Closing += OnContextFlyoutClosing;
+
+            DisabledFormattingAccelerators = DisabledFormattingAccelerators.All;
+
+            SizeChanged += OnSizeChanged;
+
+            TextChanging += OnTextChanging;
+            TextChanged += OnTextChanged;
+
+            SelectionChanged += OnSelectionChanged;
+        }
+
+        private void OnCopyingToClipboard(RichEditBox sender, TextControlCopyingToClipboardEventArgs args)
+        {
+            args.Handled = true;
+
+            if (Document.Selection.Length != 0)
+            {
+                MessageHelper.CopyText(null, GetFormattedText(false, false, Document.Selection));
+            }
+        }
+
+        private void OnCuttingToClipboard(RichEditBox sender, TextControlCuttingToClipboardEventArgs args)
+        {
+            args.Handled = true;
+
+            if (Document.Selection.Length != 0)
+            {
+                MessageHelper.CopyText(null, GetFormattedText(true, false, Document.Selection));
+            }
+        }
+
+        private void OnTextChanging(RichEditBox sender, RichEditBoxTextChangingEventArgs args)
+        {
+            _isContentChanging = args.IsContentChanging;
+            _fromTextChanging = true;
+            _isEmpty = null;
+
+            if (args.IsContentChanging && _undoGroup == 0)
+            {
+                UpdateFormat();
+            }
+        }
+
+        private void OnTextChanged(object sender, RoutedEventArgs e)
+        {
+            // Both updates have to walk the document to find what they're looking for, which is
+            // O(runs) round trips into the text host on every single keystroke. TOM reports a
+            // property as undefined when it isn't uniform over the range, so reading it once over
+            // the whole document tells us whether there's anything to walk for at all.
+            var whole = GetReusableRange(0, TextConstants.MaxUnitCount);
+            var anyHidden = whole.CharacterFormat.Hidden != FormatEffect.Off;
+            var anyQuote = whole.ParagraphFormat.SpaceAfter != 0;
+
+            UpdateCustomEmoji(anyHidden);
+            UpdateBlocks(anyQuote);
+
+            if (_updateLocked || !_isContentChanging)
+            {
+                return;
+            }
+
+            TextChangedForRealNoCap?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void OnSelectionChanged(object sender, RoutedEventArgs e)
+        {
+            var index = Document.Selection.EndPosition;
+
+            if (Document.Selection.Length == 0)
+            {
+                Document.Selection.StartOf(TextRangeUnit.Hidden, true);
+                Document.Selection.Collapse(true);
+            }
+
+            OnSelectionChanged(this, _fromTextChanging || _selectionIndex == index);
+
+            _fromTextChanging = false;
+            _selectionIndex = index;
+        }
+
+        protected virtual void OnSelectionChanged(RichEditBox sender, bool fromTextChanging)
+        {
+
+        }
+
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (double.IsNaN(Height))
+            {
+                return;
+            }
+
+            Height = double.NaN;
+        }
+
+        private Size _footerSize = new(96, 48);
+        public Size FooterSize
+        {
+            get => _footerSize;
+            set
+            {
+                if (_footerSize != value)
+                {
+                    _footerSize = value;
+                    UpdatePadding();
+                }
+            }
+        }
+
+        // Experiment: change bottom padding depending on text position to allow wrapping around send and other buttons
+        private void UpdatePadding()
+        {
+            var range = GetReusableRange(TextConstants.MaxUnitCount, TextConstants.MaxUnitCount);
+            range.GetRect(PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out Rect rect, out _);
+
+            double scaleFactor = 1.0;  // Assuming a 1.0 scale factor when no XamlRoot is available at the moment.
+            {
+                scaleFactor = XamlRoot.RasterizationScale;
+            }
+
+            static double LayoutRound(double value, double scaleFactor)
+            {
+                return Math.Round(value * scaleFactor) / scaleFactor;
+            }
+
+            if (Padding.Left + rect.Right > ActualWidth - FooterSize.Width)
+            {
+                ContentElement.Padding = new Thickness(0, 13, 0, FooterSize.Height);
+            }
+            else if (rect.Y > 0)
+            {
+                range.Expand(TextRangeUnit.Line);
+
+                var expand = range.Expand(TextRangeUnit.Paragraph);
+                if (expand > 0)
+                {
+                    ContentElement.Padding = new Thickness(0, 13, 0, LayoutRound(48 - rect.Height, scaleFactor));
+                }
+                else
+                {
+                    ContentElement.Padding = new Thickness(0, 13, 0, 15);
+                }
+            }
+            else
+            {
+                ContentElement.Padding = new Thickness(0, 13, 0, 15);
+            }
+        }
+
+        protected override void OnApplyTemplate()
+        {
+            base.OnApplyTemplate();
+            this.CreateInsetClip();
+
+            CustomEmoji ??= GetTemplateChild(nameof(CustomEmoji)) as CustomEmojiCanvas;
+            Blocks = GetTemplateChild(nameof(Blocks)) as Grid;
+            ContentElement = GetTemplateChild(nameof(ContentElement)) as ScrollViewer;
+
+            ContentElement.ViewChanged += ContentElement_ViewChanged;
+
+            var props = ElementCompositionPreview.GetScrollViewerManipulationPropertySet(ContentElement);
+            var translation = props.Compositor.CreateExpressionAnimation("scrollViewer.Translation.Y");
+            translation.SetReferenceParameter("scrollViewer", props);
+
+            if (Blocks != null)
+            {
+                ElementCompositionPreview.SetIsTranslationEnabled(Blocks, true);
+                var visual = ElementComposition.GetElementVisual(Blocks);
+                visual.StartAnimation("Translation.Y", translation);
+            }
+
+            if (CustomEmoji != null)
+            {
+                ElementCompositionPreview.SetIsTranslationEnabled(CustomEmoji, true);
+                var visual = ElementComposition.GetElementVisual(CustomEmoji);
+                visual.StartAnimation("Translation.Y", translation);
+            }
+
+            // RichEdit picks the link color by contrasting the run against
+            // GetSysColor(COLOR_WINDOW), which XAML never overrides, so it believes every
+            // box sits on white and rejects a near-white link. Answers for this thread,
+            // hence for this view.
+            TextHost.OverrideWindowColor();
+        }
+
+        public bool IsReplaceEmojiEnabled { get; set; } = true;
+
+        private void OnCharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs args)
+        {
+            if (!IsReplaceEmojiEnabled)
+            {
+                return;
+            }
+
+            // Emoticons are keyed by their last character, and the vast majority of keystrokes
+            // aren't one, so this runs before anything that costs an allocation or a text host call.
+            var character = args.Character;
+
+            //var matches = Emoticon.Data.Keys.Where(x => x.EndsWith(character)).ToArray();
+            if (Emoticon.Matches.TryGetValue(character, out string[] matches)
+                && !string.Equals(Document.Selection.CharacterFormat.Name, "Consolas", StringComparison.OrdinalIgnoreCase))
+            {
+                var length = 0;
+
+                foreach (var match in matches)
+                {
+                    length = Math.Max(length, match.Length);
+                }
+
+                var start = Math.Max(Document.Selection.EndPosition - length, 0);
+
+                var range = Document.GetRange(start, Document.Selection.EndPosition);
+                range.GetText(TextGetOptions.NoHidden, out string value);
+
+                var emoticon = default(string);
+
+                foreach (var match in matches)
+                {
+                    if (value.EndsWith(match, StringComparison.Ordinal))
+                    {
+                        emoticon = match;
+                        break;
+                    }
+                }
+
+                if (emoticon != null)
+                {
+                    using (BeginUndoGroup())
+                    {
+                        range.SetRange(range.EndPosition - emoticon.Length, range.EndPosition);
+                        range.SetText(TextSetOptions.None, emoticon);
+                        range.CharacterFormat.Hidden = FormatEffect.On;
+                        range.SetRange(range.EndPosition, range.EndPosition);
+                        range.SetText(TextSetOptions.None, Emoticon.Data[emoticon]);
+                    }
+
+                    Document.Selection.SetRange(range.EndPosition, range.EndPosition);
+                    args.Handled = true;
+                }
+            }
+        }
+
+        protected override void OnKeyDown(KeyRoutedEventArgs e)
+        {
+            //if (_resetSize)
+            //{
+            //    _resetSize = false;
+            //    Height = double.NaN;
+            //}
+
+            var modifiers = WindowContext.KeyModifiers();
+
+            switch (e.Key)
+            {
+                case VirtualKey.Back or VirtualKey.Delete when IsReplaceEmojiEnabled:
+                    base.OnKeyDown(e);
+
+                    using (BeginUndoGroup())
+                    {
+                        if (Document.Selection.Expand(TextRangeUnit.Hidden) != 0)
+                        {
+                            if (Emoticon.Data.ContainsKey(Document.Selection.Text))
+                            {
+                                Document.Selection.CharacterFormat.Hidden = FormatEffect.Off;
+                                Document.Selection.Collapse(e.Key is VirtualKey.Delete);
+                            }
+                            else if (IsCustomEmoji(Document.Selection, out _, out _))
+                            {
+                                var follow = Document.GetRange(Document.Selection.EndPosition, Document.Selection.EndPosition);
+                                if (follow.Character != '\uEA4F')
+                                {
+                                    Document.Selection.Delete(TextRangeUnit.Hidden, 1);
+                                }
+                            }
+                        }
+                    }
+
+                    return;
+                case VirtualKey.Enter when CanAccept():
+                    {
+                        var send = AppSettings.IsSendByEnterEnabled
+                            ? modifiers == VirtualKeyModifiers.None
+                            : modifiers == VirtualKeyModifiers.Control;
+
+                        AcceptsReturn = !send;
+                        e.Handled = send;
+
+                        // If handwriting panel is open, the app would crash on send.
+                        // Still, someone should fill a ticket to Microsoft about this.
+                        if (send && HandwritingView.IsOpen)
+                        {
+                            void handler(object s, RoutedEventArgs args)
+                            {
+                                OnAccept();
+                                HandwritingView.Unloaded -= handler;
+                            }
+
+                            HandwritingView.Unloaded += handler;
+                            HandwritingView.TryClose();
+                        }
+                        else if (send)
+                        {
+                            OnAccept();
+                        }
+                        else if (modifiers != VirtualKeyModifiers.Shift)
+                        {
+                            // If enter is pressed without shift modifier, text editor is going to insert a hard paragraph (\r)
+                            // We work around this here
+                            Document.Selection.SetText(TextSetOptions.None, "\v");
+                            Document.Selection.SetRange(Document.Selection.StartPosition + 1, Document.Selection.StartPosition + 1);
+
+                            e.Handled = true;
+                        }
+
+                        break;
+                    }
+
+                case VirtualKey.Enter:
+                    AcceptsReturn = true;
+                    break;
+                case VirtualKey.Z when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift):
+                    {
+                        if (Document.CanRedo())
+                        {
+                            Document.Redo();
+                        }
+
+                        e.Handled = true;
+                        break;
+                    }
+
+                // A => Toggle upper case
+                // L => Toggle bullet lists
+                // ; => Decrease font size
+                // . => Increase font size
+                case VirtualKey.A or VirtualKey.L when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift):
+                case (VirtualKey)188 /*or (VirtualKey)190*/ when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift):
+                    {
+                        return;
+                    }
+
+                // E => Align center
+                // L => Align left
+                // R => Align right
+                // J => Justify text
+                // Q => ???
+                case VirtualKey.E or VirtualKey.L or VirtualKey.R or VirtualKey.J or VirtualKey.Q when modifiers == VirtualKeyModifiers.Control:
+                    {
+                        return;
+                    }
+
+                case VirtualKey.B when modifiers == VirtualKeyModifiers.Control && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleBold();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.I when modifiers == VirtualKeyModifiers.Control && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleItalic();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.U when modifiers == VirtualKeyModifiers.Control && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleUnderline();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.X when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift) && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleStrikethrough();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.M when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift) && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleMonospace();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.P when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift) && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleSpoiler();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.K when modifiers == VirtualKeyModifiers.Control:
+                    CreateLink();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.N when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift) && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleRegular();
+                    e.Handled = true;
+                    break;
+                case (VirtualKey)190 when modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift) && Math.Abs(Document.Selection.Length) > 0:
+                    ToggleQuote();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.X when modifiers == VirtualKeyModifiers.Menu && Math.Abs(Document.Selection.Length) == 4:
+                    {
+                        Document.Selection.GetText(TextGetOptions.NoHidden, out string hex);
+
+                        if (int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int result))
+                        {
+                            Document.Selection.SetText(TextSetOptions.None, new string((char)result, 1));
+                        }
+
+                        e.Handled = true;
+                        break;
+                    }
+            }
+
+            if (!e.Handled)
+            {
+                base.OnKeyDown(e);
+            }
+        }
+
+        protected virtual bool CanAccept()
+        {
+            return true;
+        }
+
+        protected virtual void OnAccept()
+        {
+            Accept?.Invoke(this, EventArgs.Empty);
+        }
+
+        public event EventHandler TextChangedForRealNoCap;
+
+        public event TypedEventHandler<FormattedTextBox, EventArgs> Accept;
+
+        #region Context menu
+
+        private void OnSelectionFlyoutOpening(object sender, object e)
+        {
+            _selectionFlyout.Register();
+        }
+
+        private void OnSelectionFlyoutClosing(FlyoutBase sender, FlyoutBaseClosingEventArgs args)
+        {
+            _selectionFlyout.Unregister();
+        }
+
+        private void OnContextFlyoutOpening(object sender, object e)
+        {
+            var flyout = ContextFlyout as MenuFlyout;
+            if (flyout == null)
+            {
+                return;
+            }
+
+            if (IsReadOnly)
+            {
+                flyout.Hide();
+                return;
+            }
+
+            flyout.Items.Clear();
+
+            var selection = Document.Selection;
+            var format = Document.Selection.CharacterFormat;
+
+            var length = Math.Abs(selection.Length) > 0;
+
+            var clone = Document.Selection.GetClone();
+            clone.StartOf(TextRangeUnit.Link, true);
+            var mention = TryGetUserId(clone, out _);
+            var date = TryGetDate(clone, out _);
+
+            flyout.CreateFlyoutItem(Document.CanUndo(), ContextUndo_Click, Strings.TextUndo, Icons.ArrowUndo, VirtualKey.Z);
+            flyout.CreateFlyoutItem(Document.CanRedo(), ContextRedo_Click, Strings.Redo, Icons.ArrowRedo, VirtualKey.Y);
+            flyout.CreateFlyoutSeparator();
+            flyout.CreateFlyoutItem(length && Document.CanCopy(), ContextCut_Click, Strings.Cut, Icons.Cut, VirtualKey.X);
+            flyout.CreateFlyoutItem(length && Document.CanCopy(), ContextCopy_Click, Strings.Copy, Icons.Copy, VirtualKey.C);
+            flyout.CreateFlyoutItem(Document.CanPaste(), ContextPaste_Click, Strings.Paste, Icons.ClipboardPaste, VirtualKey.V);
+            flyout.CreateFlyoutItem(length, ContextDelete_Click, Strings.Delete);
+            flyout.CreateFlyoutSeparator();
+
+            var entities = AllowedEntities & ~FormattedTextEntity.CustomEmoji;
+            if (entities != FormattedTextEntity.None)
+            {
+                if ((entities & FormattedTextEntity.Bold) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, ToggleBold, Strings.Bold, Icons.TextBold, VirtualKey.B);
+                }
+
+                if ((entities & FormattedTextEntity.Italic) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, ToggleItalic, Strings.Italic, Icons.TextItalic, VirtualKey.I);
+                }
+
+                if ((entities & FormattedTextEntity.Underline) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, ToggleUnderline, Strings.Underline, Icons.TextUnderline, VirtualKey.U);
+                }
+
+                if ((entities & FormattedTextEntity.Strikethrough) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, ToggleStrikethrough, Strings.Strike, Icons.TextStrikethrough, VirtualKey.X, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift);
+                }
+
+                if ((entities & FormattedTextEntity.Quote) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, ToggleQuote, Strings.Quote, Icons.QuoteBlock, (VirtualKey)190, VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Shift);
+                }
+
+                if ((entities & FormattedTextEntity.Mono) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length && format.Name != "Consolas", ToggleMonospace, Strings.Mono, Icons.Code, VirtualKey.M, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift);
+                }
+
+                if ((entities & FormattedTextEntity.Spoiler) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, ToggleSpoiler, Strings.Spoiler, Icons.Spoiler, VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift);
+                }
+
+                if ((entities & FormattedTextEntity.Date) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(length, CreateDate, Strings.FormattedDate, Icons.Calendar);
+                }
+
+                _formattingFlyout.CreateFlyoutSeparator();
+
+                if ((entities & FormattedTextEntity.TextUrl) != 0)
+                {
+                    _formattingFlyout.CreateFlyoutItem(!mention && !date, CreateLink, clone.Link.Length > 0 ? Strings.EditLink : Strings.CreateLink, Icons.Link, VirtualKey.K);
+                }
+
+                _formattingFlyout.CreateFlyoutSeparator();
+                _formattingFlyout.CreateFlyoutItem(length && !IsDefaultFormat(selection), ToggleRegular, Strings.Regular, null, VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift);
+
+                flyout.Items.Add(_formattingFlyout);
+            }
+
+            flyout.CreateFlyoutSeparator();
+            flyout.CreateFlyoutItem(!IsEmpty, ContextSelectAll_Click, Strings.SelectAll, null, VirtualKey.A);
+
+            if (ProofingMenuFlyout is MenuFlyout proofing && proofing.Items.Count > 0)
+            {
+                flyout.CreateFlyoutSeparator();
+                //flyout.Items.Add(_proofingMenu);
+
+                foreach (var item in proofing.Items)
+                {
+                    flyout.Items.Add(item);
+                }
+            }
+        }
+
+        private void OnContextFlyoutClosing(FlyoutBase sender, FlyoutBaseClosingEventArgs args)
+        {
+            _formattingFlyout.Items.Clear();
+
+            if (sender is MenuFlyout flyout)
+            {
+                flyout.Items.Clear();
+            }
+        }
+
+        public void ToggleQuote()
+        {
+            InsertBlockquote(Document.Selection, Document.Selection.CharacterFormat.Size != 9);
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleBold()
+        {
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, false);
+            Document.Selection.CharacterFormat.Weight = Document.Selection.CharacterFormat.Weight == FontWeights.SemiBold.Weight ? FontWeights.Normal.Weight : FontWeights.SemiBold.Weight;
+            Document.ApplyDisplayUpdates();
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleItalic()
+        {
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, false);
+            Document.Selection.CharacterFormat.Italic = FormatEffect.Toggle;
+            Document.ApplyDisplayUpdates();
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleUnderline()
+        {
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, false);
+            Document.Selection.CharacterFormat.Underline = Document.Selection.CharacterFormat.Underline != UnderlineType.Single ? UnderlineType.Single : UnderlineType.None;
+            Document.ApplyDisplayUpdates();
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleStrikethrough()
+        {
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, false);
+            Document.Selection.CharacterFormat.Strikethrough = FormatEffect.Toggle;
+            Document.ApplyDisplayUpdates();
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleMonospace()
+        {
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, true);
+            Document.Selection.CharacterFormat.Name = "Consolas";
+            Document.ApplyDisplayUpdates();
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleSpoiler()
+        {
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, false);
+            Document.Selection.CharacterFormat.BackgroundColor = Colors.Gray;
+            Document.ApplyDisplayUpdates();
+
+            _selectionFlyout.Update(Document.Selection);
+        }
+
+        public void ToggleRegular()
+        {
+            if (Math.Abs(Document.Selection.Length) < 1)
+            {
+                return;
+            }
+
+            Document.BatchDisplayUpdates();
+            ClearStyle(Document.Selection, true);
+            Document.ApplyDisplayUpdates();
+        }
+
+        public FrameworkElement CreateLinkTarget { get; set; }
+
+        public async void CreateDate()
+        {
+            var range = Document.Selection.GetClone();
+            var clone = Document.Selection.GetClone();
+            clone.StartOf(TextRangeUnit.Link, true);
+
+            if (clone.Link.Length > 0)
+            {
+                range.Expand(TextRangeUnit.Link);
+            }
+
+            range.GetText(TextGetOptions.NoHidden, out string text);
+
+            var popup = new ChooseDateTimeToast
+            {
+                Title = Strings.RelativeDateAddDate,
+                ActionButtonContent = Strings.OK,
+                ActionButtonStyle = BootStrapper.Current.Resources["AccentButtonStyle"] as Style,
+                CloseButtonContent = Strings.Cancel,
+                PreferredPlacement = TeachingTipPlacementMode.Center,
+                IsLightDismissEnabled = true,
+                ShouldConstrainToRootBounds = true,
+            };
+
+            CheckBox relative = null;
+            CheckBox short_time = null;
+            CheckBox long_time = null;
+            CheckBox short_date = null;
+            CheckBox long_date = null;
+            CheckBox day_of_week = null;
+
+            if (ApiInfo.IsPackagedRelease)
+            {
+                relative = new CheckBox
+                {
+                    Content = "r (relative)"
+                };
+
+                short_time = new CheckBox
+                {
+                    Content = "t (short time)"
+                };
+
+                long_time = new CheckBox
+                {
+                    Content = "T (long time)"
+                };
+
+                short_date = new CheckBox
+                {
+                    Content = "d (short date)"
+                };
+
+                long_date = new CheckBox
+                {
+                    Content = "D (long date)"
+                };
+
+                day_of_week = new CheckBox
+                {
+                    Content = "w (day of week)"
+                };
+
+                var panel = new StackPanel();
+                panel.Children.Add(relative);
+                panel.Children.Add(day_of_week);
+                panel.Children.Add(short_date);
+                panel.Children.Add(long_date);
+                panel.Children.Add(short_time);
+                panel.Children.Add(long_time);
+
+                popup.Footer = panel;
+            }
+
+            if (CreateLinkTarget != null)
+            {
+                popup.Target = CreateLinkTarget;
+                popup.PreferredPlacement = TeachingTipPlacementMode.TopRight;
+            }
+            else
+            {
+                popup.Target = this;
+                popup.PreferredPlacement = TeachingTipPlacementMode.Top;
+            }
+
+            popup.Width = popup.MinWidth = popup.MaxWidth = 314;
+            popup.IsLightDismissEnabled = true;
+
+            var confirm = await popup.ShowAsync(XamlRoot);
+            if (confirm != ContentDialogResult.Primary /*|| !IsSafe(popup.Text)*/)
+            {
+                return;
+            }
+
+            Document.BatchDisplayUpdates();
+
+            // The bot format string: r|w?[dD]?[tT]?. 'r' can't be combined with anything, and
+            // a part can only be short OR long, so the boxes are read in that priority.
+            var format = string.Empty;
+
+            if (ApiInfo.IsPackagedRelease)
+            {
+                if (relative.IsChecked is true)
+                {
+                    format = "r";
+                }
+                else
+                {
+                    if (day_of_week.IsChecked is true)
+                    {
+                        format += "w";
+                    }
+
+                    if (short_date.IsChecked is true)
+                    {
+                        format += "d";
+                    }
+                    else if (long_date.IsChecked is true)
+                    {
+                        format += "D";
+                    }
+
+                    if (short_time.IsChecked is true)
+                    {
+                        format += "t";
+                    }
+                    else if (long_time.IsChecked is true)
+                    {
+                        format += "T";
+                    }
+                }
+            }
+
+            var url = TdExtensions.ToDateUrl(popup.Value.ToUnixTimeSeconds(), format);
+
+            range.SetText(TextSetOptions.Unlink, text);
+            range.CharacterFormat = Document.GetDefaultCharacterFormat();
+            range.Link = "\"" + url + "\"";
+
+            Document.Selection.SetRange(range.EndPosition, range.EndPosition);
+            Document.ApplyDisplayUpdates();
+        }
+
+        public async void CreateLink()
+        {
+            var range = Document.Selection.GetClone();
+            var clone = Document.Selection.GetClone();
+            clone.StartOf(TextRangeUnit.Link, true);
+
+            if (clone.Link.Length > 0)
+            {
+                range.Expand(TextRangeUnit.Link);
+            }
+
+            range.GetText(TextGetOptions.NoHidden, out string text);
+
+            var start = Math.Min(range.StartPosition, range.EndPosition);
+            var end = Math.Max(range.StartPosition, range.EndPosition);
+
+            var popup = new CreateLinkPopup();
+            popup.Text = text;
+            popup.Link = range.Link.Trim('"');
+
+            if (string.IsNullOrEmpty(popup.Text))
+            {
+                var clipboard = ClipboardEx.TryGetContent();
+                if (clipboard != null && clipboard.Contains(StandardDataFormats.Text))
+                {
+                    var link = await clipboard.GetTextAsync();
+                    if (link.IsValidUrl())
+                    {
+                        popup.Link = link;
+                    }
+                }
+            }
+
+            if (CreateLinkTarget != null)
+            {
+                popup.Target = CreateLinkTarget;
+                popup.PreferredPlacement = TeachingTipPlacementMode.TopRight;
+            }
+            else
+            {
+                popup.Target = this;
+                popup.PreferredPlacement = TeachingTipPlacementMode.Top;
+            }
+
+            popup.Width = popup.MinWidth = popup.MaxWidth = 314;
+            popup.IsLightDismissEnabled = true;
+
+            var confirm = await popup.ShowQueuedAsync(XamlRoot);
+            if (confirm != true || !IsSafe(popup.Text))
+            {
+                return;
+            }
+
+            Document.BatchDisplayUpdates();
+
+            range.SetText(end > start ? TextSetOptions.Unlink : TextSetOptions.None, popup.Text);
+            range.SetRange(start, start + popup.Text.Length);
+            range.CharacterFormat = Document.GetDefaultCharacterFormat();
+            range.Link = $"\"{popup.Link}\"";
+
+            Document.Selection.SetRange(range.EndPosition, range.EndPosition);
+            Document.ApplyDisplayUpdates();
+        }
+
+        private void ClearStyle(ITextRange range, bool monospace)
+        {
+            if (monospace)
+            {
+                var start = Math.Min(range.StartPosition, range.EndPosition);
+                var end = Math.Max(range.StartPosition, range.EndPosition);
+
+                range.SetRange(start, end);
+
+                range.CharacterFormat = Document.GetDefaultCharacterFormat();
+                range.ParagraphFormat.SpaceAfter = 0;
+                range.ParagraphFormat.SpaceBefore = 0;
+                range.ParagraphFormat.SetIndents(0, 0, 0);
+
+                range.GetText(TextGetOptions.NoHidden, out string text);
+                range.SetText(TextSetOptions.Unlink, text);
+                range.SetRange(start, start + text.Length);
+            }
+            else
+            {
+                range.CharacterFormat.Name = Document.GetDefaultCharacterFormat().Name;
+            }
+        }
+
+        protected bool IsDefaultFormat(ITextRange range)
+        {
+            var start = Document.GetRange(range.StartPosition, range.StartPosition);
+            start.MoveEnd(TextRangeUnit.CharacterFormat, 1);
+
+            if (start.EndPosition >= range.EndPosition)
+            {
+                return IsDefault(range.CharacterFormat);
+            }
+
+            return false;
+        }
+
+        protected bool IsDefault(ITextCharacterFormat format)
+        {
+            return AreTheSame(format, Document.GetDefaultCharacterFormat());
+        }
+
+        protected bool AreTheSame(ITextCharacterFormat format, ITextCharacterFormat document)
+        {
+            return document.AllCaps == format.AllCaps &&
+                document.BackgroundColor == format.BackgroundColor &&
+                document.Bold == format.Bold &&
+                //document.FontStretch == format.FontStretch &&
+                //document.FontStyle == format.FontStyle &&
+                //document.ForegroundColor == format.ForegroundColor &&
+                document.Hidden == format.Hidden &&
+                document.Italic == format.Italic &&
+                //document.Kerning == format.Kerning &&
+                //document.LanguageTag == format.LanguageTag &&
+                //document.LinkType == format.LinkType &&
+                document.Name == format.Name &&
+                //document.Outline == format.Outline &&
+                //document.Position == format.Position &&
+                //document.ProtectedText == format.ProtectedText &&
+                document.Size == format.Size &&
+                //document.SmallCaps == format.SmallCaps &&
+                //document.Spacing == format.Spacing &&
+                document.Strikethrough == format.Strikethrough &&
+                //document.Subscript == format.Subscript &&
+                //document.Superscript == format.Superscript &&
+                //document.TextScript == format.TextScript &&
+                document.Underline == format.Underline &&
+                document.Weight == format.Weight;
+        }
+
+        protected bool TryGetUserId(ITextRange range, out long userId)
+        {
+            var link = range.Link.Trim('"');
+            if (link.StartsWith("tg-user://") && long.TryParse(link.Substring("tg-user://".Length), out userId))
+            {
+                return true;
+            }
+
+            userId = 0;
+            return false;
+        }
+
+        protected bool TryGetDate(ITextRange range, out int date)
+        {
+            var link = range.Link.Trim('"');
+            if (TdExtensions.TryParseDateTime(link, out TextEntityTypeDateTime dateTime))
+            {
+                date = dateTime.UnixTime;
+                return true;
+            }
+
+            date = 0;
+            return false;
+        }
+
+        protected bool TryGetEntityType(string link, out TextEntityType type)
+        {
+            link = link.Trim('"');
+
+            if (link.IsValidUrl())
+            {
+                type = new TextEntityTypeTextUrl(link);
+                return true;
+            }
+            else if (link.StartsWith("tg-user://") && long.TryParse(link.Substring("tg-user://".Length), out long userId))
+            {
+                type = new TextEntityTypeMentionName(userId);
+                return true;
+            }
+            else if (TdExtensions.TryParseDateTime(link, out TextEntityTypeDateTime dateTime))
+            {
+                type = dateTime;
+                return true;
+            }
+
+            type = null;
+            return false;
+        }
+
+        private void ContextUndo_Click()
+        {
+            Document.Undo();
+        }
+
+        private void ContextRedo_Click()
+        {
+            Document.Redo();
+        }
+
+        private void ContextCut_Click()
+        {
+            Document.Selection.Cut();
+        }
+
+        private void ContextCopy_Click()
+        {
+            Document.Selection.Copy();
+        }
+
+        private void ContextPaste_Click()
+        {
+            try
+            {
+                var args = new HandledEventArgs(false);
+                var package = ClipboardEx.TryGetContent();
+                if (package != null)
+                {
+                    OnPaste(args, package);
+                }
+            }
+            catch
+            {
+                // All the remote procedure calls must be wrapped in a try-catch block
+            }
+        }
+
+        private void OnPaste(object sender, TextControlPasteEventArgs e)
+        {
+            try
+            {
+                var args = new HandledEventArgs(false);
+                var package = ClipboardEx.TryGetContent();
+                if (package != null)
+                {
+                    OnPaste(args, package);
+                }
+
+                e.Handled = args.Handled;
+            }
+            catch
+            {
+                // All the remote procedure calls must be wrapped in a try-catch block
+            }
+        }
+
+        protected virtual async void OnPaste(HandledEventArgs e, DataPackageView package)
+        {
+            try
+            {
+                e.Handled = true;
+
+                // If the user tries to paste RTF content from any TOM control (Visual Studio, Word, Wordpad, browsers)
+                // we have to handle the pasting operation manually to allow plaintext only.
+                if (package.AvailableFormats.Contains(StandardDataFormats.Text) && package.AvailableFormats.Contains("application/x-tl-field-tags"))
+                {
+                    var text = await MessageHelper.PasteTextAsync(package);
+                    SetText(text.Text, text.Entities, true);
+                }
+                else if (package.AvailableFormats.Contains(StandardDataFormats.Text) /*&& package.Contains("Rich Text Format")*/)
+                {
+                    var text = await package.GetTextAsync();
+                    var start = Document.Selection.StartPosition;
+                    var length = Math.Abs(Document.Selection.Length);
+
+                    // A URL pasted over a selection labels it instead of replacing it
+                    if (length > 0 && text.IsValidUrl() && TryLinkSelection(text))
+                    {
+                        return;
+                    }
+
+                    if (IsLongerThanMaxLength(text.Length, out int exceeding))
+                    {
+                        text = text.Substring(0, exceeding);
+                    }
+
+                    // Both calls below lay the document out, and moving the caret scrolls it
+                    // into view, so a large paste is worth one pass rather than two.
+                    Document.BatchDisplayUpdates();
+
+                    try
+                    {
+                        Document.Selection.SetText(TextSetOptions.Unhide, text);
+                        Document.Selection.SetRange(start + text.Length, start + text.Length);
+                    }
+                    finally
+                    {
+                        Document.ApplyDisplayUpdates();
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private bool TryLinkSelection(string url)
+        {
+            if ((AllowedEntities & FormattedTextEntity.TextUrl) == 0)
+            {
+                return false;
+            }
+
+            var selection = Document.Selection;
+
+            // A link keeps its URL in a hidden run and so does a custom emoji, so anything hidden
+            // under the selection means it isn't the plain text this is meant to label.
+            if (selection.CharacterFormat.Hidden != FormatEffect.Off)
+            {
+                return false;
+            }
+
+            var clone = selection.GetClone();
+            clone.StartOf(TextRangeUnit.Link, true);
+
+            if (clone.Link.Length > 0)
+            {
+                return false;
+            }
+
+            selection.GetText(TextGetOptions.NoHidden, out string value);
+
+            // The selection is a URL itself: the user is replacing that link, not labelling it.
+            // Nothing marks it as one while composing, so this is the only way to tell.
+            if (value.IsValidUrl() || !IsSafe(value))
+            {
+                return false;
+            }
+
+            using (BeginUndoGroup())
+            {
+                selection.CharacterFormat = Document.GetDefaultCharacterFormat();
+                selection.Link = $"\"{url}\"";
+                selection.Collapse(false);
+            }
+
+            if (_undoGroup == 0 && !_updateLocked)
+            {
+                TextChangedForRealNoCap?.Invoke(this, EventArgs.Empty);
+            }
+
+            return true;
+        }
+
+        private void ContextDelete_Click()
+        {
+            Document.Selection.SetText(TextSetOptions.None, string.Empty);
+        }
+
+        private void ContextSelectAll_Click()
+        {
+            Document.Selection.Expand(TextRangeUnit.Paragraph);
+        }
+
+
+        #endregion
+
+        public string Text
+        {
+            get
+            {
+                if (IsEmpty)
+                {
+                    return string.Empty;
+                }
+
+                Document.GetText(TextGetOptions.None, out string text);
+                return text;
+            }
+        }
+
+        public FormattedText GetFormattedText(bool clear = false, bool parseMarkdown = true, ITextRange selection = null)
+        {
+            OnGettingFormattedText();
+
+            if (IsEmpty)
+            {
+                return string.Empty.AsFormattedText();
+            }
+
+            _updateLocked = true;
+
+            if (clear)
+            {
+                Document.BatchDisplayUpdates();
+            }
+
+            try
+            {
+                return GetFormattedTextImpl(clear, parseMarkdown, selection);
+            }
+            finally
+            {
+                // Leaving either of these set would be silent: the editor stays frozen, and
+                // UpdateCustomEmoji gives up for as long as the control lives.
+                _updateLocked = false;
+
+                if (clear)
+                {
+                    Document.ApplyDisplayUpdates();
+                }
+            }
+        }
+
+        private FormattedText GetFormattedTextImpl(bool clear, bool parseMarkdown, ITextRange selection)
+        {
+            // TODO: reimplement using the same logic as UpdateFormat
+
+            List<TextStyleRun> runs = null;
+
+            ITextRange range;
+            int storyLength;
+            int hidden;
+
+            if (selection != null)
+            {
+                range = selection.GetClone();
+                storyLength = Math.Min(range.EndPosition, range.StoryLength - 1);
+                hidden = range.StartPosition;
+            }
+            else
+            {
+                range = GetReusableRange(0, 0);
+
+                // We need to get one character less not to include the trailing \r
+                // otherwise default character format comparison will fail
+                range.SetRange(0, range.StoryLength - 1);
+
+                storyLength = range.StoryLength - 1;
+                hidden = 0;
+            }
+
+#if DEBUG
+            var builder = new NormalizingStringBuilder(storyLength);
+#else
+            var builder = storyLength <= 1024
+                ? new NormalizingStringBuilder(stackalloc char[storyLength])
+                : new NormalizingStringBuilder(storyLength);
+#endif
+
+            // We need to do this because TextRangeUnit.CharacterFormat still breaks every space/new line.
+            // TODO: unfortunately this doesn't seem to work when the range contains mixed font families (eg, monospace)
+            //if (AreTheSame(range.CharacterFormat, Document.GetDefaultCharacterFormat()))
+            //{
+            //    builder.Append(range.Text.AsSpan());
+            //}
+            //else
+            {
+                range.Collapse(true);
+            }
+
+            while (range.EndPosition < storyLength && storyLength > Math.Abs(hidden))
+            {
+                var startPos = range.StartPosition;
+                var endPos = range.EndPosition;
+
+                var shouldBreak = false;
+
+                // Move to next format boundary
+                if (range.MoveEnd(TextRangeUnit.CharacterFormat, 1) <= 0)
+                {
+                    break;
+                }
+
+                // Check if we actually moved (prevent infinite loop)
+                if (range.StartPosition == startPos && range.EndPosition == endPos)
+                {
+                    range.MoveEnd(TextRangeUnit.Character, 1);
+                    if (range.EndPosition == endPos)
+                    {
+                        break; // Can't move at all
+                    }
+                }
+
+                // This happens when selection is not null
+                if (range.EndPosition > storyLength)
+                {
+                    range.SetRange(range.StartPosition, storyLength);
+                    shouldBreak = true;
+                }
+
+                var flags = default(TextStyle);
+                var type = default(TextEntityType);
+
+                var start = -1;
+                var end = -1;
+
+                if (range.ParagraphFormat.SpaceAfter != 0 && range.Character != '\r')
+                {
+                    flags = TextStyle.Quote;
+                }
+
+                if (string.Equals(range.CharacterFormat.Name, "Consolas", StringComparison.OrdinalIgnoreCase))
+                {
+                    flags |= TextStyle.Monospace;
+                }
+                else
+                {
+                    if (range.CharacterFormat.Hidden == FormatEffect.On)
+                    {
+                        range.Expand(TextRangeUnit.Hidden);
+                        var rangeLength = Math.Abs(range.Length);
+
+                        if (IsCustomEmoji(range, out string emoji, out long customEmojiId))
+                        {
+                            hidden += rangeLength;
+                            range.SetRange(range.EndPosition, range.EndPosition + 1);
+
+                            if (range.Text == "\uEA4F")
+                            {
+                                var startPosition = Math.Min(range.StartPosition, range.EndPosition);
+                                var endPosition = Math.Max(range.StartPosition, range.EndPosition);
+                                var length = emoji.Length - (endPosition - startPosition);
+
+                                start = startPosition - hidden;
+                                end = endPosition + length - hidden;
+
+                                flags |= TextStyle.Emoji;
+                                type = new TextEntityTypeCustomEmoji(customEmojiId);
+
+                                builder.Append(emoji.AsSpan());
+
+                                hidden -= length;
+                            }
+                        }
+                        else
+                        {
+                            range.Expand(TextRangeUnit.Link);
+
+                            if (range.Link.Length > 0 && TryGetEntityType(range.Link, out type))
+                            {
+                                var startPosition = Math.Min(range.StartPosition, range.EndPosition);
+                                var endPosition = Math.Max(range.StartPosition, range.EndPosition);
+
+                                start = startPosition - hidden;
+                                end = endPosition - hidden - rangeLength;
+
+                                flags |= TextStyle.Url;
+                                flags &= ~TextStyle.Underline;
+
+                                range.GetText(TextGetOptions.NoHidden, out string noHidden);
+                                builder.Append(noHidden.AsSpan());
+
+                                hidden += rangeLength;
+                            }
+                            else
+                            {
+                                // Pure hidden text (emoji alt text)
+                                hidden += rangeLength;
+
+                                range.Collapse(false);
+                                continue;
+                            }
+                        }
+                    }
+
+                    if (range.CharacterFormat.Weight == FontWeights.SemiBold.Weight)
+                    {
+                        flags |= TextStyle.Bold;
+                    }
+                    if (range.CharacterFormat.Italic == FormatEffect.On)
+                    {
+                        flags |= TextStyle.Italic;
+                    }
+                    if (range.CharacterFormat.Strikethrough == FormatEffect.On)
+                    {
+                        flags |= TextStyle.Strikethrough;
+                    }
+                    if (range.CharacterFormat.Underline == UnderlineType.Single)
+                    {
+                        flags |= TextStyle.Underline;
+                    }
+                    if (range.CharacterFormat.BackgroundColor == Colors.Gray)
+                    {
+                        flags |= TextStyle.Spoiler;
+                    }
+                }
+
+                if (start == -1)
+                {
+                    start = Math.Min(range.StartPosition, range.EndPosition) - hidden;
+                    end = Math.Max(range.StartPosition, range.EndPosition) - hidden;
+
+                    builder.Append(range.Text.AsSpan());
+                }
+
+                if (flags != 0)
+                {
+                    runs ??= new();
+                    runs.Add(new TextStyleRun { Start = start, End = end, Flags = flags, Type = type });
+                }
+
+                if (shouldBreak)
+                {
+                    break;
+                }
+
+                range.Collapse(false);
+            }
+
+            if (clear)
+            {
+                if (selection != null)
+                {
+                    selection.SetText(TextSetOptions.None, string.Empty);
+                }
+                else
+                {
+                    Document.Clear();
+                }
+
+                SelectionFlyout.Hide();
+            }
+
+            var text = builder.ToString();
+            var entities = TextStyleRun.GetEntities(text, runs);
+
+            if (parseMarkdown)
+            {
+                return ClientEx.ParseMarkdown(text, entities);
+            }
+
+            return new FormattedText(text, entities);
+        }
+
+        protected virtual void OnGettingFormattedText()
+        {
+
+        }
+
+        protected virtual void OnSettingText()
+        {
+
+        }
+
+        protected bool _wasEmpty;
+
+        private bool? _isEmpty = true;
+        public virtual bool IsEmpty => _isEmpty ??= GetIsEmpty();
+
+        private bool GetIsEmpty()
+        {
+            var range = Document.GetRange(0, 2);
+            var empty = range.StoryLength <= 1;
+
+            if (empty && !_wasEmpty && !IsReadOnly)
+            {
+                try
+                {
+                    var selection = Document.Selection;
+
+                    if (!IsDefault(selection.CharacterFormat))
+                    {
+                        selection.CharacterFormat = Document.GetDefaultCharacterFormat();
+                    }
+
+                    var paragraph = selection.ParagraphFormat;
+
+                    if (paragraph.SpaceAfter != 0 || paragraph.SpaceBefore != 0
+                        || paragraph.FirstLineIndent != 0 || paragraph.LeftIndent != 0 || paragraph.RightIndent != 0)
+                    {
+                        using (BeginUndoGroup())
+                        {
+                            paragraph.SpaceAfter = 0;
+                            paragraph.SpaceBefore = 0;
+                            paragraph.SetIndents(0, 0, 0);
+                        }
+                    }
+                }
+                catch
+                {
+                    // All ...
+                }
+            }
+
+            _wasEmpty = empty;
+            return empty;
+        }
+
+        public bool CanPasteClipboardContent => Document.Selection.CanPaste(0);
+
+        public void PasteFromClipboard()
+        {
+            try
+            {
+                Document.Selection.Paste(0);
+            }
+            catch
+            {
+                // Seems to throw a UnauthorizedAccessException some times
+                Logger.Error();
+            }
+        }
+
+        // A group left open never closes, and UpdateFormat then stops running for the rest of the
+        // control's life, since it's gated on _undoGroup == 0. Scoping the pair means nothing
+        // thrown in between can leave the count standing.
+        private readonly struct UndoGroup : IDisposable
+        {
+            private readonly FormattedTextBox _owner;
+
+            public UndoGroup(FormattedTextBox owner)
+            {
+                _owner = owner;
+            }
+
+            public void Dispose()
+            {
+                _owner?.EndUndoGroup();
+            }
+        }
+
+        private UndoGroup BeginUndoGroup()
+        {
+            if (_undoGroup == 0)
+            {
+                Document.BeginUndoGroup();
+            }
+
+            _undoGroup++;
+            return new UndoGroup(this);
+        }
+
+        private void EndUndoGroup()
+        {
+            _undoGroup--;
+
+            if (_undoGroup == 0)
+            {
+                Document.EndUndoGroup();
+            }
+        }
+
+        public void ClearText()
+        {
+            Document.Clear();
+            SelectionFlyout.Hide();
+        }
+
+        public void SetText(FormattedText formattedText)
+        {
+            if (formattedText != null)
+            {
+                SetText(formattedText.Text, formattedText.Entities);
+            }
+            else if (!IsEmpty)
+            {
+                OnSettingText();
+
+                Document.Clear();
+                SelectionFlyout.Hide();
+            }
+        }
+
+        public void SetText(string text, Vector<TextEntity> entities)
+        {
+            SetText(text, entities, false);
+        }
+
+        public void SetText(string text, Vector<TextEntity> entities, bool updateSelection = false)
+        {
+            try
+            {
+                _updateLocked = true;
+
+                using (BeginUndoGroup())
+                {
+                    Document.BatchDisplayUpdates();
+
+                    try
+                    {
+                        SetTextImpl(text, entities, updateSelection);
+                    }
+                    finally
+                    {
+                        Document.ApplyDisplayUpdates();
+                    }
+                }
+            }
+            catch
+            {
+                // TODO:
+            }
+            finally
+            {
+                _updateLocked = false;
+                TextChangedForRealNoCap?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private void SetTextImpl(string text, Vector<TextEntity> entities, bool updateSelection)
+        {
+            if (updateSelection is false)
+            {
+                OnSettingText();
+                Document.Clear();
+            }
+
+            var allowedEntities = AllowedEntities;
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                if (IsLongerThanMaxLength(text.Length, out int exceeding))
+                {
+                    (text, entities) = text.Substring(entities, 0, exceeding);
+                }
+
+                if (updateSelection)
+                {
+                    Document.Selection.CharacterFormat = Document.GetDefaultCharacterFormat();
+                    Document.Selection.SetText(TextSetOptions.None, text);
+                }
+                else
+                {
+                    Document.SetText(TextSetOptions.None, text);
+                }
+
+                if (entities != null && entities.Count > 0)
+                {
+                    // We apply entities in two passes, before we apply appearance only
+                    // And then we apply the entities that affect text length.
+
+                    var index = updateSelection ? Document.Selection.StartPosition : 0;
+                    var affecting = default(List<TextEntity>);
+
+                    // Pasting a formatted message can bring in hundreds of entities, and every
+                    // ITextRange is a COM object, so a single one is moved over them instead.
+                    // It can't be the shared field, as the insertions below re-enter this class.
+                    var reusable = default(ITextRange);
+
+                    for (int i = entities.Count - 1; i >= 0; i--)
+                    {
+                        var entity = entities[i];
+
+                        if (entity.Type is TextEntityTypeDateTime or TextEntityTypeMentionName or TextEntityTypeTextUrl or TextEntityTypeCustomEmoji)
+                        {
+                            affecting ??= new();
+                            affecting.Add(entity);
+
+                            continue;
+                        }
+
+                        var range = GetRange(ref reusable, index + entity.Offset, index + entity.Offset + entity.Length);
+
+                        if (entity.Type is TextEntityTypeBlockQuote or TextEntityTypeExpandableBlockQuote && (allowedEntities & FormattedTextEntity.Quote) != 0)
+                        {
+                            InsertBlockquote(range, true, false);
+                        }
+                        else if (entity.Type is TextEntityTypeBold && (allowedEntities & FormattedTextEntity.Bold) != 0)
+                        {
+                            range.CharacterFormat.Weight = FontWeights.SemiBold.Weight;
+                        }
+                        else if (entity.Type is TextEntityTypeItalic && (allowedEntities & FormattedTextEntity.Italic) != 0)
+                        {
+                            range.CharacterFormat.Italic = FormatEffect.On;
+                        }
+                        else if (entity.Type is TextEntityTypeUnderline && (allowedEntities & FormattedTextEntity.Underline) != 0)
+                        {
+                            range.CharacterFormat.Underline = UnderlineType.Single;
+                        }
+                        else if (entity.Type is TextEntityTypeStrikethrough && (allowedEntities & FormattedTextEntity.Strikethrough) != 0)
+                        {
+                            range.CharacterFormat.Strikethrough = FormatEffect.On;
+                        }
+                        else if (entity.Type is TextEntityTypeSpoiler && (allowedEntities & FormattedTextEntity.Spoiler) != 0)
+                        {
+                            range.CharacterFormat.BackgroundColor = Colors.Gray;
+                        }
+                        else if (entity.Type is TextEntityTypeCode or TextEntityTypePre or TextEntityTypePreCode && (allowedEntities & FormattedTextEntity.Mono) != 0)
+                        {
+                            range.CharacterFormat.Name = "Consolas";
+                        }
+                    }
+
+                    if (affecting != null)
+                    {
+                        foreach (var entity in affecting)
+                        {
+                            var range = GetRange(ref reusable, index + entity.Offset, index + entity.Offset + entity.Length);
+
+                            if (entity.Type is TextEntityTypeTextUrl textUrl && (allowedEntities & FormattedTextEntity.TextUrl) != 0 && IsSafe(text, entity))
+                            {
+                                range.Link = $"\"{textUrl.Url}\"";
+                            }
+                            else if (entity.Type is TextEntityTypeMentionName mentionName && (allowedEntities & FormattedTextEntity.Mention) != 0 && IsSafe(text, entity))
+                            {
+                                range.Link = $"\"tg-user://{mentionName.UserId}\"";
+                            }
+                            else if (entity.Type is TextEntityTypeDateTime date && (allowedEntities & FormattedTextEntity.Date) != 0 && IsSafe(text, entity))
+                            {
+                                range.Link = $"\"{date.ToUrl()}\"";
+                            }
+                            else if (entity.Type is TextEntityTypeCustomEmoji customEmoji && (allowedEntities & FormattedTextEntity.CustomEmoji) != 0)
+                            {
+                                var emoji = text.Substring(entity.Offset, entity.Length);
+                                InsertEmoji(range, emoji, customEmoji.CustomEmojiId);
+                            }
+                        }
+                    }
+                }
+
+                if (updateSelection)
+                {
+                    Document.Selection.Collapse(false);
+                }
+                else
+                {
+                    Document.Selection.SetRange(TextConstants.MaxUnitCount, TextConstants.MaxUnitCount);
+                }
+            }
+        }
+
+        private static readonly char[] _unsafeChars = new[]
+        {
+            '\u0000', '\u0001', '\u0002', '\u0003', '\u0004', '\u0005', '\u0006', '\u0007', '\u0008',
+            '\u0009', '\u000a', '\u000b', '\u000c', '\u000d', '\u000e', '\u000f', '\u0010', '\u0011',
+            '\u0012', '\u0013', '\u0014', '\u0015', '\u0016', '\u0017', '\u0018', '\u0019', '\u001a',
+            '\u001b', '\u001c', '\u001d', '\u001e', '\u001f', '\u0020', '\u007f', '\u0080', '\u0081',
+            '\u0082', '\u0083', '\u0084', '\u0085', '\u0086', '\u0087', '\u0088', '\u0089', '\u008a',
+            '\u008b', '\u008c', '\u008d', '\u008e', '\u008f', '\u0090', '\u0091', '\u0092', '\u0093',
+            '\u0094', '\u0095', '\u0096', '\u0097', '\u0098', '\u0099', '\u009a', '\u009b', '\u009c',
+            '\u009d', '\u009e', '\u009f', '\u00a0', '\u0600', '\u0601', '\u0602', '\u0603', '\u06dd',
+            '\u070f', '\u1680', '\u17b4', '\u17b5', '\u180e', '\u2000', '\u2001', '\u2002', '\u2003',
+            '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009', '\u200a', '\u200b', '\u200c',
+            '\u200d', '\u200e', '\u200f', '\u2028', '\u2029', '\u202a', '\u202b', '\u202c', '\u202d',
+            '\u202e', '\u202f', '\u205f', '\u2060', '\u2061', '\u2062', '\u2063', '\u2064', '\u206a',
+            '\u206b', '\u206c', '\u206d', '\u206e', '\u206f', '\u3000', '\ufdd0', '\ufdd1', '\ufdd2',
+            '\ufdd3', '\ufdd4', '\ufdd5', '\ufdd6', '\ufdd7', '\ufdd8', '\ufdd9', '\ufdda', '\ufddb',
+            '\ufddc', '\ufddd', '\ufdde', '\ufddf', '\ufde0', '\ufde1', '\ufde2', '\ufde3', '\ufde4',
+            '\ufde5', '\ufde6', '\ufde7', '\ufde8', '\ufde9', '\ufdea', '\ufdeb', '\ufdec', '\ufded',
+            '\ufdee', '\ufdef', '\ufeff', '\ufff9', '\ufffa', '\ufffb', '\ufffc', '\ufffe'
+        };
+
+        public static bool IsUnsafe(string text)
+        {
+            return !IsSafe(text);
+        }
+
+        public static bool IsSafe(string text, TextEntity entity = null)
+        {
+            if (entity != null)
+            {
+                text = text.Substring(entity.Offset, entity.Length);
+            }
+
+            text = text.Trim(_unsafeChars);
+            return text.Length > 0;
+        }
+
+        public void InsertText(string text, bool allowPreceding = false, bool allowTrailing = false)
+        {
+            if (IsLongerThanMaxLength(text.Length, out _))
+            {
+                return;
+            }
+
+            var start = Document.Selection.StartPosition;
+            var end = Document.Selection.EndPosition;
+
+            var preceding = start > 0 && !char.IsWhiteSpace(Document.GetRange(start - 1, start).Character);
+            var trailing = !char.IsWhiteSpace(Document.GetRange(end, end + 1).Character) || Document.GetRange(end, end + 1).Character == '\r';
+
+            var block = string.Format("{0}{1}{2}",
+                preceding && allowPreceding ? " " : "",
+                text,
+                trailing && allowTrailing ? " " : "");
+
+            try
+            {
+                Document.Selection.SetText(TextSetOptions.Unhide, block);
+                Document.Selection.Collapse(false);
+            }
+            catch
+            {
+                // Seems to throw a UnauthorizedAccessException some times
+                Logger.Error($"text: {text}");
+            }
+        }
+
+        public void InsertEmoji(Sticker sticker)
+        {
+            if (sticker.FullType is StickerFullTypeCustomEmoji customEmoji)
+            {
+                var range = Document.GetRange(Document.Selection.StartPosition, Document.Selection.EndPosition);
+                InsertEmoji(range, sticker.Emoji, customEmoji.CustomEmojiId);
+                Document.Selection.StartPosition = range.EndPosition + 1;
+            }
+        }
+
+        public void InsertEmoji(ITextRange range, string emoji, long customEmojiId)
+        {
+            if (IsLongerThanMaxLength(emoji.Length, out _))
+            {
+                return;
+            }
+
+            using (BeginUndoGroup())
+            {
+                Document.BatchDisplayUpdates();
+
+                try
+                {
+                    var plain = range.GetClone();
+                    plain.Move(TextRangeUnit.Hidden, -1);
+
+                    if (plain.Expand(TextRangeUnit.Hidden) != 0 && plain.EndPosition == range.StartPosition && Emoticon.Data.ContainsKey(plain.Text))
+                    {
+                        plain.Delete(TextRangeUnit.Hidden, 1);
+                    }
+
+                    range.CharacterFormat.Name = Document.GetDefaultCharacterFormat().Name;
+                    range.SetText(TextSetOptions.None, $"{emoji};{customEmojiId:X16}\uEA4F");
+                    range.SetRange(range.StartPosition, range.EndPosition - 1);
+                    range.CharacterFormat.Hidden = FormatEffect.On;
+                }
+                finally
+                {
+                    Document.ApplyDisplayUpdates();
+                }
+            }
+
+            if (_undoGroup == 0 && !_updateLocked)
+            {
+                TextChangedForRealNoCap?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private bool IsLongerThanMaxLength(int length, out int exceeding)
+        {
+            if (IsReadOnly)
+            {
+                exceeding = length;
+                return true;
+            }
+
+            if (MaxLength > 0)
+            {
+                Document.GetText(TextGetOptions.NoHidden, out string value);
+
+                if (value.Length + length > MaxLength)
+                {
+                    exceeding = MaxLength - value.Length;
+                    return exceeding > 0;
+                }
+            }
+
+            exceeding = 0;
+            return false;
+        }
+
+        public void InsertBlockquote(string quote)
+        {
+            Document.Selection.SetText(TextSetOptions.None, quote);
+            InsertBlockquote(Document.Selection, true);
+        }
+
+        public void InsertBlockquote(ITextRange textRange, bool enable, bool batch = true)
+        {
+            // Default when not batching: disposing it is a no-op
+            var undo = batch ? BeginUndoGroup() : default;
+            //Document.BatchDisplayUpdates();
+
+            try
+            {
+                InsertBlockquoteImpl(textRange, enable, batch);
+            }
+            finally
+            {
+                //Document.ApplyDisplayUpdates();
+                undo.Dispose();
+            }
+        }
+
+        private void InsertBlockquoteImpl(ITextRange textRange, bool enable, bool batch)
+        {
+            var start = textRange.StartPosition;
+            var end = textRange.EndPosition;
+
+            var range = textRange.GetClone();
+            var moveStart = range.StartOf(TextRangeUnit.Paragraph, true);
+            var moveEnd = range.EndOf(TextRangeUnit.Paragraph, true);
+
+            if (moveEnd != 0 && moveEnd != 1)
+            {
+                range.SetRange(end, end);
+                range.SetText(TextSetOptions.None, "\r");
+            }
+            else
+            {
+                range.SetRange(range.EndPosition - 1, range.EndPosition);
+                if (range.Character == '\v')
+                {
+                    range.Character = '\r';
+                }
+
+                end -= (1 - moveEnd);
+            }
+
+            if (moveStart != 0 || (textRange.Length == 0 && moveStart != 0 && (moveEnd == 0 || moveEnd == 1)))
+            {
+                range.SetRange(start, start);
+                range.SetText(TextSetOptions.None, "\r");
+
+                if (moveStart != 0)
+                {
+                    start++;
+                }
+
+                end++;
+            }
+            else if (start > 0)
+            {
+                range.SetRange(start - 1, start);
+                if (range.Character == '\v')
+                {
+                    range.Character = '\r';
+                }
+            }
+
+            // Not sure about what's the logic exactly, but 14pt in XAML equals to 10.5pt in TOM.
+
+            float magic = 0.75f;
+
+            range.SetRange(start, Math.Max(start + 1, end));
+
+            if (enable)
+            {
+                range.CharacterFormat.Size = 12 * magic;
+                range.ParagraphFormat.SpaceBefore = 6 * magic;
+                range.ParagraphFormat.SpaceAfter = 8 * magic;
+                range.ParagraphFormat.SetIndents(0, 8 * magic, 24 * magic);
+            }
+            else
+            {
+                range.CharacterFormat.Size = 14 * magic;
+                range.ParagraphFormat.SpaceAfter = 0;
+                range.ParagraphFormat.SpaceBefore = 0;
+                range.ParagraphFormat.SetIndents(0, 0, 0);
+            }
+
+            MergeParagraphs(range);
+
+            if (batch)
+            {
+                Document.Selection.SetRange(end, end);
+            }
+        }
+
+        private void MergeParagraphs(ITextRange range)
+        {
+            ITextRange searchRange = Document.GetRange(range.StartPosition + 1, range.EndPosition - 1);
+            while (searchRange.FindText("\r", range.Length, FindOptions.None) > 0 && searchRange.EndPosition < range.EndPosition)
+            {
+                if (searchRange.StartPosition > range.StartPosition)
+                {
+                    searchRange.Character = '\v';
+                }
+            }
+        }
+
+        // Every ITextRange is a COM object, so the ones used by the per-keystroke updates
+        // are kept around and moved rather than allocated again on each pass.
+        private ITextRange GetReusableRange(int startPosition, int endPosition)
+        {
+            return GetRange(ref _reusableRange, startPosition, endPosition);
+        }
+
+        private ITextRange GetReusableProbe(int startPosition, int endPosition)
+        {
+            return GetRange(ref _reusableProbe, startPosition, endPosition);
+        }
+
+        // Shares the probe with the walk above, which is fine as long as this isn't called
+        // from inside one.
+        protected char CharacterAt(int position)
+        {
+            return GetReusableProbe(position, position + 1).Character;
+        }
+
+        private ITextRange GetRange(ref ITextRange reusable, int startPosition, int endPosition)
+        {
+            if (reusable == null)
+            {
+                reusable = Document.GetRange(startPosition, endPosition);
+            }
+            else
+            {
+                reusable.SetRange(startPosition, endPosition);
+            }
+
+            return reusable;
+        }
+
+        private void UpdateCustomEmoji(bool anyHidden)
+        {
+            if (_updateLocked)
+            {
+                return;
+            }
+
+            _emojiPositions?.Clear();
+
+            // Custom emoji are stored as hidden text, so without any there's nothing to walk
+            if (anyHidden)
+            {
+                var range = GetReusableRange(0, 0);
+                var lastPosition = -1;
+
+                var firstCall = true;
+
+                do
+                {
+                    if (range.StartPosition == lastPosition || (range.EndOf(TextRangeUnit.Hidden, true) <= 0 && !firstCall))
+                    {
+                        break;
+                    }
+
+                    lastPosition = range.StartPosition;
+                    firstCall = false;
+
+                    if (range.CharacterFormat.Hidden == FormatEffect.On && range.Link.Length == 0)
+                    {
+                        var follow = GetReusableProbe(range.EndPosition, range.EndPosition);
+                        if (follow.Character == '\uEA4F' && IsCustomEmoji(range, out _, out long customEmojiId))
+                        {
+                            range.GetPoint(HorizontalCharacterAlignment.Left, VerticalCharacterAlignment.Baseline, PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out Point point);
+
+                            _emojiPositions ??= new();
+                            _emojiPositions.Add(new EmojiPosition
+                            {
+                                CustomEmojiId = customEmojiId,
+                                X = (int)point.X + 2,
+                                Y = (int)point.Y - 10,
+                                FontSize = follow.CharacterFormat.Size
+                            });
+                        }
+                    }
+                } while (range.MoveStart(TextRangeUnit.Hidden, 1) > 0);
+            }
+
+            if (CustomEmoji != null && DataContext is ViewModelBase viewModel)
+            {
+                CustomEmoji.UpdateEntities(viewModel.ClientService, _emojiPositions);
+            }
+        }
+
+        private bool IsCustomEmoji(ITextRange range, out string emoji, out long customEmojiId)
+        {
+            emoji = range.Text;
+            customEmojiId = 0;
+
+            var index = emoji.IndexOf(';');
+            if (index == -1)
+            {
+                return false;
+            }
+
+            var customEmoji = emoji.Substring(index + 1);
+            if (customEmoji.Length < 16)
+            {
+                return false;
+            }
+
+            range.EndPosition -= customEmoji.Length - 16;
+
+            emoji = emoji.Substring(0, index);
+            customEmoji = customEmoji.Substring(0, 16);
+
+            return long.TryParse(customEmoji, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out customEmojiId);
+        }
+
+        private bool IsSelectionCustomEmoji(bool before, out ITextRange customEmoji)
+        {
+            var range = Document.Selection.GetClone();
+            var start = range.StartPosition;
+            var end = range.EndPosition;
+
+            if (before)
+            {
+                range.StartPosition -= 1;
+
+                if (range.Text == "\uEA4F" && -1 == range.MoveStart(TextRangeUnit.Hidden, -1))
+                {
+                    customEmoji = range;
+                    return true;
+
+                }
+            }
+            else if (0 < range.Expand(TextRangeUnit.Hidden))
+            {
+                range.EndPosition += 1;
+
+                if (range.Text.EndsWith("\uEA4F"))
+                {
+                    customEmoji = range;
+                    return true;
+                }
+            }
+
+            customEmoji = null;
+            return false;
+        }
+
+        private void UpdateFormat()
+        {
+            var range = GetReusableRange(0, TextConstants.MaxUnitCount);
+
+            // CharacterFormat breaks at every space, so the walk below is O(words) per keystroke.
+            // A document without quotes and already at the regular size has nothing to fix, and an
+            // undefined value (mixed content) never matches, so this only ever skips a no-op walk.
+            if (range.ParagraphFormat.SpaceAfter == 0 && range.CharacterFormat.Size == 10.5f)
+            {
+                return;
+            }
+
+            range.SetRange(0, 0);
+
+            var lastPosition = -1;
+
+            do
+            {
+                if (lastPosition == range.StartPosition || range.MoveEnd(TextRangeUnit.CharacterFormat, 1) <= 0)
+                {
+                    break;
+                }
+
+                lastPosition = range.StartPosition;
+
+                var format = range.CharacterFormat;
+                var size = range.ParagraphFormat.SpaceAfter == 6 ? 9 : 10.5f;
+
+                if (format.Size != size)
+                {
+                    format.Size = size;
+                }
+
+                range.Collapse(false);
+
+            } while (range.MoveStart(TextRangeUnit.CharacterFormat, 1) > 0);
+
+            //EndUndoGroup();
+        }
+
+        private void UpdateBlocks(bool anyQuote)
+        {
+            if (Blocks == null || (!anyQuote && Blocks.Children.Count == 0))
+            {
+                return;
+            }
+
+            var rects = 0;
+
+            if (anyQuote)
+            {
+                var range = GetReusableRange(0, 0);
+                var lastPosition = -1;
+
+                do
+                {
+                    if (lastPosition == range.StartPosition || range.MoveEnd(TextRangeUnit.HardParagraph, 1) <= 0)
+                    {
+                        break;
+                    }
+
+                    lastPosition = range.StartPosition;
+
+                    if (range.ParagraphFormat.SpaceAfter != 0)
+                    {
+                        range.GetRect(PointOptions.None, out Rect rect, out _);
+                        rects++;
+
+                        if (Blocks.Children.Count < rects)
+                        {
+                            Blocks.Children.Add(CreateBlock(rect));
+                        }
+                        else if (Blocks.Children[rects - 1] is FrameworkElement block)
+                        {
+                            block.Margin = new Thickness(0, rect.Y + 2, 8, 0);
+                            block.Height = Math.Max(0, rect.Height - 6);
+                            block.Width = Math.Max(0, ActualWidth - _blockPadding);
+                        }
+                    }
+                } while (range.MoveStart(TextRangeUnit.HardParagraph, 1) > 0);
+            }
+
+            while (Blocks.Children.Count > rects)
+            {
+                Blocks.Children.RemoveAt(Blocks.Children.Count - 1);
+            }
+        }
+
+        private UIElement CreateBlock(Rect rect)
+        {
+            return new BlockQuote
+            {
+                Glyph = Icons.QuoteBlockFilled16,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, rect.Y + 2, 8, 0),
+                Height = Math.Max(0, rect.Height - 6),
+                Width = Math.Max(0, ActualWidth - _blockPadding),
+                IsHitTestVisible = false
+            };
+        }
+
+        private void ContentElement_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+        {
+            if (Blocks != null)
+            {
+                Blocks.Height = ContentElement.ExtentHeight;
+                Blocks.Margin = new Thickness(0, 0, 0, Math.Min(0, ActualHeight - ContentElement.ExtentHeight));
+            }
+        }
+
+        private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key is VirtualKey.Down or VirtualKey.Up && Document.Selection.ParagraphFormat.SpaceAfter != 0)
+            {
+                var range = Document.Selection.GetClone();
+                var direction = e.Key == VirtualKey.Down ? 1 : -1;
+
+                var start = range.MoveStart(TextRangeUnit.HardParagraph, direction);
+                if (start == 0)
+                {
+                    e.Handled = true;
+
+                    using (BeginUndoGroup())
+                    {
+                        range.SetText(TextSetOptions.None, "\r");
+                        range.SetRange(range.StartPosition + direction, range.StartPosition + direction);
+                        range.CharacterFormat = Document.GetDefaultCharacterFormat();
+                        range.ParagraphFormat.SpaceAfter = 0;
+                        range.ParagraphFormat.SpaceBefore = 0;
+                        range.ParagraphFormat.SetIndents(0, 0, 0);
+                        Document.Selection.SetRange(range.StartPosition + direction, range.StartPosition + direction);
+                    }
+                }
+            }
+            else if (e.Key is VirtualKey.Back or VirtualKey.Delete && IsSelectionCustomEmoji(e.Key is VirtualKey.Back, out ITextRange emojiBack))
+            {
+                emojiBack.SetText(TextSetOptions.Unhide, string.Empty);
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Back)
+            {
+                var range = Document.Selection.GetClone();
+
+                var start = range.StartOf(TextRangeUnit.Line, true);
+                if (start == 0 && range.ParagraphFormat.SpaceAfter != 0)
+                {
+                    //BeginUndoGroup();
+
+                    //range.EndOf(TextRangeUnit.Line, true);
+                    //range.SetRange(range.EndPosition - 1, range.EndPosition);
+                    //range.Character = '\r';
+                    //return;
+
+                    range.MoveStart(TextRangeUnit.Line, 1);
+
+                    if (range.ParagraphFormat.SpaceAfter == 0)
+                    {
+                        if (range.Character == '\v')
+                        {
+                            using (BeginUndoGroup())
+                            {
+                                range.Character = '\r';
+                            }
+                        }
+                    }
+                }
+
+                var end = range.MoveEnd(TextRangeUnit.Line, -1);
+                if (end == -1 && range.ParagraphFormat.SpaceAfter != 0)
+                {
+                    range.MoveStart(TextRangeUnit.Line, 1);
+
+                    if (range.Character == '\v')
+                    {
+                        using (BeginUndoGroup())
+                        {
+                            range.Character = '\r';
+                        }
+                    }
+                }
+            }
+        }
+
+        #region AllowedEntities
+
+        public FormattedTextEntity AllowedEntities
+        {
+            get { return (FormattedTextEntity)GetValue(AllowedEntitiesProperty); }
+            set { SetValue(AllowedEntitiesProperty, value); }
+        }
+
+        public static readonly DependencyProperty AllowedEntitiesProperty =
+            DependencyProperty.Register("AllowedEntities", typeof(FormattedTextEntity), typeof(FormattedTextBox), new PropertyMetadata(FormattedTextEntity.All));
+
+        #endregion
+    }
+}

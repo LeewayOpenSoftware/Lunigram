@@ -1,0 +1,260 @@
+<controls:ContentPopup x:Class="Telegram.Views.Popups.DeleteMessagesPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:local="using:Telegram.Views.Popups"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       mc:Ignorable="d"
+                       Title="Delete"
+                       DefaultButton="None"
+                       PrimaryButtonStyle="{StaticResource DangerButtonStyle}"
+                       PrimaryButtonText="Delete"
+                       SecondaryButtonText="Cancel"
+                       Padding="0,24,0,0">
+
+    <controls:ContentPopup.Resources>
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked"
+                         Color="#D13438" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver"
+                         Color="#FF6469" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed"
+                         Color="#992629" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminate"
+                         Color="#D13438" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePointerOver"
+                         Color="#FF6469" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeIndeterminatePressed"
+                         Color="#992629" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked"
+                         Color="#D13438" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver"
+                         Color="#FF6469" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed"
+                         Color="#992629" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminate"
+                         Color="#D13438" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePointerOver"
+                         Color="#FF6469" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillIndeterminatePressed"
+                         Color="#992629" />
+    </controls:ContentPopup.Resources>
+
+    <ScrollViewer x:Name="ScrollingHost"
+                  VerticalScrollBarVisibility="Auto"
+                  VerticalScrollMode="Auto">
+        <StackPanel Margin="24,0,24,24">
+            <StackPanel x:Name="BasicRoot"
+                        Visibility="Collapsed">
+                <TextBlock x:Name="Message"
+                           Style="{StaticResource BodyTextBlockStyle}" />
+
+                <CheckBox x:Name="RevokeCheck"
+                          FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                          Margin="0,16,0,-8" />
+            </StackPanel>
+            <StackPanel x:Name="AdditionalRoot">
+                <TextBlock Text="{CustomResource DeleteAdditionalActions}"
+                           Style="{StaticResource BaseTextBlockStyle}"
+                           Margin="0,0,0,4" />
+                <controls:SettingsExpander x:Name="ReportSpamExpander"
+                                           ExpandedChanged="ReportSpam_Expanded"
+                                           Background="Transparent"
+                                           MinHeight="32"
+                                           Margin="0,0,-16,0">
+                    <controls:SettingsExpander.Header>
+                        <Grid Margin="-12,-11,0,-12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="ReportSpamCheck"
+                                      Checked="ReportSpam_Checked"
+                                      Unchecked="ReportSpam_Checked" />
+
+                            <TextBlock x:Name="ReportSpamIcon"
+                                       Text="&#xE9B9;"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       FontSize="16"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,4,0"
+                                       Grid.Column="1" />
+
+                            <controls:AnimatedTextBlock x:Name="ReportSpamCount"
+                                                        TextStyle="{StaticResource BaseTextBlockStyle}"
+                                                        VerticalAlignment="Center"
+                                                        Grid.Column="2" />
+                        </Grid>
+                    </controls:SettingsExpander.Header>
+                    <StackPanel x:Name="ReportSpamRoot"
+                                Margin="8,0,0,0">
+
+                    </StackPanel>
+                </controls:SettingsExpander>
+
+                <controls:SettingsExpander x:Name="DeleteAllExpander"
+                                           ExpandedChanged="DeleteAll_Expanded"
+                                           Background="Transparent"
+                                           MinHeight="32"
+                                           Margin="0,0,-16,0">
+                    <controls:SettingsExpander.Header>
+                        <Grid Margin="-12,-11,0,-12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="DeleteAllCheck"
+                                      Checked="DeleteAll_Checked"
+                                      Unchecked="DeleteAll_Checked" />
+
+                            <TextBlock x:Name="DeleteAllIcon"
+                                       Text="&#xE9B9;"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       FontSize="16"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,4,0"
+                                       Grid.Column="1" />
+
+                            <controls:AnimatedTextBlock x:Name="DeleteAllCount"
+                                                        TextStyle="{StaticResource BaseTextBlockStyle}"
+                                                        VerticalAlignment="Center"
+                                                        Grid.Column="2" />
+                        </Grid>
+                    </controls:SettingsExpander.Header>
+                    <StackPanel x:Name="DeleteAllRoot"
+                                Margin="8,0,0,0">
+
+                    </StackPanel>
+                </controls:SettingsExpander>
+
+                <controls:SettingsExpander x:Name="BanUserExpander"
+                                           ExpandedChanged="BanUser_Expanded"
+                                           Background="Transparent"
+                                           MinHeight="32"
+                                           Margin="0,0,-16,0">
+                    <controls:SettingsExpander.Header>
+                        <Grid Margin="-12,-11,0,-12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="BanUserCheck"
+                                      Checked="BanUser_Checked"
+                                      Unchecked="BanUser_Checked" />
+
+                            <TextBlock x:Name="BanUserIcon"
+                                       Text="&#xE9B9;"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       FontSize="16"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,4,0"
+                                       Grid.Column="1" />
+
+                            <controls:AnimatedTextBlock x:Name="BanUserCount"
+                                                        TextStyle="{StaticResource BaseTextBlockStyle}"
+                                                        VerticalAlignment="Center"
+                                                        Grid.Column="2" />
+                        </Grid>
+                    </controls:SettingsExpander.Header>
+                    <StackPanel x:Name="BanUserRoot"
+                                Margin="8,0,0,0">
+
+                    </StackPanel>
+                </controls:SettingsExpander>
+
+                <StackPanel x:Name="PermissionsPanel"
+                            Visibility="Collapsed">
+                    <controls:AnimatedTextBlock x:Name="PermissionsHeader"
+                                                TextStyle="{StaticResource BaseTextBlockStyle}"
+                                                Margin="0,12,0,4" />
+
+                    <CheckBox x:Name="CanSendBasicMessages"
+                              IsChecked="{x:Bind ViewModel.CanSendBasicMessages, Mode=TwoWay}"
+                              Content="{CustomResource UserRestrictionsSend}" />
+
+                    <controls:SettingsExpander Background="Transparent"
+                                               MinHeight="32"
+                                               Margin="0,0,-16,0">
+                        <controls:SettingsExpander.Header>
+                            <CheckBox x:Name="CanSendMediaMessages"
+                                      IsChecked="{x:Bind ViewModel.CanSendMediaMessages, Mode=TwoWay}"
+                                      Margin="-12,-11,0,-12">
+                                <TextBlock>
+                                <Run Text="{CustomResource UserRestrictionsSendMedia}" />
+                                <Run Text="{x:Bind ConvertCanSendCount(ViewModel.CanSendCount), Mode=OneWay}"
+                                     FontWeight="SemiBold" />
+                                </TextBlock>
+                            </CheckBox>
+
+                        </controls:SettingsExpander.Header>
+                        <StackPanel Margin="8,0,0,0">
+                            <CheckBox x:Name="CanSendPhotos"
+                                      IsChecked="{x:Bind ViewModel.CanSendPhotos, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendPhotos}" />
+
+                            <CheckBox x:Name="CanSendVideos"
+                                      IsChecked="{x:Bind ViewModel.CanSendVideos, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendVideos}" />
+
+                            <CheckBox x:Name="CanSendOtherMessages"
+                                      IsChecked="{x:Bind ViewModel.CanSendOtherMessages, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendStickers}" />
+
+                            <CheckBox x:Name="CanSendAudios"
+                                      IsChecked="{x:Bind ViewModel.CanSendAudios, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendMusic}" />
+
+                            <CheckBox x:Name="CanSendDocuments"
+                                      IsChecked="{x:Bind ViewModel.CanSendDocuments, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendFiles}" />
+
+                            <CheckBox x:Name="CanSendVoiceNotes"
+                                      IsChecked="{x:Bind ViewModel.CanSendVoiceNotes, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendVoices}" />
+
+                            <CheckBox x:Name="CanSendVideoNotes"
+                                      IsChecked="{x:Bind ViewModel.CanSendVideoNotes, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendRound}" />
+
+                            <CheckBox x:Name="CanSendPolls"
+                                      IsChecked="{x:Bind ViewModel.CanSendPolls, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendPolls}" />
+
+                            <CheckBox x:Name="CanAddLinkPreviews"
+                                      IsChecked="{x:Bind ViewModel.CanAddLinkPreviews, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsEmbedLinks}" />
+
+                            <CheckBox x:Name="CanReactToMessages"
+                                      IsChecked="{x:Bind ViewModel.CanReactToMessages, Mode=TwoWay}"
+                                      Content="{CustomResource UserRestrictionsSendReactions}" />
+                        </StackPanel>
+                    </controls:SettingsExpander>
+
+                    <CheckBox x:Name="CanInviteUsers"
+                              IsChecked="{x:Bind ViewModel.CanInviteUsers, Mode=TwoWay}"
+                              Content="{CustomResource UserRestrictionsInviteUsers}" />
+
+                    <CheckBox x:Name="CanPinMessages"
+                              IsChecked="{x:Bind ViewModel.CanPinMessages, Mode=TwoWay}"
+                              Content="{CustomResource UserRestrictionsPinMessages}" />
+
+                    <CheckBox x:Name="CanEditTag"
+                              IsChecked="{x:Bind ViewModel.CanEditTag, Mode=TwoWay}"
+                              Content="{CustomResource UserRestrictionsEditTags}" />
+
+                    <CheckBox x:Name="CanChangeInfo"
+                              IsChecked="{x:Bind ViewModel.CanChangeInfo, Mode=TwoWay}"
+                              Content="{CustomResource UserRestrictionsChangeInfo}" />
+                </StackPanel>
+
+                <Button x:Name="PermissionsToggle"
+                        Click="PermissionsToggle_Click"
+                        Style="{StaticResource AccentTextButtonStyle}"
+                        Margin="-12,8,0,-8" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</controls:ContentPopup>

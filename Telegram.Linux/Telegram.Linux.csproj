@@ -1,0 +1,1764 @@
+﻿<Project Sdk="Uno.Sdk">
+  <!-- Generado por unigram-linux/tools/gen-linux-csproj.py a partir de fase1/files.json.
+       Cabeza Linux de Unigram: Uno Platform (Skia/X11), net10.0. Los fuentes se enlazan desde ../Telegram. -->
+  <Import Project="Version.props" />
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-desktop</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <RootNamespace>Telegram</RootNamespace>
+    <AssemblyName>Unigram</AssemblyName>
+    <ApplicationTitle>Unigram</ApplicationTitle>
+    <ApplicationId>org.unigram.linux</ApplicationId>
+    <!-- Version.props stays aligned with Telegram/Package.appxmanifest's Identity Version:
+         on Windows the version at the foot of Settings comes from the package identity, which
+         does not exist here, so VersionLabel.GetVersion reads the assembly instead. -->
+    <ApplicationPublisher>unigram-linux</ApplicationPublisher>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures>
+
+    <!-- Uno Hot Design fuera. No es una preferencia de estilo: `GlobalStaticResources.Initialize()`
+         de Unigram (el generado, en obj/) llama a `Initialize()` + `RegisterDefaultStyles()` +
+         `RegisterResourceDictionariesBySource()` de VEINTIDOS ensamblados, TRECE de ellos
+         `Uno.UI.HotDesign.*`, y eso corre dentro del constructor de `App`, que es el tramo de
+         3,15 s del informe de arranque. Solo cargarlos y resolver sus tipos cuesta 333 ms medidos
+         (unigram-linux/spikes/StartupSpike) sobre un total de 702 ms para los veintidos; lo que
+         luego hacen sus registros va encima. Son 14 MB de ensamblados que esta app no usa: el
+         disenador visual necesita el dev-server de Uno, que aqui no se levanta.
+         Release ya los excluye (`$(Optimize) == 'true'` en Uno.Implicit.Packages.ProjectSystem.targets),
+         asi que esto solo cambia Debug, que es donde se desarrolla. -->
+    <UnoDisableHotDesign>true</UnoDisableHotDesign>
+
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>preview</LangVersion>
+    <WarningLevel>1</WarningLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS0105;CS0108;CS0114;CS0162;CS0168;CS0169;CS0219;CS0414;CS0649;CS0067;CS1998;CS4014;CS8632;Uno0001;UXAML0001</NoWarn>
+    <DefineConstants>$(DefineConstants);LINUX;TD_READER_PARSER</DefineConstants>
+    <TdParsers>Reader</TdParsers>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Telegram.Generators\Telegram.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="..\Libraries\tdjson\td_api.tl" />
+    <CompilerVisibleProperty Include="TdParsers" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Rg.DiffUtils" Version="1.0.0" />
+    <PackageReference Include="Markdig" Version="0.41.3" />
+    <!-- Desktop integration (fase 4): notificaciones fdo, contador del lanzador y bandeja SNI.
+         Todo eso es D-Bus, y Tmds.DBus.Protocol es la unica pila D-Bus para .NET que ademas es
+         compatible con NativeAOT (fase 7). Anotado en unigram-linux/HANDOFF.md como exige
+         PORTING.md 4. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
+  </ItemGroup>
+
+  <!-- Recursos y assets de Unigram (ms-appx:///Assets/... se resuelve por el Link) -->
+  <ItemGroup>
+    <PRIResource Include="..\Telegram\Strings\en\Resources.resw" Link="Strings\en\Resources.resw" />
+    <Content Include="..\Telegram\Assets\Fonts\*.ttf" Link="Assets\Fonts\%(Filename)%(Extension)" />
+    <Content Include="..\Telegram\Assets\Emoji\*.ttf" Link="Assets\Emoji\%(Filename)%(Extension)" />
+    <Content Include="..\Telegram\Assets\Images\**\*" Link="Assets\Images\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\Telegram\Assets\Logos\**\*" Link="Assets\Logos\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\Telegram\Assets\Animations\**\*" Link="Assets\Animations\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\Telegram\Assets\Background.tgv" Link="Assets\Background.tgv" />
+    <!-- Los sonidos cortos (fase 5, paso 4): el tic al enviar, el aviso al recibir y los tonos
+         de llamada. En Windows los abria SoundEffects con un ms-appx:///Assets/Audio/...; aqui
+         los toca Telegram.Linux/Native/Media/SoundEffects.cs con un handle de libmpv de usar y
+         tirar, y la ruta la resuelve NativeAssets a partir de AppContext.BaseDirectory. -->
+    <Content Include="..\Telegram\Assets\Audio\*.mp3" Link="Assets\Audio\%(Filename)%(Extension)" />
+    <!-- Ficheros de datos de los motores nativos. En Windows el empaquetado los dejaba en
+         Assets\ y Telegram.Native los abria con una ruta RELATIVA al paquete; aqui no hay
+         paquete y el directorio de trabajo no es el de la app, asi que la ruta la resuelve
+         Telegram.Linux/Native/NativeAssets.cs a partir de AppContext.BaseDirectory. Lo unico
+         que hace falta de este lado es que los dos ficheros esten en bin/.../Assets/.
+         grammars.dat vive en Libraries/ (no en Telegram/Assets), igual que en el repo. -->
+    <!-- Los tres iconos del tray, los MISMOS que usa el proceso auxiliar de Windows
+         (Telegram.Stub/Resources): logo, logo con punto gris (no leidos silenciados) y logo con
+         punto rojo. Los lee Platform/DBus/TrayIcons.cs por NativeAssets.Resolve. -->
+    <Content Include="..\Telegram.Stub\Resources\Default.ico" Link="Assets\TrayDefault.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Telegram.Stub\Resources\Muted.ico" Link="Assets\TrayMuted.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Telegram.Stub\Resources\Unmuted.ico" Link="Assets\TrayUnmuted.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Telegram\Assets\langid_model.smfb.jpg" Link="Assets\langid_model.smfb.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Libraries\libprisma\libprisma\grammars.dat" Link="Assets\grammars.dat" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- TDLib parcheada (compilada en la Mint, ver unigram-linux/native/tdlib): junto al binario.
+       Ambos nombres se copian a proposito: NativeLibraryResolver.cs prueba primero el nombre sin
+       version ("libtdjson.so") y cae a la version con SONAME ("libtdjson.so.1.8.67") si falta. Antes
+       solo el primero estaba aqui — el segundo estaba colocado a mano en cada bundle y ningun build
+       lo mantenia, asi que un layout que solo llevara la version con SONAME se habria roto en
+       silencio. CopyToOutputDirectory="PreserveNewest" solo evita una copia mas nueva; NO reconstruye
+       out/ si su contenido queda desactualizado respecto al SONAME que el resolver espera — out/ debe
+       mantenerse en sync manualmente (ver unigram-linux/native/tdlib/build-tdjson.sh).
+       Condition=Exists, igual que los otros motores nativos de abajo: la ruta relativa solo resuelve
+       cuando unigram-linux es hermano del padre del worktree (cierto para todo worktree bajo
+       ~/Documentos/CODE por convencion, falso para uno disponible en otra parte, p.ej. un scratch
+       dir). Sin el Condition, un worktree fuera de esa convencion fallaba con MSB3030 al copiar
+       ("no se encontró", sin explicar por que) aunque el C# compilara con 0 errores; el resolver ya
+       acepta TDJSON_PATH como alternativa quien construya asi.
+       OJO al leer un build verde desde fuera de esa convencion: Condition=Exists convierte el fallo
+       de compilacion (ruidoso, se nota al momento) en una ausencia silenciosa en tiempo de ejecucion
+       (el .so simplemente no esta en la salida) — compila 0/0 pero el binario resultante no arranca
+       sin TDJSON_PATH. El Target de abajo devuelve parte de ese ruido: sin el, lo unico que se ve es
+       un DllNotFoundException por "tdjson.dll" (el nombre Windows del P/Invoke) al arrancar, que no
+       menciona libtdjson.so ni TDJSON_PATH en ningun sitio. -->
+  <ItemGroup>
+    <None Include="..\..\unigram-linux\native\tdlib\out\libtdjson.so" Link="libtdjson.so" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\..\unigram-linux\native\tdlib\out\libtdjson.so')" />
+    <None Include="..\..\unigram-linux\native\tdlib\out\libtdjson.so.1.8.67" Link="libtdjson.so.1.8.67" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\..\unigram-linux\native\tdlib\out\libtdjson.so.1.8.67')" />
+  </ItemGroup>
+
+  <!-- GL-2 (clean-clone buildability). Three inputs this project needs are NOT in a fresh
+       clone: two are gitignored on purpose and one lives in a submodule. Without these checks
+       a new contributor gets CS2001 "source file not found" or MSB3030 "could not copy",
+       neither of which says what to create or which command to run. See BUILDING-LINUX.md. -->
+  <Target Name="CheckBuildPrerequisites" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\Telegram\Constants.Secret.cs')"
+           Text="Telegram/Constants.Secret.cs is missing. It is gitignored on purpose: it carries YOUR OWN api_id/api_hash. Copy Telegram/Constants.Secret.cs.template over it and fill in credentials from https://my.telegram.org/apps. Step 2 of BUILDING-LINUX.md." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\Libraries\tdjson\td_api.tl')"
+           Text="Libraries/tdjson/td_api.tl is missing. Copy it out of the tdlib submodule: mkdir -p Libraries/tdjson &amp;&amp; cp Libraries/tdlib/td/generate/scheme/td_api.tl Libraries/tdjson/td_api.tl  (run `git submodule update --init --recursive` first). Step 3 of BUILDING-LINUX.md." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\Libraries\libprisma\libprisma\grammars.dat')"
+           Text="Libraries/libprisma/libprisma/grammars.dat is missing, which means the submodules are not checked out. Run: git submodule update --init --recursive. Step 1 of BUILDING-LINUX.md." />
+  </Target>
+
+  <!-- The scheme in Libraries/tdjson must match the tdlib submodule the natives are built from.
+       This is not pedantry: a submodule left at an OLDER commit than the recorded gitlink hands
+       you a valid-looking td_api.tl that generates the wrong TD bindings, and the build then
+       fails with dozens of CS0117 / CS1739 / CS1729 spread across ordinary application files,
+       none of which mentions td_api.tl. Measured, not hypothetical: the scheme at 022d6020
+       produces 58 such errors against this source, where the recorded bc9c263e produces zero.
+       A warning, not an error, because building against a deliberately different TDLib is a
+       legitimate thing to do — it just has to be deliberate. -->
+  <Target Name="CheckTdApiSchemeMatchesSubmodule" BeforeTargets="Build"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\Libraries\tdjson\td_api.tl') And Exists('$(MSBuildThisFileDirectory)..\Libraries\tdlib\td\generate\scheme\td_api.tl')">
+    <GetFileHash Files="$(MSBuildThisFileDirectory)..\Libraries\tdjson\td_api.tl" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_TdApiInUse" />
+    </GetFileHash>
+    <GetFileHash Files="$(MSBuildThisFileDirectory)..\Libraries\tdlib\td\generate\scheme\td_api.tl" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_TdApiInSubmodule" />
+    </GetFileHash>
+    <Warning Condition="'%(_TdApiInUse.FileHash)' != '@(_TdApiInSubmodule->'%(FileHash)')'"
+             Text="Libraries/tdjson/td_api.tl does NOT match Libraries/tdlib/td/generate/scheme/td_api.tl. If that is not deliberate, your submodule is at the wrong commit or the copy is stale: git submodule update --init --recursive, then re-copy the scheme. See BUILDING-LINUX.md." />
+  </Target>
+
+  <Target Name="WarnMissingTdjson" BeforeTargets="Build">
+    <Warning Condition="!Exists('..\..\unigram-linux\native\tdlib\out\libtdjson.so')"
+             Text="libtdjson.so no encontrado en ..\..\unigram-linux\native\tdlib\out (worktree fuera de la convencion ~/Documentos/CODE): se omite la copia. El build sera verde pero la app no arrancara salvo que TDJSON_PATH apunte a un build de TDLib." />
+  </Target>
+
+  <!-- Motores nativos (unigram-linux/native): libunigram-native.so es la ABI C sobre rlottie y
+       compania; librlottie.so se copia con su SONAME (librlottie.so.0) porque es lo que el enlazador
+       dinamico busca al cargar libunigram-native.so. Condition=Exists: se compilan en la Mint y
+       pueden no estar todavia; el resolver de Native/NativeLibraryResolver.cs tambien acepta
+       UNIGRAM_NATIVE_PATH mientras se desarrolla. -->
+  <ItemGroup>
+    <None Include="..\..\unigram-linux\native\unigram-native\out\lib\libunigram-native.so" Link="libunigram-native.so" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\..\unigram-linux\native\unigram-native\out\lib\libunigram-native.so')" />
+    <None Include="..\..\unigram-linux\native\rlottie\out\librlottie.so.0.2" Link="librlottie.so.0" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\..\unigram-linux\native\rlottie\out\librlottie.so.0.2')" />
+    <!-- libunigram-calls.so: la ABI C sobre tgcalls (llamadas y video). NO estaba aqui, y esa
+         ausencia es la razon de que bin/ no la haya tenido nunca: el resolver la busca en
+         AppContext.BaseDirectory (Native/NativeLibraryResolver.cs), o sea justo en bin/, asi que
+         sin esta linea las llamadas no podian cargarse desde una compilacion limpia. Se coloco a
+         mano en la consolidacion #3 (u-043) y sobrevivia a un build normal pero no a un
+         rm -rf bin. Misma forma que las dos de arriba, Condition=Exists incluida, porque esta
+         .so son 30 MB de tg_owt que no siempre estan construidos. -->
+    <None Include="..\..\unigram-linux\native\calls\out\lib\libunigram-calls.so" Link="libunigram-calls.so" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\..\unigram-linux\native\calls\out\lib\libunigram-calls.so')" />
+    <!-- FFmpeg NO se copia: entra ESTATICO dentro de libunigram-native.so (FFmpeg 7.1.2 propio,
+         minimo, con los codecs que habilita Libraries/vcpkg-ports/ffmpeg/portfile.cmake; lo
+         compila unigram-linux/native/ffmpeg/build-ffmpeg.sh). Antes se copiaban 21 .so / 90 MB
+         del FFmpeg de Ubuntu porque el SONAME lleva la version mayor y la .so compilada en la
+         Mint (libavcodec.so.60) no cargaba en la SP4 (62), y al no cargar se caia la .so
+         entera, lottie incluido. Con FFmpeg dentro no hay SONAME que casar ni nada que copiar. -->
+  </ItemGroup>
+
+  <!-- Subconjunto Fase 1 (735 .cs, 232 .xaml) -->
+  <ItemGroup>
+    <ApplicationDefinition Include="..\Telegram\App.xaml" Link="App.xaml" />
+    <Page Include="..\Telegram\Themes\CommonStyles.xaml" Link="Themes/CommonStyles.xaml" />
+    <Page Include="..\Telegram\Controls\Calls\MediaStateBadge.xaml" Link="Controls/Calls/MediaStateBadge.xaml" />
+    <Page Include="..\Telegram\Controls\Calls\SignalBars.xaml" Link="Controls/Calls/SignalBars.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ActiveStoriesCell.xaml" Link="Controls/Cells/ActiveStoriesCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ChatCell.xaml" Link="Controls/Cells/ChatCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ChatFolderCell.xaml" Link="Controls/Cells/ChatFolderCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ChatInviteLinkCell.xaml" Link="Controls/Cells/ChatInviteLinkCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ChatShareCell.xaml" Link="Controls/Cells/ChatShareCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ForumTopicCell.xaml" Link="Controls/Cells/ForumTopicCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ForumTopicShareCell.xaml" Link="Controls/Cells/ForumTopicShareCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ForumTopicVerticalCell.xaml" Link="Controls/Cells/ForumTopicVerticalCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ProfileCell.xaml" Link="Controls/Cells/ProfileCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ProfileHoursCell.xaml" Link="Controls/Cells/ProfileHoursCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ProxyCell.xaml" Link="Controls/Cells/ProxyCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\ReceivedGiftCell.xaml" Link="Controls/Cells/ReceivedGiftCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\SessionCell.xaml" Link="Controls/Cells/SessionCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\SharedAudioCell.xaml" Link="Controls/Cells/SharedAudioCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\FileDownloadCell.xaml" Link="Controls/Cells/FileDownloadCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\SharedFileCell.xaml" Link="Controls/Cells/SharedFileCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\SharedLinkCell.xaml" Link="Controls/Cells/SharedLinkCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\SharedMediaCell.xaml" Link="Controls/Cells/SharedMediaCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\SharedVoiceCell.xaml" Link="Controls/Cells/SharedVoiceCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\StoryCell.xaml" Link="Controls/Cells/StoryCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\UsernameInfoCell.xaml" Link="Controls/Cells/UsernameInfoCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\WebSessionCell.xaml" Link="Controls/Cells/WebSessionCell.xaml" />
+    <!-- u-group-call-ui-port Phase 0 -->
+    <Page Include="..\Telegram\Controls\Cells\GroupCallParticipantGridCell.xaml" Link="Controls/Cells/GroupCallParticipantGridCell.xaml" />
+    <Page Include="..\Telegram\Controls\Cells\GroupCallMessageCell.xaml" Link="Controls/Cells/GroupCallMessageCell.xaml" />
+    <Page Include="..\Telegram\Controls\Calls\VerificationState.xaml" Link="Controls/Calls/VerificationState.xaml" />
+    <Page Include="..\Telegram\Controls\Calls\VerificationStateReel.xaml" Link="Controls/Calls/VerificationStateReel.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatAccountInfo.xaml" Link="Controls/Chats/ChatAccountInfo.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatAccountInfoHeader.xaml" Link="Controls/Chats/ChatAccountInfoHeader.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatActionBarView.xaml" Link="Controls/Chats/ChatActionBarView.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatConnectedBotHeader.xaml" Link="Controls/Chats/ChatConnectedBotHeader.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatHistoryArrows.xaml" Link="Controls/Chats/ChatHistoryArrows.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatJoinRequestsHeader.xaml" Link="Controls/Chats/ChatJoinRequestsHeader.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatRecordBar.xaml" Link="Controls/Chats/ChatRecordBar.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatSponsoredHeader.xaml" Link="Controls/Chats/ChatSponsoredHeader.xaml" />
+    <Page Include="..\Telegram\Controls\Chats\ChatTranslateBar.xaml" Link="Controls/Chats/ChatTranslateBar.xaml" />
+    <Page Include="..\Telegram\Controls\Contacts\ContactsSortedByHeader.xaml" Link="Controls/Contacts/ContactsSortedByHeader.xaml" />
+    <Page Include="..\Telegram\Controls\CountryBox.xaml" Link="Controls/CountryBox.xaml" />
+    <Page Include="..\Telegram\Controls\DownloadsFooter.xaml" Link="Controls/DownloadsFooter.xaml" />
+    <Page Include="..\Telegram\Controls\Drawers\AnimationDrawer.xaml" Link="Controls/Drawers/AnimationDrawer.xaml" />
+    <Page Include="..\Telegram\Controls\Drawers\EffectDrawer.xaml" Link="Controls/Drawers/EffectDrawer.xaml" />
+    <Page Include="..\Telegram\Controls\Drawers\EmojiDrawer.xaml" Link="Controls/Drawers/EmojiDrawer.xaml" />
+    <Page Include="..\Telegram\Controls\Drawers\EmojiSkinFlyout.xaml" Link="Controls/Drawers/EmojiSkinFlyout.xaml" />
+    <Page Include="..\Telegram\Controls\Drawers\StickerDrawer.xaml" Link="Controls/Drawers/StickerDrawer.xaml" />
+    <Page Include="..\Telegram\Controls\FrozenAccountCard.xaml" Link="Controls/FrozenAccountCard.xaml" />
+    <Page Include="..\Telegram\Controls\Gallery\GalleryContent.xaml" Link="Controls/Gallery/GalleryContent.xaml" />
+    <Page Include="..\Telegram\Controls\Gallery\GalleryTransportControls.xaml" Link="Controls/Gallery/GalleryTransportControls.xaml" />
+    <Page Include="..\Telegram\Controls\Gallery\GalleryWindow.xaml" Link="Controls/Gallery/GalleryWindow.xaml" />
+    <Page Include="..\Telegram\Controls\MessagePopup.xaml" Link="Controls/MessagePopup.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\AnimationContent.xaml" Link="Controls/Messages/Content/AnimationContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\AudioContent.xaml" Link="Controls/Messages/Content/AudioContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\CallContent.xaml" Link="Controls/Messages/Content/CallContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\ChecklistContent.xaml" Link="Controls/Messages/Content/ChecklistContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\ChecklistTaskContent.xaml" Link="Controls/Messages/Content/ChecklistTaskContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\ContactContent.xaml" Link="Controls/Messages/Content/ContactContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\DiceContent.xaml" Link="Controls/Messages/Content/DiceContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\DocumentContent.xaml" Link="Controls/Messages/Content/DocumentContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\GameContent.xaml" Link="Controls/Messages/Content/GameContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\GiveawayContent.xaml" Link="Controls/Messages/Content/GiveawayContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\InvoiceContent.xaml" Link="Controls/Messages/Content/InvoiceContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\InvoicePhotoContent.xaml" Link="Controls/Messages/Content/InvoicePhotoContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\InvoicePreviewContent.xaml" Link="Controls/Messages/Content/InvoicePreviewContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\LiveLocationContent.xaml" Link="Controls/Messages/Content/LiveLocationContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\LocationContent.xaml" Link="Controls/Messages/Content/LocationContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\PhotoContent.xaml" Link="Controls/Messages/Content/PhotoContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\PollContent.xaml" Link="Controls/Messages/Content/PollContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\PollOptionContent.xaml" Link="Controls/Messages/Content/PollOptionContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\SponsoredContent.xaml" Link="Controls/Messages/Content/SponsoredContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\StickerContent.xaml" Link="Controls/Messages/Content/StickerContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\StickerSetContent.xaml" Link="Controls/Messages/Content/StickerSetContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\ThumbnailContent.xaml" Link="Controls/Messages/Content/ThumbnailContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\VenueContent.xaml" Link="Controls/Messages/Content/VenueContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\VideoContent.xaml" Link="Controls/Messages/Content/VideoContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\VideoNoteContent.xaml" Link="Controls/Messages/Content/VideoNoteContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\VoiceNoteContent.xaml" Link="Controls/Messages/Content/VoiceNoteContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\WallpaperContent.xaml" Link="Controls/Messages/Content/WallpaperContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Content\WebPageContent.xaml" Link="Controls/Messages/Content/WebPageContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\EmojiMenuFlyout.xaml" Link="Controls/Messages/EmojiMenuFlyout.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\InvoiceFooter.xaml" Link="Controls/Messages/InvoiceFooter.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\MessageBubble.xaml" Link="Controls/Messages/MessageBubble.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\MessageFooter.xaml" Link="Controls/Messages/MessageFooter.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\MessageForwardHeader.xaml" Link="Controls/Messages/MessageForwardHeader.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\MessageReply.xaml" Link="Controls/Messages/MessageReply.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\MessageSelector.xaml" Link="Controls/Messages/MessageSelector.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\ReactionsMenuFlyout.xaml" Link="Controls/Messages/ReactionsMenuFlyout.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageChatHasProtectedContentDisableRequestedContent.xaml" Link="Controls/Messages/Service/MessageChatHasProtectedContentDisableRequestedContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageChatSetBackgroundContent.xaml" Link="Controls/Messages/Service/MessageChatSetBackgroundContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageGiftContent.xaml" Link="Controls/Messages/Service/MessageGiftContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageGiveawayPrizeStarsContent.xaml" Link="Controls/Messages/Service/MessageGiveawayPrizeStarsContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageHeaderAccountInfoContent.xaml" Link="Controls/Messages/Service/MessageHeaderAccountInfoContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageHeaderMessageTopicContent.xaml" Link="Controls/Messages/Service/MessageHeaderMessageTopicContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessagePhotoContent.xaml" Link="Controls/Messages/Service/MessagePhotoContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageSuggestBirthdateContent.xaml" Link="Controls/Messages/Service/MessageSuggestBirthdateContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageUnsupportedContent.xaml" Link="Controls/Messages/Service/MessageUnsupportedContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageUpgradedGiftContent.xaml" Link="Controls/Messages/Service/MessageUpgradedGiftContent.xaml" />
+    <Page Include="..\Telegram\Controls\Messages\Service\MessageUpgradedGiftPurchaseOfferContent.xaml" Link="Controls/Messages/Service/MessageUpgradedGiftPurchaseOfferContent.xaml" />
+    <Page Include="..\Telegram\Controls\PatternBackground.xaml" Link="Controls/PatternBackground.xaml" />
+    <Page Include="..\Telegram\Controls\PlaybackHeader.xaml" Link="Controls/PlaybackHeader.xaml" />
+    <Page Include="..\Telegram\Controls\ProfileGiftsCover.xaml" Link="Controls/ProfileGiftsCover.xaml" />
+    <Page Include="..\Telegram\Controls\ProfileHeader.xaml" Link="Controls/ProfileHeader.xaml" />
+    <Page Include="..\Telegram\Controls\StartupSwitch.xaml" Link="Controls/StartupSwitch.xaml" />
+    <Page Include="..\Telegram\Controls\StickerPanel.xaml" Link="Controls/StickerPanel.xaml" />
+    <Page Include="..\Telegram\Controls\Stories\StoriesStrip.xaml" Link="Controls/Stories/StoriesStrip.xaml" />
+    <Page Include="..\Telegram\Controls\SuggestedActionSetBirthdateCard.xaml" Link="Controls/SuggestedActionSetBirthdateCard.xaml" />
+    <Page Include="..\Telegram\Controls\UnconfirmedSessionCard.xaml" Link="Controls/UnconfirmedSessionCard.xaml" />
+    <Page Include="..\Telegram\Controls\Views\ForumView.xaml" Link="Controls/Views/ForumView.xaml" />
+    <Page Include="..\Telegram\Controls\Views\SearchChatsView.xaml" Link="Controls/Views/SearchChatsView.xaml" />
+    <Page Include="..\Telegram\Controls\Views\SearchPostsTabPage.xaml" Link="Controls/Views/SearchPostsTabPage.xaml" />
+    <Page Include="..\Telegram\Themes\Accent.xaml" Link="Themes/Accent.xaml" />
+    <Page Include="..\Telegram\Themes\BadgeButton_themeresources.xaml" Link="Themes/BadgeButton_themeresources.xaml" />
+    <Page Include="..\Telegram\Themes\CheckBox_themeresources.xaml" Link="Themes/CheckBox_themeresources.xaml" />
+    <Page Include="..\Telegram\Themes\Generic.xaml" Link="Themes/Generic.xaml" />
+    <Page Include="..\Telegram\Themes\MenuFlyout_themeresources.xaml" Link="Themes/MenuFlyout_themeresources.xaml" />
+    <Page Include="..\Telegram\Themes\Messages.xaml" Link="Themes/Messages.xaml" />
+    <Page Include="..\Telegram\Themes\RadioButton_themeresources.xaml" Link="Themes/RadioButton_themeresources.xaml" />
+    <Page Include="..\Telegram\Themes\ScrollBar_themeresources.xaml" Link="Themes/ScrollBar_themeresources.xaml" />
+    <Page Include="..\Telegram\Themes\TeachingTip_themeresources.xaml" Link="Themes/TeachingTip_themeresources.xaml" />
+    <Page Include="..\Telegram\Themes\TextBox_themeresources.xaml" Link="Themes/TextBox_themeresources.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationCodePage.xaml" Link="Views/Authorization/AuthorizationCodePage.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationEmailAddressPage.xaml" Link="Views/Authorization/AuthorizationEmailAddressPage.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationEmailCodePage.xaml" Link="Views/Authorization/AuthorizationEmailCodePage.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationPage.xaml" Link="Views/Authorization/AuthorizationPage.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationPasswordPage.xaml" Link="Views/Authorization/AuthorizationPasswordPage.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationRecoveryPage.xaml" Link="Views/Authorization/AuthorizationRecoveryPage.xaml" />
+    <Page Include="..\Telegram\Views\Authorization\AuthorizationRegistrationPage.xaml" Link="Views/Authorization/AuthorizationRegistrationPage.xaml" />
+    <Page Include="..\Telegram\Views\BlankPage.xaml" Link="Views/BlankPage.xaml" />
+    <Page Include="..\Telegram\Views\Calls\VoipWindow.xaml" Link="Views/Calls/VoipWindow.xaml" />
+    <!-- u-group-call-ui-port Phase 0: core group-call window shells, wired for a real compiler-error inventory -->
+    <Page Include="..\Telegram\Views\Calls\GroupCallWindow.xaml" Link="Views/Calls/GroupCallWindow.xaml" />
+    <Page Include="..\Telegram\Views\Calls\LiveStreamWindow.xaml" Link="Views/Calls/LiveStreamWindow.xaml" />
+    <!-- u-group-call-ui-port Phase 1: only what GroupCallWindow/LiveStreamWindow/VoipGroupCall actually reference; ScheduleVideoChatPopup/ShareGroupCallPopup stay Phase 6 -->
+    <Page Include="..\Telegram\Views\Calls\Popups\RecordVideoChatPopup.xaml" Link="Views/Calls/Popups/RecordVideoChatPopup.xaml" />
+    <Page Include="..\Telegram\Views\Calls\Popups\ScheduleVideoChatPopup.xaml" Link="Views/Calls/Popups/ScheduleVideoChatPopup.xaml" />
+    <Page Include="..\Telegram\Views\Calls\Popups\VideoChatAliasesPopup.xaml" Link="Views/Calls/Popups/VideoChatAliasesPopup.xaml" />
+    <Page Include="..\Telegram\Views\Calls\Popups\VideoChatStreamsPopup.xaml" Link="Views/Calls/Popups/VideoChatStreamsPopup.xaml" />
+    <Page Include="..\Telegram\Views\ChatPage.xaml" Link="Views/ChatPage.xaml" />
+    <Page Include="..\Telegram\Views\ChatScheduledPage.xaml" Link="Views/ChatScheduledPage.xaml" />
+    <Page Include="..\Telegram\Views\ChatView.xaml" Link="Views/ChatView.xaml" />
+    <Page Include="..\Telegram\Views\Create\NewChannelPopup.xaml" Link="Views/Create/NewChannelPopup.xaml" />
+    <Page Include="..\Telegram\Views\Create\NewContactPopup.xaml" Link="Views/Create/NewContactPopup.xaml" />
+    <Page Include="..\Telegram\Views\Create\NewGroupPopup.xaml" Link="Views/Create/NewGroupPopup.xaml" />
+    <Page Include="..\Telegram\Views\DiagnosticsPage.xaml" Link="Views/DiagnosticsPage.xaml" />
+    <Page Include="..\Telegram\Views\Folders\FolderPage.xaml" Link="Views/Folders/FolderPage.xaml" />
+    <Page Include="..\Telegram\Views\Folders\FoldersPage.xaml" Link="Views/Folders/FoldersPage.xaml" />
+    <Page Include="..\Telegram\Views\Folders\Popups\AddFolderPopup.xaml" Link="Views/Folders/Popups/AddFolderPopup.xaml" />
+    <Page Include="..\Telegram\Views\Folders\Popups\RemoveFolderPopup.xaml" Link="Views/Folders/Popups/RemoveFolderPopup.xaml" />
+    <Page Include="..\Telegram\Views\Folders\Popups\ShareFolderPopup.xaml" Link="Views/Folders/Popups/ShareFolderPopup.xaml" />
+    <Page Include="..\Telegram\Views\MainPage.xaml" Link="Views/MainPage.xaml" />
+    <Page Include="..\Telegram\Views\Monetization\Popups\AboutAdsPopup.xaml" Link="Views/Monetization/Popups/AboutAdsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Host\PasscodeWindow.xaml" Link="Views/Host/PasscodeWindow.xaml" />
+    <Page Include="..\Telegram\Views\Popups\BackgroundPopup.xaml" Link="Views/Popups/BackgroundPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\DownloadsPopup.xaml" Link="Views/Popups/DownloadsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\CalendarPopup.xaml" Link="Views/Popups/CalendarPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChatInviteFallbackPopup.xaml" Link="Views/Popups/ChatInviteFallbackPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChatJoinRequestsPopup.xaml" Link="Views/Popups/ChatJoinRequestsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChatMutePopup.xaml" Link="Views/Popups/ChatMutePopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChatNotificationsPopup.xaml" Link="Views/Popups/ChatNotificationsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChatTtlPopup.xaml" Link="Views/Popups/ChatTtlPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseChatsPopup.xaml" Link="Views/Popups/ChooseChatsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseColorPopup.xaml" Link="Views/Popups/ChooseColorPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseCountriesPopup.xaml" Link="Views/Popups/ChooseCountriesPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseOptionPopup.xaml" Link="Views/Popups/ChooseOptionPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseSoundPopup.xaml" Link="Views/Popups/ChooseSoundPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseStatusDurationPopup.xaml" Link="Views/Popups/ChooseStatusDurationPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ChooseStoriesPopup.xaml" Link="Views/Popups/ChooseStoriesPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\CocoonAboutPopup.xaml" Link="Views/Popups/CocoonAboutPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ContactsPopup.xaml" Link="Views/Popups/ContactsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\CreatePollPopup.xaml" Link="Views/Popups/CreatePollPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\DeleteChatPopup.xaml" Link="Views/Popups/DeleteChatPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\DoNotTranslatePopup.xaml" Link="Views/Popups/DoNotTranslatePopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\InputPopup.xaml" Link="Views/Popups/InputPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\JoinChatPopup.xaml" Link="Views/Popups/JoinChatPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\LogOutPopup.xaml" Link="Views/Popups/LogOutPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\LoginUrlInfoPopup.xaml" Link="Views/Popups/LoginUrlInfoPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ProxyPopup.xaml" Link="Views/Popups/ProxyPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ReportAdsPopup.xaml" Link="Views/Popups/ReportAdsPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ReportChatPopup.xaml" Link="Views/Popups/ReportChatPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\StickersPopup.xaml" Link="Views/Popups/StickersPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\TranslatePopup.xaml" Link="Views/Popups/TranslatePopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\TranslateToPopup.xaml" Link="Views/Popups/TranslateToPopup.xaml" />
+    <Page Include="..\Telegram\Views\Popups\ZoomableMediaPopup.xaml" Link="Views/Popups/ZoomableMediaPopup.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileAnimationsTabPage.xaml" Link="Views/Profile/ProfileAnimationsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileBotsTabPage.xaml" Link="Views/Profile/ProfileBotsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileChannelsTabPage.xaml" Link="Views/Profile/ProfileChannelsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileFilesTabPage.xaml" Link="Views/Profile/ProfileFilesTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileGiftsTabPage.xaml" Link="Views/Profile/ProfileGiftsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileGroupsTabPage.xaml" Link="Views/Profile/ProfileGroupsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileLinksTabPage.xaml" Link="Views/Profile/ProfileLinksTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileMediaTabPage.xaml" Link="Views/Profile/ProfileMediaTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileMembersTabPage.xaml" Link="Views/Profile/ProfileMembersTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileMusicTabPage.xaml" Link="Views/Profile/ProfileMusicTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfilePollsTabPage.xaml" Link="Views/Profile/ProfilePollsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileSavedChatsTabPage.xaml" Link="Views/Profile/ProfileSavedChatsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileSavedMessagesTabPage.xaml" Link="Views/Profile/ProfileSavedMessagesTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileStoriesTabPage.xaml" Link="Views/Profile/ProfileStoriesTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileTopicsTabPage.xaml" Link="Views/Profile/ProfileTopicsTabPage.xaml" />
+    <Page Include="..\Telegram\Views\Profile\ProfileVoiceTabPage.xaml" Link="Views/Profile/ProfileVoiceTabPage.xaml" />
+    <Page Include="..\Telegram\Views\ProfilePage.xaml" Link="Views/ProfilePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\LoginEmail\SettingsLoginEmailAddressPopup.xaml" Link="Views/Settings/LoginEmail/SettingsLoginEmailAddressPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\LoginEmail\SettingsLoginEmailCodePopup.xaml" Link="Views/Settings/LoginEmail/SettingsLoginEmailCodePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordConfirmPopup.xaml" Link="Views/Settings/Password/SettingsPasswordConfirmPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordCreatePopup.xaml" Link="Views/Settings/Password/SettingsPasswordCreatePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordDonePopup.xaml" Link="Views/Settings/Password/SettingsPasswordDonePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordEmailAddressPopup.xaml" Link="Views/Settings/Password/SettingsPasswordEmailAddressPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordEmailCodePopup.xaml" Link="Views/Settings/Password/SettingsPasswordEmailCodePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordHintPopup.xaml" Link="Views/Settings/Password/SettingsPasswordHintPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Password\SettingsPasswordIntroPopup.xaml" Link="Views/Settings/Password/SettingsPasswordIntroPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Phone\ChangePhoneNumberPopup.xaml" Link="Views/Settings/Phone/ChangePhoneNumberPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsArchivePopup.xaml" Link="Views/Settings/Popups/SettingsArchivePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsBirthdatePopup.xaml" Link="Views/Settings/Popups/SettingsBirthdatePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsDataAutoView.xaml" Link="Views/Settings/Popups/SettingsDataAutoView.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsPasscodeConfirmPopup.xaml" Link="Views/Settings/Popups/SettingsPasscodeConfirmPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsPasscodeInputPopup.xaml" Link="Views/Settings/Popups/SettingsPasscodeInputPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsPasscodePopup.xaml" Link="Views/Settings/Popups/SettingsPasscodePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsSessionPopup.xaml" Link="Views/Settings/Popups/SettingsSessionPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Popups\SettingsUsernamePopup.xaml" Link="Views/Settings/Popups/SettingsUsernamePopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowCallsPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyAllowCallsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowChatInvitesPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyAllowChatInvitesPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowP2PCallsPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyAllowP2PCallsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAutosaveGiftsPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyAutosaveGiftsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyNewChatPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyNewChatPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyPhonePage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyPhonePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowBioPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyShowBioPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowBirthdatePage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyShowBirthdatePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowForwardedPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyShowForwardedPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowPhotoPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyShowPhotoPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowProfileAudioPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyShowProfileAudioPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowStatusPage.xaml" Link="Views/Settings/Privacy/SettingsPrivacyShowStatusPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsAdvancedPage.xaml" Link="Views/Settings/SettingsAdvancedPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsAppearancePage.xaml" Link="Views/Settings/SettingsAppearancePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsAutoDeletePage.xaml" Link="Views/Settings/SettingsAutoDeletePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsBackgroundsPage.xaml" Link="Views/Settings/SettingsBackgroundsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsBlockedChatsPage.xaml" Link="Views/Settings/SettingsBlockedChatsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsDataAndStoragePage.xaml" Link="Views/Settings/SettingsDataAndStoragePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsLanguagePage.xaml" Link="Views/Settings/SettingsLanguagePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsNetworkPage.xaml" Link="Views/Settings/SettingsNetworkPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsNotificationsExceptionsPage.xaml" Link="Views/Settings/SettingsNotificationsExceptionsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsNotificationsPage.xaml" Link="Views/Settings/SettingsNotificationsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsPasscodePage.xaml" Link="Views/Settings/SettingsPasscodePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsPasswordPage.xaml" Link="Views/Settings/SettingsPasswordPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsPowerSavingPage.xaml" Link="Views/Settings/SettingsPowerSavingPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsPrivacyAndSecurityPage.xaml" Link="Views/Settings/SettingsPrivacyAndSecurityPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsProfilePage.xaml" Link="Views/Settings/SettingsProfilePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsProxyPage.xaml" Link="Views/Settings/SettingsProxyPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsProxyPopup.xaml" Link="Views/Settings/SettingsProxyPopup.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsSessionsPage.xaml" Link="Views/Settings/SettingsSessionsPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsStorageOptimizationPage.xaml" Link="Views/Settings/SettingsStorageOptimizationPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsStoragePage.xaml" Link="Views/Settings/SettingsStoragePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsThemePage.xaml" Link="Views/Settings/SettingsThemePage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsThemesPage.xaml" Link="Views/Settings/SettingsThemesPage.xaml" />
+    <Page Include="..\Telegram\Views\Settings\SettingsWebSessionsPage.xaml" Link="Views/Settings/SettingsWebSessionsPage.xaml" />
+    <Page Include="..\Telegram\Views\SettingsPage.xaml" Link="Views/SettingsPage.xaml" />
+    <Page Include="..\Telegram\Views\Supergroups\SupergroupAdministratorsPage.xaml" Link="Views/Supergroups/SupergroupAdministratorsPage.xaml" />
+    <Page Include="..\Telegram\Views\Supergroups\SupergroupMembersPage.xaml" Link="Views/Supergroups/SupergroupMembersPage.xaml" />
+    <Page Include="..\Telegram\Views\Users\UserEditPage.xaml" Link="Views/Users/UserEditPage.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Telegram\App.xaml.cs" Link="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Assets\Icons\ChecklistSelect.cs" Link="Assets/Icons/ChecklistSelect.cs" />
+    <Compile Include="..\Telegram\Assets\Icons\PollSelect.cs" Link="Assets/Icons/PollSelect.cs" />
+    <Compile Include="..\Telegram\Services\AppSettings.cs" Link="Services/AppSettings.cs" />
+    <Compile Include="..\Telegram\Common\ConnectedAnimationServiceEx.cs" Link="Common/ConnectedAnimationServiceEx.cs" />
+    <Compile Include="..\Telegram\Controls\Media\MessageBubbleBrush.cs" Link="Controls/Media/MessageBubbleBrush.cs" />
+    <Compile Include="..\Telegram\Controls\WindowContent.cs" Link="Controls/WindowContent.cs" />
+    <Compile Include="..\Telegram\Services\NightModeService.cs" Link="Services/NightModeService.cs" />
+    <Compile Include="..\Telegram\Services\Settings\RecentEmojiSettings.cs" Link="Services/Settings/RecentEmojiSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\SettingsStore.cs" Link="Services/Settings/SettingsStore.cs" />
+    <Compile Include="..\Telegram\Td\Api\FormattedTextBuilder.cs" Link="Td/Api/FormattedTextBuilder.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogViewModel.Pending.cs" Link="ViewModels/DialogViewModel.Pending.cs" />
+    <Compile Include="..\Telegram\Td\Vector.cs" Link="Td/Vector.cs" />
+    <Compile Include="..\Telegram\Collections\BatchedObservableCollection.cs" Link="Collections/BatchedObservableCollection.cs" />
+    <Compile Include="..\Telegram\Collections\DiffCollectionExtensions.cs" Link="Collections/DiffCollectionExtensions.cs" />
+    <Compile Include="..\Telegram\Collections\RangeObservableCollection.cs" Link="Collections/RangeObservableCollection.cs" />
+    <Compile Include="..\Telegram\Collections\Diff\DiffHandler.cs" Link="Collections/Diff/DiffHandler.cs" />
+    <Compile Include="..\Telegram\Collections\Diff\DiffUtil.cs" Link="Collections/Diff/DiffUtil.cs" />
+    <Compile Include="..\Telegram\Collections\Diff\DiffCalculator.cs" Link="Collections/Diff/DiffCalculator.cs" />
+    <Compile Include="..\Telegram\Collections\DiffObservableCollection.cs" Link="Collections/DiffObservableCollection.cs" />
+    <Compile Include="..\Telegram\Collections\Experimental\ItemCacheManager.cs" Link="Collections/Experimental/ItemCacheManager.cs" />
+    <Compile Include="..\Telegram\Collections\Experimental\ItemIndexRangeExtensions.cs" Link="Collections/Experimental/ItemIndexRangeExtensions.cs" />
+    <Compile Include="..\Telegram\Collections\Experimental\ItemIndexRangeList.cs" Link="Collections/Experimental/ItemIndexRangeList.cs" />
+    <Compile Include="..\Telegram\Collections\Experimental\MediaDataSource.cs" Link="Collections/Experimental/MediaDataSource.cs" />
+    <Compile Include="..\Telegram\Collections\FlatteningCollection.cs" Link="Collections/FlatteningCollection.cs" />
+    <!-- u-group-call-ui-port Phase 0 -->
+    <Compile Include="..\Telegram\Collections\GroupCallParticipantsCollection.cs" Link="Collections/GroupCallParticipantsCollection.cs" />
+    <Compile Include="..\Telegram\Collections\Handlers\ChatDiffHandler.cs" Link="Collections/Handlers/ChatDiffHandler.cs" />
+    <Compile Include="..\Telegram\Collections\Handlers\MessageDiffHandler.cs" Link="Collections/Handlers/MessageDiffHandler.cs" />
+    <Compile Include="..\Telegram\Collections\Handlers\SearchResultDiffHandler.cs" Link="Collections/Handlers/SearchResultDiffHandler.cs" />
+    <Compile Include="..\Telegram\Collections\HashSetDictionary.cs" Link="Collections/HashSetDictionary.cs" />
+    <Compile Include="..\Telegram\Collections\IncrementalCollection.cs" Link="Collections/IncrementalCollection.cs" />
+    <Compile Include="..\Telegram\Collections\IncrementalCollectionView.cs" Link="Collections/IncrementalCollectionView.cs" />
+    <Compile Include="..\Telegram\Collections\IndexShiftTracker.cs" Link="Collections/IndexShiftTracker.cs" />
+    <Compile Include="..\Telegram\Collections\KeyedList.cs" Link="Collections/KeyedList.cs" />
+    <Compile Include="..\Telegram\Collections\ListWithTotalCount.cs" Link="Collections/ListWithTotalCount.cs" />
+    <Compile Include="..\Telegram\Collections\LockFreeArrayList.cs" Link="Collections/LockFreeArrayList.cs" />
+    <Compile Include="..\Telegram\Collections\MediaCollection.cs" Link="Collections/MediaCollection.cs" />
+    <Compile Include="..\Telegram\Collections\MultiValueDictionary.cs" Link="Collections/MultiValueDictionary.cs" />
+    <Compile Include="..\Telegram\Collections\ReaderWriterDictionary.cs" Link="Collections/ReaderWriterDictionary.cs" />
+    <Compile Include="..\Telegram\Collections\SearchChatMessagesCollection.cs" Link="Collections/SearchChatMessagesCollection.cs" />
+    <Compile Include="..\Telegram\Collections\SearchCollection.cs" Link="Collections/SearchCollection.cs" />
+    <Compile Include="..\Telegram\Collections\SearchEmojiCollection.cs" Link="Collections/SearchEmojiCollection.cs" />
+    <Compile Include="..\Telegram\Collections\SearchUsersCollection.cs" Link="Collections/SearchUsersCollection.cs" />
+    <Compile Include="..\Telegram\Collections\SortedObservableCollection.cs" Link="Collections/SortedObservableCollection.cs" />
+    <Compile Include="..\Telegram\Collections\SynchronizedList.cs" Link="Collections/SynchronizedList.cs" />
+    <Compile Include="..\Telegram\Services\DownloadFolderService.cs" Link="Services/DownloadFolderService.cs" />
+    <Compile Include="..\Telegram\Services\GenerationSources.cs" Link="Services/GenerationSources.cs" />
+    <Compile Include="..\Telegram\Services\PlaybackSource.cs" Link="Services/PlaybackSource.cs" />
+    <Compile Include="..\Telegram\Services\Theme\ThemeDefaults.cs" Link="Services/Theme/ThemeDefaults.cs" />
+    <Compile Include="..\Telegram\Services\Theme\ThemeDefaults.g.cs" Link="Services/Theme/ThemeDefaults.g.cs" />
+    <Compile Include="..\Telegram\Services\Theme\ThemeLookup.cs" Link="Services/Theme/ThemeLookup.cs" />
+    <Compile Include="..\Telegram\Shims\ClipboardEx.cs" Link="Shims/ClipboardEx.cs" />
+    <Compile Include="..\Telegram\Shims\ConditionalWeakTableExtensions.cs" Link="Shims/ConditionalWeakTableExtensions.cs" />
+    <Compile Include="..\Telegram\Shims\FocusManagerEx.cs" Link="Shims/FocusManagerEx.cs" />
+    <Compile Include="..\Telegram\Common\Extensions.Collections.cs" Link="Common/Extensions.Collections.cs" />
+    <Compile Include="..\Telegram\Common\Extensions.Geometry.cs" Link="Common/Extensions.Geometry.cs" />
+    <Compile Include="..\Telegram\Common\Extensions.Rpc.cs" Link="Common/Extensions.Rpc.cs" />
+    <Compile Include="..\Telegram\Common\Extensions.Text.cs" Link="Common/Extensions.Text.cs" />
+    <Compile Include="..\Telegram\Common\Extensions.Xaml.cs" Link="Common/Extensions.Xaml.cs" />
+    <Compile Include="..\Telegram\Common\UriEx.cs" Link="Common/UriEx.cs" />
+    <!-- u-groupcall-compile-clean: Scrim.cs holds BOTH Common.Scrim and
+         Common.CubicBezierGradient. LiveStreamWindow.xaml and
+         GroupCallParticipantGridCell.xaml both reference them. An unresolvable type
+         makes Uno's XAML generator emit a DEGRADED partial class with no x:Name
+         fields at all, which is why ~35 CS0103 "name does not exist" errors were
+         showing up in hand-written code-behind that is perfectly fine. -->
+    <Compile Include="..\Telegram\Common\Scrim.cs" Link="Common/Scrim.cs" />
+    <!-- u-groupcall-compile-clean: referenced from VideoChatStreamsPopup.xaml. Same
+         degraded-codegen symptom as Scrim above: an unresolved type there costs you
+         every x:Name field in the generated partial, so the errors surface as CS0103
+         on ServerField / StreamKeyField in perfectly good code-behind.
+         The popup also references MoreButton and ScrollViewerScrim, but this head
+         already ships deliberate STUBS for both (Xaml/Stubs/MoreButton.cs and
+         Xaml/ScrollViewerScrimStub.cs, same Telegram.Controls namespace). Adding the
+         shared originals collides with them (CS0111/CS0102), so they stay out. -->
+    <Compile Include="..\Telegram\Controls\LoadingTextBlock.cs" Link="Controls/LoadingTextBlock.cs" />
+    <Compile Include="..\Telegram\Common\MonotonicUnixTime.cs" Link="Common/MonotonicUnixTime.cs" />
+    <Compile Include="..\Telegram\Shims\PickerExtensions.cs" Link="Shims/PickerExtensions.cs" />
+    <Compile Include="..\Telegram\Shims\IncrementalLoading.cs" Link="Shims/IncrementalLoading.cs" />
+    <Compile Include="..\Telegram\Common\AlbumLayout.cs" Link="Common/AlbumLayout.cs" />
+    <Compile Include="..\Telegram\Common\AnimatedListHandler.cs" Link="Common/AnimatedListHandler.cs" />
+    <Compile Include="..\Telegram\Common\AnimationScheduler.cs" Link="Common/AnimationScheduler.cs" />
+    <Compile Include="..\Telegram\Common\ApiInfo.cs" Link="Common/ApiInfo.cs" />
+    <Compile Include="..\Telegram\Common\ArrayPoolBufferWriter.cs" Link="Common/ArrayPoolBufferWriter.cs" />
+    <Compile Include="..\Telegram\Common\Automation.cs" Link="Common/Automation.cs" />
+    <Compile Include="..\Telegram\Common\BezierPoint.cs" Link="Common/BezierPoint.cs" />
+    <Compile Include="..\Telegram\Common\Chats\InputChatActionManager.cs" Link="Common/Chats/InputChatActionManager.cs" />
+    <Compile Include="..\Telegram\Common\Chats\OutputChatActionManager.cs" Link="Common/Chats/OutputChatActionManager.cs" />
+    <Compile Include="..\Telegram\Common\Colors.cs" Link="Common/Colors.cs" />
+    <Compile Include="..\Telegram\Common\ColorsHelper.cs" Link="Common/ColorsHelper.cs" />
+    <Compile Include="..\Telegram\Common\CompositionPathParser.cs" Link="Common/CompositionPathParser.cs" />
+    <Compile Include="..\Telegram\Common\ConcurrentQueueWorker.cs" Link="Common/ConcurrentQueueWorker.cs" />
+    <Compile Include="..\Telegram\Common\DebouncedProperty.cs" Link="Common/DebouncedProperty.cs" />
+    <Compile Include="..\Telegram\Common\DebouncedPropertyWithToken.cs" Link="Common/DebouncedPropertyWithToken.cs" />
+    <Compile Include="..\Telegram\Common\DisposableMutex.cs" Link="Common/DisposableMutex.cs" />
+    <Compile Include="..\Telegram\Common\Emoji.cs" Link="Common/Emoji.cs" />
+    <Compile Include="..\Telegram\Common\Emoticon.cs" Link="Common/Emoticon.cs" />
+    <Compile Include="..\Telegram\Common\EqualityComparerDelegate.cs" Link="Common/EqualityComparerDelegate.cs" />
+    <Compile Include="..\Telegram\Common\EventDebouncer.cs" Link="Common/EventDebouncer.cs" />
+    <Compile Include="..\Telegram\Common\Extensions.cs" Link="Common/Extensions.cs" />
+    <Compile Include="..\Telegram\Common\FluidGridView.cs" Link="Common/FluidGridView.cs" />
+    <Compile Include="..\Telegram\Common\FrameworkElementState.cs" Link="Common/FrameworkElementState.cs" />
+    <Compile Include="..\Telegram\Common\InactivityHelper.cs" Link="Common/InactivityHelper.cs" />
+    <Compile Include="..\Telegram\Common\Instrumentation.cs" Link="Common/Instrumentation.cs" />
+    <Compile Include="..\Telegram\Common\Interop.cs" Link="Common/Interop.cs" />
+    <Compile Include="..\Telegram\Common\LinqToVisualTree.cs" Link="Common/LinqToVisualTree.cs" />
+    <Compile Include="..\Telegram\Common\ListViewExtensions.cs" Link="Common/ListViewExtensions.cs" />
+    <Compile Include="..\Telegram\Common\Locale.cs" Link="Common/Locale.cs" />
+    <Compile Include="..\Telegram\Common\MathEx.cs" Link="Common/MathEx.cs" />
+    <Compile Include="..\Telegram\Common\MathFEx.cs" Link="Common/MathFEx.cs" />
+    <Compile Include="..\Telegram\Common\MediaDevicePermissions.cs" Link="Common/MediaDevicePermissions.cs" />
+    <Compile Include="..\Telegram\Common\MediaDeviceTracker.cs" Link="Common/MediaDeviceTracker.cs" />
+    <Compile Include="..\Telegram\Common\MenuFlyoutHelper.cs" Link="Common/MenuFlyoutHelper.cs" />
+    <Compile Include="..\Telegram\Common\MessageHelper.cs" Link="Common/MessageHelper.cs" />
+    <Compile Include="..\Telegram\Common\NativeFile.cs" Link="Common/NativeFile.cs" />
+    <Compile Include="..\Telegram\Common\NavigationService.cs" Link="Common/NavigationService.cs" />
+    <Compile Include="..\Telegram\Common\PhoneNumber.cs" Link="Common/PhoneNumber.cs" />
+    <Compile Include="..\Telegram\Common\Direct2D.cs" Link="Common/Direct2D.cs" />
+    <Compile Include="..\Telegram\Common\PowerSavingPolicy.cs" Link="Common/PowerSavingPolicy.cs" />
+    <Compile Include="..\Telegram\Common\Recording\AudioWaveform.cs" Link="Common/Recording/AudioWaveform.cs" />
+    <Compile Include="..\Telegram\Common\Recording\ChatRecordEngine.cs" Link="Common/Recording/ChatRecordEngine.cs" />
+    <Compile Include="..\Telegram\Common\Recording\ChatRecordSession.cs" Link="Common/Recording/ChatRecordSession.cs" />
+    <Compile Include="..\Telegram\Common\RectangleF.cs" Link="Common/RectangleF.cs" />
+    <Compile Include="..\Telegram\Common\RelayCommand.cs" Link="Common/RelayCommand.cs" />
+    <Compile Include="..\Telegram\Common\SelectedItemsBinder.cs" Link="Common/SelectedItemsBinder.cs" />
+    <Compile Include="..\Telegram\Common\SliderHelper.cs" Link="Common/SliderHelper.cs" />
+    <Compile Include="..\Telegram\Common\SunDate.cs" Link="Common/SunDate.cs" />
+    <Compile Include="..\Telegram\Common\TLNavigationService.cs" Link="Common/TLNavigationService.cs" />
+    <Compile Include="..\Telegram\Common\TLRootNavigationService.cs" Link="Common/TLRootNavigationService.cs" />
+    <Compile Include="..\Telegram\Common\TdThroughput.cs" Link="Common/TdThroughput.cs" />
+    <Compile Include="..\Telegram\Common\TextBlockHelper.cs" Link="Common/TextBlockHelper.cs" />
+    <Compile Include="..\Telegram\Common\TextSelectionCoordinator.cs" Link="Common/TextSelectionCoordinator.cs" />
+    <Compile Include="..\Telegram\Common\TextSelectionManager.cs" Link="Common/TextSelectionManager.cs" />
+    <Compile Include="..\Telegram\Common\TextStyleRun.cs" Link="Common/TextStyleRun.cs" />
+    <Compile Include="..\Telegram\Common\Theme.cs" Link="Common/Theme.cs" />
+    <Compile Include="..\Telegram\Common\ThemeColorizer.cs" Link="Common/ThemeColorizer.cs" />
+    <Compile Include="..\Telegram\Common\ThumbnailController.cs" Link="Common/ThumbnailController.cs" />
+    <Compile Include="..\Telegram\Common\UniqueList.cs" Link="Common/UniqueList.cs" />
+    <Compile Include="..\Telegram\Common\UpdateManager.cs" Link="Common/UpdateManager.cs" />
+    <Compile Include="..\Telegram\Common\VisualUtilities.Skeleton.cs" Link="Common/VisualUtilities.Skeleton.cs" />
+    <Compile Include="..\Telegram\Common\VisualUtilities.Tilt.cs" Link="Common/VisualUtilities.Tilt.cs" />
+    <Compile Include="..\Telegram\Common\VisualUtilities.cs" Link="Common/VisualUtilities.cs" />
+    <Compile Include="..\Telegram\Common\XamlResourceLoader.cs" Link="Common/XamlResourceLoader.cs" />
+    <Compile Include="..\Telegram\Common\ZoomableListHandler.cs" Link="Common/ZoomableListHandler.cs" />
+    <Compile Include="..\Telegram\Composition\CompositionBlobVisual.cs" Link="Composition/CompositionBlobVisual.cs" />
+    <Compile Include="..\Telegram\Composition\CompositionColorSource.cs" Link="Composition/CompositionColorSource.cs" />
+    <Compile Include="..\Telegram\Composition\CompositionDustVisual.cs" Link="Composition/CompositionDustVisual.cs" />
+    <Compile Include="..\Telegram\Composition\CompositionVSync.cs" Link="Composition/CompositionVSync.cs" />
+    <!-- u-group-call-ui-port Phase 1 -->
+    <Compile Include="..\Telegram\Composition\CompositionVoiceBlobVisual.cs" Link="Composition/CompositionVoiceBlobVisual.cs" />
+    <Compile Include="..\Telegram\Composition\CompositionVisualColorSource.cs" Link="Composition/CompositionVisualColorSource.cs" />
+    <Compile Include="..\Telegram\Composition\Extensions.cs" Link="Composition/Extensions.cs" />
+    <Compile Include="..\Telegram\Constants.Secret.cs" Link="Constants.Secret.cs" />
+    <Compile Include="..\Telegram\Constants.cs" Link="Constants.cs" />
+    <Compile Include="..\Telegram\Controls\AnimatedGlyphButton.cs" Link="Controls/AnimatedGlyphButton.cs" />
+    <Compile Include="..\Telegram\Controls\AnimatedGlyphToggleButton.cs" Link="Controls/AnimatedGlyphToggleButton.cs" />
+    <Compile Include="..\Telegram\Controls\AnimatedIconToggleButton.cs" Link="Controls/AnimatedIconToggleButton.cs" />
+    <Compile Include="..\Telegram\Controls\AnimatedImage.cs" Link="Controls/AnimatedImage.cs" />
+    <Compile Include="..\Telegram\Controls\AnimatedTextBlock.cs" Link="Controls/AnimatedTextBlock.cs" />
+    <Compile Include="..\Telegram\Controls\AspectView.cs" Link="Controls/AspectView.cs" />
+    <Compile Include="..\Telegram\Controls\BackButton.cs" Link="Controls/BackButton.cs" />
+    <Compile Include="..\Telegram\Controls\BadgeControl.cs" Link="Controls/BadgeControl.cs" />
+    <Compile Include="..\Telegram\Controls\BlockQuote.cs" Link="Controls/BlockQuote.cs" />
+    <Compile Include="..\Telegram\Controls\ButtonEx.cs" Link="Controls/ButtonEx.cs" />
+    <Compile Include="..\Telegram\Controls\Calls\MediaStateBadge.xaml.cs" Link="Controls/Calls/MediaStateBadge.xaml.cs">
+      <DependentUpon>MediaStateBadge.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Calls\SignalBars.xaml.cs" Link="Controls/Calls/SignalBars.xaml.cs">
+      <DependentUpon>SignalBars.xaml</DependentUpon>
+    </Compile>
+    <!-- u-group-call-ui-port Phase 0 -->
+    <Compile Include="..\Telegram\Controls\Cells\GroupCallParticipantGridCell.xaml.cs" Link="Controls/Cells/GroupCallParticipantGridCell.xaml.cs">
+      <DependentUpon>GroupCallParticipantGridCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\GroupCallMessageCell.xaml.cs" Link="Controls/Cells/GroupCallMessageCell.xaml.cs">
+      <DependentUpon>GroupCallMessageCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Calls\VerificationState.xaml.cs" Link="Controls/Calls/VerificationState.xaml.cs">
+      <DependentUpon>VerificationState.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Calls\VerificationStateReel.xaml.cs" Link="Controls/Calls/VerificationStateReel.xaml.cs">
+      <DependentUpon>VerificationStateReel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\CarouselViewer.cs" Link="Controls/CarouselViewer.cs" />
+    <Compile Include="..\Telegram\Controls\Cells\ActiveStoriesCell.xaml.cs" Link="Controls/Cells/ActiveStoriesCell.xaml.cs">
+      <DependentUpon>ActiveStoriesCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ChatCell.xaml.cs" Link="Controls/Cells/ChatCell.xaml.cs">
+      <DependentUpon>ChatCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ChatFolderCell.xaml.cs" Link="Controls/Cells/ChatFolderCell.xaml.cs">
+      <DependentUpon>ChatFolderCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ChatInviteLinkCell.xaml.cs" Link="Controls/Cells/ChatInviteLinkCell.xaml.cs">
+      <DependentUpon>ChatInviteLinkCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ChatShareCell.xaml.cs" Link="Controls/Cells/ChatShareCell.xaml.cs">
+      <DependentUpon>ChatShareCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ForumTopicCell.Icon.cs" Link="Controls/Cells/ForumTopicCell.Icon.cs" />
+    <Compile Include="..\Telegram\Controls\Cells\ForumTopicCell.xaml.cs" Link="Controls/Cells/ForumTopicCell.xaml.cs">
+      <DependentUpon>ForumTopicCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ForumTopicShareCell.xaml.cs" Link="Controls/Cells/ForumTopicShareCell.xaml.cs">
+      <DependentUpon>ForumTopicShareCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ForumTopicVerticalCell.xaml.cs" Link="Controls/Cells/ForumTopicVerticalCell.xaml.cs">
+      <DependentUpon>ForumTopicVerticalCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ProfileCell.xaml.cs" Link="Controls/Cells/ProfileCell.xaml.cs">
+      <DependentUpon>ProfileCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ProfileHoursCell.xaml.cs" Link="Controls/Cells/ProfileHoursCell.xaml.cs">
+      <DependentUpon>ProfileHoursCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ProxyCell.xaml.cs" Link="Controls/Cells/ProxyCell.xaml.cs">
+      <DependentUpon>ProxyCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\ReceivedGiftCell.xaml.cs" Link="Controls/Cells/ReceivedGiftCell.xaml.cs">
+      <DependentUpon>ReceivedGiftCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\SessionCell.xaml.cs" Link="Controls/Cells/SessionCell.xaml.cs">
+      <DependentUpon>SessionCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\SharedAudioCell.xaml.cs" Link="Controls/Cells/SharedAudioCell.xaml.cs">
+      <DependentUpon>SharedAudioCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\FileDownloadCell.xaml.cs" Link="Controls/Cells/FileDownloadCell.xaml.cs">
+      <DependentUpon>FileDownloadCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\SharedFileCell.xaml.cs" Link="Controls/Cells/SharedFileCell.xaml.cs">
+      <DependentUpon>SharedFileCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\SharedLinkCell.xaml.cs" Link="Controls/Cells/SharedLinkCell.xaml.cs">
+      <DependentUpon>SharedLinkCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\SharedMediaCell.xaml.cs" Link="Controls/Cells/SharedMediaCell.xaml.cs">
+      <DependentUpon>SharedMediaCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\SharedVoiceCell.xaml.cs" Link="Controls/Cells/SharedVoiceCell.xaml.cs">
+      <DependentUpon>SharedVoiceCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\StoryCell.xaml.cs" Link="Controls/Cells/StoryCell.xaml.cs">
+      <DependentUpon>StoryCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\UsernameInfoCell.xaml.cs" Link="Controls/Cells/UsernameInfoCell.xaml.cs">
+      <DependentUpon>UsernameInfoCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Cells\WebSessionCell.xaml.cs" Link="Controls/Cells/WebSessionCell.xaml.cs">
+      <DependentUpon>WebSessionCell.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\ChatFoldersNavView.cs" Link="Controls/ChatFoldersNavView.cs" />
+    <Compile Include="..\Telegram\Controls\ChatListListView.cs" Link="Controls/ChatListListView.cs" />
+    <Compile Include="..\Telegram\Controls\ChatPill.cs" Link="Controls/ChatPill.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatAccountInfo.xaml.cs" Link="Controls/Chats/ChatAccountInfo.xaml.cs">
+      <DependentUpon>ChatAccountInfo.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatAccountInfoHeader.xaml.cs" Link="Controls/Chats/ChatAccountInfoHeader.xaml.cs">
+      <DependentUpon>ChatAccountInfoHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatActionBarView.xaml.cs" Link="Controls/Chats/ChatActionBarView.xaml.cs">
+      <DependentUpon>ChatActionBarView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatActionIndicator.cs" Link="Controls/Chats/ChatActionIndicator.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatBackgroundControl.cs" Link="Controls/Chats/ChatBackgroundControl.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatBottomButton.cs" Link="Controls/Chats/ChatBottomButton.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatConnectedBotHeader.xaml.cs" Link="Controls/Chats/ChatConnectedBotHeader.xaml.cs">
+      <DependentUpon>ChatConnectedBotHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatHistoryArrows.xaml.cs" Link="Controls/Chats/ChatHistoryArrows.xaml.cs">
+      <DependentUpon>ChatHistoryArrows.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatHistoryView.cs" Link="Controls/Chats/ChatHistoryView.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatHistoryViewItem.cs" Link="Controls/Chats/ChatHistoryViewItem.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatJoinRequestsHeader.xaml.cs" Link="Controls/Chats/ChatJoinRequestsHeader.xaml.cs">
+      <DependentUpon>ChatJoinRequestsHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatRecordBar.xaml.cs" Link="Controls/Chats/ChatRecordBar.xaml.cs">
+      <DependentUpon>ChatRecordBar.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatRecordButton.cs" Link="Controls/Chats/ChatRecordButton.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatSendButton.cs" Link="Controls/Chats/ChatSendButton.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatSponsoredHeader.xaml.cs" Link="Controls/Chats/ChatSponsoredHeader.xaml.cs">
+      <DependentUpon>ChatSponsoredHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Chats\ChatStickerButton.cs" Link="Controls/Chats/ChatStickerButton.cs" />
+    <Compile Include="..\Telegram\Controls\Chats\ChatTranslateBar.xaml.cs" Link="Controls/Chats/ChatTranslateBar.xaml.cs">
+      <DependentUpon>ChatTranslateBar.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\ColorPicker.cs" Link="Controls/ColorPicker.cs" />
+    <Compile Include="..\Telegram\Controls\ColorTextBox.cs" Link="Controls/ColorTextBox.cs" />
+    <Compile Include="..\Telegram\Controls\Contacts\ContactsSortedByHeader.xaml.cs" Link="Controls/Contacts/ContactsSortedByHeader.xaml.cs">
+      <DependentUpon>ContactsSortedByHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\ContentPopup.cs" Link="Controls/ContentPopup.cs" />
+    <Compile Include="..\Telegram\Controls\ControlEx.cs" Link="Controls/ControlEx.cs" />
+    <Compile Include="..\Telegram\Controls\CorePage.cs" Link="Controls/CorePage.cs" />
+    <Compile Include="..\Telegram\Controls\CountryBox.xaml.cs" Link="Controls/CountryBox.xaml.cs">
+      <DependentUpon>CountryBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\CustomEmojiIcon.cs" Link="Controls/CustomEmojiIcon.cs" />
+    <Compile Include="..\Telegram\Controls\DashPath.cs" Link="Controls/DashPath.cs" />
+    <Compile Include="..\Telegram\Controls\DiceView.cs" Link="Controls/DiceView.cs" />
+    <Compile Include="..\Telegram\Controls\DownloadsFooter.xaml.cs" Link="Controls/DownloadsFooter.xaml.cs">
+      <DependentUpon>DownloadsFooter.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\DownloadsIndicator.cs" Link="Controls/DownloadsIndicator.cs" />
+    <Compile Include="..\Telegram\Controls\Drawers\AnimationDrawer.xaml.cs" Link="Controls/Drawers/AnimationDrawer.xaml.cs">
+      <DependentUpon>AnimationDrawer.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Drawers\EffectDrawer.xaml.cs" Link="Controls/Drawers/EffectDrawer.xaml.cs">
+      <DependentUpon>EffectDrawer.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Drawers\EmojiDrawer.xaml.cs" Link="Controls/Drawers/EmojiDrawer.xaml.cs">
+      <DependentUpon>EmojiDrawer.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Drawers\EmojiSkinFlyout.xaml.cs" Link="Controls/Drawers/EmojiSkinFlyout.xaml.cs">
+      <DependentUpon>EmojiSkinFlyout.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Drawers\StickerDrawer.xaml.cs" Link="Controls/Drawers/StickerDrawer.xaml.cs">
+      <DependentUpon>StickerDrawer.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\EmojiSearchBox.cs" Link="Controls/EmojiSearchBox.cs" />
+    <Compile Include="..\Telegram\Controls\FauxCheckBox.cs" Link="Controls/FauxCheckBox.cs" />
+    <Compile Include="..\Telegram\Controls\FauxRadioButton.cs" Link="Controls/FauxRadioButton.cs" />
+    <Compile Include="..\Telegram\Controls\FileButton.cs" Link="Controls/FileButton.cs" />
+    <Compile Include="..\Telegram\Controls\FormattedTextBlock.Selectable.cs" Link="Controls/FormattedTextBlock.Selectable.cs" />
+    <Compile Include="..\Telegram\Controls\FormattedTextBlock.cs" Link="Controls/FormattedTextBlock.cs" />
+    <Compile Include="..\Telegram\Controls\FrameworkElementEx.cs" Link="Controls/FrameworkElementEx.cs" />
+    <Compile Include="..\Telegram\Controls\FrozenAccountCard.xaml.cs" Link="Controls/FrozenAccountCard.xaml.cs">
+      <DependentUpon>FrozenAccountCard.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Gallery\GalleryBottomPanel.cs" Link="Controls/Gallery/GalleryBottomPanel.cs" />
+    <Compile Include="..\Telegram\Controls\Gallery\GalleryContent.xaml.cs" Link="Controls/Gallery/GalleryContent.xaml.cs">
+      <DependentUpon>GalleryContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Gallery\GalleryTransportControls.xaml.cs" Link="Controls/Gallery/GalleryTransportControls.xaml.cs">
+      <DependentUpon>GalleryTransportControls.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Gallery\GalleryWindow.xaml.cs" Link="Controls/Gallery/GalleryWindow.xaml.cs">
+      <DependentUpon>GalleryWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\GlassToggleButton.cs" Link="Controls/GlassToggleButton.cs" />
+    <Compile Include="..\Telegram\Controls\GlyphButton.cs" Link="Controls/GlyphButton.cs" />
+    <Compile Include="..\Telegram\Controls\GlyphToggleButton.cs" Link="Controls/GlyphToggleButton.cs" />
+    <Compile Include="..\Telegram\Controls\HeaderedControl.cs" Link="Controls/HeaderedControl.cs" />
+    <Compile Include="..\Telegram\Controls\ISelectableControl.cs" Link="Controls/ISelectableControl.cs" />
+    <Compile Include="..\Telegram\Controls\IdentityIcon.cs" Link="Controls/IdentityIcon.cs" />
+    <Compile Include="..\Telegram\Controls\ImageView.cs" Link="Controls/ImageView.cs" />
+    <Compile Include="..\Telegram\Controls\LoopingPicker.cs" Link="Controls/LoopingPicker.cs" />
+    <Compile Include="..\Telegram\Controls\LottieView.cs" Link="Controls/LottieView.cs" />
+    <Compile Include="..\Telegram\Controls\MasterDetailPanel.cs" Link="Controls/MasterDetailPanel.cs" />
+    <Compile Include="..\Telegram\Controls\MasterDetailView.cs" Link="Controls/MasterDetailView.cs" />
+    <Compile Include="..\Telegram\Controls\Media\Icons.cs" Link="Controls/Media/Icons.cs" />
+    <Compile Include="..\Telegram\Controls\Media\PowerSavingBrushBase.cs" Link="Controls/Media/PowerSavingBrushBase.cs" />
+    <Compile Include="..\Telegram\Controls\Media\SolidGaussianBrush.cs" Link="Controls/Media/SolidGaussianBrush.cs" />
+    <Compile Include="..\Telegram\Controls\MenuFlyoutContent.cs" Link="Controls/MenuFlyoutContent.cs" />
+    <Compile Include="..\Telegram\Controls\MenuFlyoutLabel.cs" Link="Controls/MenuFlyoutLabel.cs" />
+    <Compile Include="..\Telegram\Controls\MenuFlyoutProfile.cs" Link="Controls/MenuFlyoutProfile.cs" />
+    <Compile Include="..\Telegram\Controls\MenuFlyoutSlider.cs" Link="Controls/MenuFlyoutSlider.cs" />
+    <Compile Include="..\Telegram\Controls\MessagePopup.xaml.cs" Link="Controls/MessagePopup.xaml.cs">
+      <DependentUpon>MessagePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\AlbumContent.cs" Link="Controls/Messages/Content/AlbumContent.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\Content\AnimationContent.xaml.cs" Link="Controls/Messages/Content/AnimationContent.xaml.cs">
+      <DependentUpon>AnimationContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\AudioContent.xaml.cs" Link="Controls/Messages/Content/AudioContent.xaml.cs">
+      <DependentUpon>AudioContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\CallContent.xaml.cs" Link="Controls/Messages/Content/CallContent.xaml.cs">
+      <DependentUpon>CallContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\ChecklistContent.xaml.cs" Link="Controls/Messages/Content/ChecklistContent.xaml.cs">
+      <DependentUpon>ChecklistContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\ChecklistTaskContent.xaml.cs" Link="Controls/Messages/Content/ChecklistTaskContent.xaml.cs">
+      <DependentUpon>ChecklistTaskContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\ContactContent.xaml.cs" Link="Controls/Messages/Content/ContactContent.xaml.cs">
+      <DependentUpon>ContactContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\DiceContent.xaml.cs" Link="Controls/Messages/Content/DiceContent.xaml.cs">
+      <DependentUpon>DiceContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\DocumentContent.xaml.cs" Link="Controls/Messages/Content/DocumentContent.xaml.cs">
+      <DependentUpon>DocumentContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\GameContent.xaml.cs" Link="Controls/Messages/Content/GameContent.xaml.cs">
+      <DependentUpon>GameContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\GiveawayContent.xaml.cs" Link="Controls/Messages/Content/GiveawayContent.xaml.cs">
+      <DependentUpon>GiveawayContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\InvoiceContent.xaml.cs" Link="Controls/Messages/Content/InvoiceContent.xaml.cs">
+      <DependentUpon>InvoiceContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\InvoicePhotoContent.xaml.cs" Link="Controls/Messages/Content/InvoicePhotoContent.xaml.cs">
+      <DependentUpon>InvoicePhotoContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\InvoicePreviewContent.xaml.cs" Link="Controls/Messages/Content/InvoicePreviewContent.xaml.cs">
+      <DependentUpon>InvoicePreviewContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\LiveLocationContent.xaml.cs" Link="Controls/Messages/Content/LiveLocationContent.xaml.cs">
+      <DependentUpon>LiveLocationContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\LocationContent.xaml.cs" Link="Controls/Messages/Content/LocationContent.xaml.cs">
+      <DependentUpon>LocationContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\PhotoContent.xaml.cs" Link="Controls/Messages/Content/PhotoContent.xaml.cs">
+      <DependentUpon>PhotoContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\PollContent.xaml.cs" Link="Controls/Messages/Content/PollContent.xaml.cs">
+      <DependentUpon>PollContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\PollOptionContent.xaml.cs" Link="Controls/Messages/Content/PollOptionContent.xaml.cs">
+      <DependentUpon>PollOptionContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\SponsoredContent.xaml.cs" Link="Controls/Messages/Content/SponsoredContent.xaml.cs">
+      <DependentUpon>SponsoredContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\StickerContent.xaml.cs" Link="Controls/Messages/Content/StickerContent.xaml.cs">
+      <DependentUpon>StickerContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\StickerSetContent.xaml.cs" Link="Controls/Messages/Content/StickerSetContent.xaml.cs">
+      <DependentUpon>StickerSetContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\ThumbnailContent.xaml.cs" Link="Controls/Messages/Content/ThumbnailContent.xaml.cs">
+      <DependentUpon>ThumbnailContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\VenueContent.xaml.cs" Link="Controls/Messages/Content/VenueContent.xaml.cs">
+      <DependentUpon>VenueContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\VideoContent.xaml.cs" Link="Controls/Messages/Content/VideoContent.xaml.cs">
+      <DependentUpon>VideoContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\VideoNoteContent.xaml.cs" Link="Controls/Messages/Content/VideoNoteContent.xaml.cs">
+      <DependentUpon>VideoNoteContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\VoiceNoteContent.xaml.cs" Link="Controls/Messages/Content/VoiceNoteContent.xaml.cs">
+      <DependentUpon>VoiceNoteContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\WallpaperContent.xaml.cs" Link="Controls/Messages/Content/WallpaperContent.xaml.cs">
+      <DependentUpon>WallpaperContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Content\WebPageContent.xaml.cs" Link="Controls/Messages/Content/WebPageContent.xaml.cs">
+      <DependentUpon>WebPageContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\EmojiMenuFlyout.xaml.cs" Link="Controls/Messages/EmojiMenuFlyout.xaml.cs">
+      <DependentUpon>EmojiMenuFlyout.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\IContent.cs" Link="Controls/Messages/IContent.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\InvoiceFooter.xaml.cs" Link="Controls/Messages/InvoiceFooter.xaml.cs">
+      <DependentUpon>InvoiceFooter.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\MessageBubble.xaml.cs" Link="Controls/Messages/MessageBubble.xaml.cs">
+      <DependentUpon>MessageBubble.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\MessageBubblePanel.cs" Link="Controls/Messages/MessageBubblePanel.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\MessageContentRecyclePool.cs" Link="Controls/Messages/MessageContentRecyclePool.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\MessageFooter.xaml.cs" Link="Controls/Messages/MessageFooter.xaml.cs">
+      <DependentUpon>MessageFooter.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\MessageForwardHeader.xaml.cs" Link="Controls/Messages/MessageForwardHeader.xaml.cs">
+      <DependentUpon>MessageForwardHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\MessageReferenceBase.cs" Link="Controls/Messages/MessageReferenceBase.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\MessageReply.xaml.cs" Link="Controls/Messages/MessageReply.xaml.cs">
+      <DependentUpon>MessageReply.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\MessageSelector.xaml.cs" Link="Controls/Messages/MessageSelector.xaml.cs">
+      <DependentUpon>MessageSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\MessageService.cs" Link="Controls/Messages/MessageService.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\MessageServiceText.cs" Link="Controls/Messages/MessageServiceText.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\MessageTextBlock.cs" Link="Controls/Messages/MessageTextBlock.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\ReactionAsTagButton.cs" Link="Controls/Messages/ReactionAsTagButton.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\ReactionButton.cs" Link="Controls/Messages/ReactionButton.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\ReactionsMenuFlyout.xaml.cs" Link="Controls/Messages/ReactionsMenuFlyout.xaml.cs">
+      <DependentUpon>ReactionsMenuFlyout.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\ReactionsPanel.cs" Link="Controls/Messages/ReactionsPanel.cs" />
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageChatHasProtectedContentDisableRequestedContent.xaml.cs" Link="Controls/Messages/Service/MessageChatHasProtectedContentDisableRequestedContent.xaml.cs">
+      <DependentUpon>MessageChatHasProtectedContentDisableRequestedContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageChatSetBackgroundContent.xaml.cs" Link="Controls/Messages/Service/MessageChatSetBackgroundContent.xaml.cs">
+      <DependentUpon>MessageChatSetBackgroundContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageGiftContent.xaml.cs" Link="Controls/Messages/Service/MessageGiftContent.xaml.cs">
+      <DependentUpon>MessageGiftContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageGiveawayPrizeStarsContent.xaml.cs" Link="Controls/Messages/Service/MessageGiveawayPrizeStarsContent.xaml.cs">
+      <DependentUpon>MessageGiveawayPrizeStarsContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageHeaderAccountInfoContent.xaml.cs" Link="Controls/Messages/Service/MessageHeaderAccountInfoContent.xaml.cs">
+      <DependentUpon>MessageHeaderAccountInfoContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageHeaderMessageTopicContent.xaml.cs" Link="Controls/Messages/Service/MessageHeaderMessageTopicContent.xaml.cs">
+      <DependentUpon>MessageHeaderMessageTopicContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessagePhotoContent.xaml.cs" Link="Controls/Messages/Service/MessagePhotoContent.xaml.cs">
+      <DependentUpon>MessagePhotoContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageSuggestBirthdateContent.xaml.cs" Link="Controls/Messages/Service/MessageSuggestBirthdateContent.xaml.cs">
+      <DependentUpon>MessageSuggestBirthdateContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageUnsupportedContent.xaml.cs" Link="Controls/Messages/Service/MessageUnsupportedContent.xaml.cs">
+      <DependentUpon>MessageUnsupportedContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageUpgradedGiftContent.xaml.cs" Link="Controls/Messages/Service/MessageUpgradedGiftContent.xaml.cs">
+      <DependentUpon>MessageUpgradedGiftContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Messages\Service\MessageUpgradedGiftPurchaseOfferContent.xaml.cs" Link="Controls/Messages/Service/MessageUpgradedGiftPurchaseOfferContent.xaml.cs">
+      <DependentUpon>MessageUpgradedGiftPurchaseOfferContent.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\MultipleListView.cs" Link="Controls/MultipleListView.cs" />
+    <Compile Include="..\Telegram\Controls\NavigationButton.cs" Link="Controls/NavigationButton.cs" />
+    <Compile Include="..\Telegram\Controls\NavigationViewItem.cs" Link="Controls/NavigationViewItem.cs" />
+    <Compile Include="..\Telegram\Controls\NavigationViewItemBase.cs" Link="Controls/NavigationViewItemBase.cs" />
+    <Compile Include="..\Telegram\Controls\NavigationViewItemSeparator.cs" Link="Controls/NavigationViewItemSeparator.cs" />
+    <Compile Include="..\Telegram\Controls\OrbitGenerator.cs" Link="Controls/OrbitGenerator.cs" />
+    <Compile Include="..\Telegram\Controls\OrientableListView.cs" Link="Controls/OrientableListView.cs" />
+    <Compile Include="..\Telegram\Controls\OverlayWindow.cs" Link="Controls/OverlayWindow.cs" />
+    <Compile Include="..\Telegram\Controls\PageHeader.cs" Link="Controls/PageHeader.cs" />
+    <Compile Include="..\Telegram\Controls\PatternBackground.xaml.cs" Link="Controls/PatternBackground.xaml.cs">
+      <DependentUpon>PatternBackground.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\PhoneTextBox.cs" Link="Controls/PhoneTextBox.cs" />
+    <Compile Include="..\Telegram\Controls\PlaybackHeader.xaml.cs" Link="Controls/PlaybackHeader.xaml.cs">
+      <DependentUpon>PlaybackHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\PlaybackNextButton.cs" Link="Controls/PlaybackNextButton.cs" />
+    <Compile Include="..\Telegram\Controls\PlaybackSlider.cs" Link="Controls/PlaybackSlider.cs" />
+    <Compile Include="..\Telegram\Controls\PopupInfo.cs" Link="Controls/PopupInfo.cs" />
+    <Compile Include="..\Telegram\Controls\PremiumStarCount.cs" Link="Controls/PremiumStarCount.cs" />
+    <Compile Include="..\Telegram\Controls\Primitives\ScrollBarManager.cs" Link="Controls/Primitives/ScrollBarManager.cs" />
+    <Compile Include="..\Telegram\Controls\PrivacyRadioButton.cs" Link="Controls/PrivacyRadioButton.cs" />
+    <Compile Include="..\Telegram\Controls\ProfileGiftsCover.xaml.cs" Link="Controls/ProfileGiftsCover.xaml.cs">
+      <DependentUpon>ProfileGiftsCover.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\ProfileHeader.xaml.cs" Link="Controls/ProfileHeader.xaml.cs">
+      <DependentUpon>ProfileHeader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\ProfilePatternCover.cs" Link="Controls/ProfilePatternCover.cs" />
+    <Compile Include="..\Telegram\Controls\ProfilePicture.cs" Link="Controls/ProfilePicture.cs" />
+    <Compile Include="..\Telegram\Controls\ProfileRating.cs" Link="Controls/ProfileRating.cs" />
+    <Compile Include="..\Telegram\Controls\ProgressBarRing.cs" Link="Controls/ProgressBarRing.cs" />
+    <Compile Include="..\Telegram\Controls\ProgressVoice.cs" Link="Controls/ProgressVoice.cs" />
+    <Compile Include="..\Telegram\Controls\QrCode.cs" Link="Controls/QrCode.cs" />
+    <Compile Include="..\Telegram\Controls\RecentUserHeads.cs" Link="Controls/RecentUserHeads.cs" />
+    <Compile Include="..\Telegram\Controls\ReplyMarkupButton.cs" Link="Controls/ReplyMarkupButton.cs" />
+    <Compile Include="..\Telegram\Controls\ReplyMarkupInlineButton.cs" Link="Controls/ReplyMarkupInlineButton.cs" />
+    <Compile Include="..\Telegram\Controls\ReplyMarkupInlinePanel.cs" Link="Controls/ReplyMarkupInlinePanel.cs" />
+    <Compile Include="..\Telegram\Controls\ReplyMarkupPanel.cs" Link="Controls/ReplyMarkupPanel.cs" />
+    <Compile Include="..\Telegram\Controls\SelectGridView.cs" Link="Controls/SelectGridView.cs" />
+    <Compile Include="..\Telegram\Controls\SelectListView.cs" Link="Controls/SelectListView.cs" />
+    <Compile Include="..\Telegram\Controls\SelfDestructTimer.cs" Link="Controls/SelfDestructTimer.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsButton.cs" Link="Controls/SettingsButton.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsComboBox.cs" Link="Controls/SettingsComboBox.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsExpander.cs" Link="Controls/SettingsExpander.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsFooter.cs" Link="Controls/SettingsFooter.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsHeadline.cs" Link="Controls/SettingsHeadline.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsPanel.cs" Link="Controls/SettingsPanel.cs" />
+    <Compile Include="..\Telegram\Controls\SettingsRadioButton.cs" Link="Controls/SettingsRadioButton.cs" />
+    <Compile Include="..\Telegram\Controls\SlidePanel.cs" Link="Controls/SlidePanel.cs" />
+    <Compile Include="..\Telegram\Controls\SlideTextBlock.cs" Link="Controls/SlideTextBlock.cs" />
+    <Compile Include="..\Telegram\Controls\StartupSwitch.xaml.cs" Link="Controls/StartupSwitch.xaml.cs">
+      <DependentUpon>StartupSwitch.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\StickerPanel.xaml.cs" Link="Controls/StickerPanel.xaml.cs">
+      <DependentUpon>StickerPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\StorageChart.cs" Link="Controls/StorageChart.cs" />
+    <Compile Include="..\Telegram\Controls\Stories\StoriesStrip.xaml.cs" Link="Controls/Stories/StoriesStrip.xaml.cs">
+      <DependentUpon>StoriesStrip.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\SuggestTextBox.cs" Link="Controls/SuggestTextBox.cs" />
+    <Compile Include="..\Telegram\Controls\SuggestedActionSetBirthdateCard.xaml.cs" Link="Controls/SuggestedActionSetBirthdateCard.xaml.cs">
+      <DependentUpon>SuggestedActionSetBirthdateCard.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\TableListView.cs" Link="Controls/TableListView.cs" />
+    <Compile Include="..\Telegram\Controls\TextListViewItem.cs" Link="Controls/TextListViewItem.cs" />
+    <Compile Include="..\Telegram\Controls\ToastPopup.cs" Link="Controls/ToastPopup.cs" />
+    <Compile Include="..\Telegram\Controls\TopNavView.cs" Link="Controls/TopNavView.cs" />
+    <Compile Include="..\Telegram\Controls\UnconfirmedSessionCard.xaml.cs" Link="Controls/UnconfirmedSessionCard.xaml.cs">
+      <DependentUpon>UnconfirmedSessionCard.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\VersionLabel.cs" Link="Controls/VersionLabel.cs" />
+    <Compile Include="..\Telegram\Controls\VideoPlayerBase.cs" Link="Controls/VideoPlayerBase.cs" />
+    <Compile Include="..\Telegram\Controls\Views\ForumView.xaml.cs" Link="Controls/Views/ForumView.xaml.cs">
+      <DependentUpon>ForumView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Views\SearchChatsView.xaml.cs" Link="Controls/Views/SearchChatsView.xaml.cs">
+      <DependentUpon>SearchChatsView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\Views\SearchPostsTabPage.xaml.cs" Link="Controls/Views/SearchPostsTabPage.xaml.cs">
+      <DependentUpon>SearchPostsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Controls\ZoomViewer.cs" Link="Controls/ZoomViewer.cs" />
+    <Compile Include="..\Telegram\Converters\BooleanNegationConverter.cs" Link="Converters/BooleanNegationConverter.cs" />
+    <Compile Include="..\Telegram\Converters\BooleanToVisibilityConverter.cs" Link="Converters/BooleanToVisibilityConverter.cs" />
+    <Compile Include="..\Telegram\Converters\ChannelParticipantToTypeConverter.cs" Link="Converters/ChannelParticipantToTypeConverter.cs" />
+    <Compile Include="..\Telegram\Converters\FileSizeConverter.cs" Link="Converters/FileSizeConverter.cs" />
+    <Compile Include="..\Telegram\Converters\Formatter.cs" Link="Converters/Formatter.cs" />
+    <Compile Include="..\Telegram\Converters\InitialNameStringConverter.cs" Link="Converters/InitialNameStringConverter.cs" />
+    <Compile Include="..\Telegram\Converters\LastSeenConverter.cs" Link="Converters/LastSeenConverter.cs" />
+    <Compile Include="..\Telegram\Converters\MeUrlPrefixConverter.cs" Link="Converters/MeUrlPrefixConverter.cs" />
+    <Compile Include="..\Telegram\Converters\MessageTtlConverter.cs" Link="Converters/MessageTtlConverter.cs" />
+    <Compile Include="..\Telegram\Converters\NullToVisibilityConverter.cs" Link="Converters/NullToVisibilityConverter.cs" />
+    <Compile Include="..\Telegram\Converters\ThicknessFilterConverter.cs" Link="Converters/ThicknessFilterConverter.cs" />
+    <Compile Include="..\Telegram\CsWinRT.cs" Link="CsWinRT.cs" />
+    <Compile Include="..\Telegram\Entities\Country.cs" Link="Entities/Country.cs" />
+    <Compile Include="..\Telegram\Logger.cs" Link="Logger.cs" />
+    <Compile Include="..\Telegram\Navigation\BindableBase.cs" Link="Navigation/BindableBase.cs" />
+    <Compile Include="..\Telegram\Navigation\BootStrapper.cs" Link="Navigation/BootStrapper.cs" />
+    <Compile Include="..\Telegram\Navigation\DispatcherContext.cs" Link="Navigation/DispatcherContext.cs" />
+    <Compile Include="..\Telegram\Navigation\InputListener.Uwp.cs" Link="Navigation/InputListener.Uwp.cs" />
+    <Compile Include="..\Telegram\Navigation\MultiViewModelBase.cs" Link="Navigation/MultiViewModelBase.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\FrameFacade.cs" Link="Navigation/Services/FrameFacade.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\INavigable.cs" Link="Navigation/Services/INavigable.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\NavigatedEventArgs.cs" Link="Navigation/Services/NavigatedEventArgs.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\NavigatingEventArgs.cs" Link="Navigation/Services/NavigatingEventArgs.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\NavigationService.cs" Link="Navigation/Services/NavigationService.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\NavigationServiceList.cs" Link="Navigation/Services/NavigationServiceList.cs" />
+    <Compile Include="..\Telegram\Navigation\Services\NavigationState.cs" Link="Navigation/Services/NavigationState.cs" />
+    <Compile Include="..\Telegram\Navigation\TypedEventHandler.cs" Link="Navigation/TypedEventHandler.cs" />
+    <Compile Include="..\Telegram\Navigation\ViewModelBase.cs" Link="Navigation/ViewModelBase.cs" />
+    <Compile Include="..\Telegram\Navigation\WindowContext.cs" Link="Navigation/WindowContext.cs" />
+    <Compile Include="..\Telegram\Program.cs" Link="Program.cs" />
+    <Compile Include="..\Telegram\Selectors\AutocompleteTemplateSelector.cs" Link="Selectors/AutocompleteTemplateSelector.cs" />
+    <Compile Include="..\Telegram\Selectors\StickerSetTemplateSelector.cs" Link="Selectors/StickerSetTemplateSelector.cs" />
+    <Compile Include="..\Telegram\Services\AlertsService.cs" Link="Services/AlertsService.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipCall.cs" Link="Services/Calls/VoipCall.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipCallBase.cs" Link="Services/Calls/VoipCallBase.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipCallEventArgs.cs" Link="Services/Calls/VoipCallEventArgs.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipConnectionState.cs" Link="Services/Calls/VoipConnectionState.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipCoordinator.cs" Link="Services/Calls/VoipCoordinator.cs" />
+    <!-- u-group-call-ui-port Phase 0 -->
+    <Compile Include="..\Telegram\Services\Calls\VoipGroupCall.cs" Link="Services/Calls/VoipGroupCall.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipGroupCallParticipants.cs" Link="Services/Calls/VoipGroupCallParticipants.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipGroupCallEventArgs.cs" Link="Services/Calls/VoipGroupCallEventArgs.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipService.cs" Link="Services/Calls/VoipService.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipState.cs" Link="Services/Calls/VoipState.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipVideoOutput.cs" Link="Services/Calls/VoipVideoOutput.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipVideoStateChangedEventArgs.cs" Link="Services/Calls/VoipVideoStateChangedEventArgs.cs" />
+    <Compile Include="..\Telegram\Services\Calls\VoipVideoType.cs" Link="Services/Calls/VoipVideoType.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.ChatList.cs" Link="Services/ClientService.ChatList.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.FeedbackChatTopics.cs" Link="Services/ClientService.FeedbackChatTopics.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.Files.cs" Link="Services/ClientService.Files.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.ForumTopics.cs" Link="Services/ClientService.ForumTopics.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.SavedMessages.cs" Link="Services/ClientService.SavedMessages.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.StoryList.cs" Link="Services/ClientService.StoryList.cs" />
+    <Compile Include="..\Telegram\Services\ClientService.cs" Link="Services/ClientService.cs" />
+    <Compile Include="..\Telegram\Services\CloudUpdateService.cs" Link="Services/CloudUpdateService.cs" />
+    <Compile Include="..\Telegram\Services\DeviceInfoService.cs" Link="Services/DeviceInfoService.cs" />
+    <Compile Include="..\Telegram\Services\EventAggregator.cs" Link="Services/EventAggregator.cs" />
+    <Compile Include="..\Telegram\Services\Factories\MessageFactory.cs" Link="Services/Factories/MessageFactory.cs" />
+    <Compile Include="..\Telegram\Services\FeedbackChatTopicService.cs" Link="Services/FeedbackChatTopicService.cs" />
+    <Compile Include="..\Telegram\Services\ForumTopicService.cs" Link="Services/ForumTopicService.cs" />
+    <Compile Include="..\Telegram\Services\LifetimeService.cs" Link="Services/LifetimeService.cs" />
+    <Compile Include="..\Telegram\Services\LocaleService.cs" Link="Services/LocaleService.cs" />
+    <Compile Include="..\Telegram\Services\MessageAlbumLastMessageService.cs" Link="Services/MessageAlbumLastMessageService.cs" />
+    <Compile Include="..\Telegram\Services\NetworkService.cs" Link="Services/NetworkService.cs" />
+    <Compile Include="..\Telegram\Services\NotificationsService.cs" Link="Services/NotificationsService.cs" />
+    <Compile Include="..\Telegram\Services\OptionsService.cs" Link="Services/OptionsService.cs" />
+    <Compile Include="..\Telegram\Services\PasscodeService.cs" Link="Services/PasscodeService.cs" />
+    <Compile Include="..\Telegram\Services\PlaybackService.cs" Link="Services/PlaybackService.cs" />
+    <Compile Include="..\Telegram\Services\ProxyService.cs" Link="Services/ProxyService.cs" />
+    <Compile Include="..\Telegram\Services\ServiceBase.cs" Link="Services/ServiceBase.cs" />
+    <Compile Include="..\Telegram\Services\Session.Registrations.cs" Link="Services/Session.Registrations.cs" />
+    <Compile Include="..\Telegram\Services\Session.cs" Link="Services/Session.cs" />
+    <Compile Include="..\Telegram\Services\Settings\AppearanceSettings.cs" Link="Services/Settings/AppearanceSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\AutoDownloadSettings.cs" Link="Services/Settings/AutoDownloadSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\DiagnosticsSettings.cs" Link="Services/Settings/DiagnosticsSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\EmojiSettings.cs" Link="Services/Settings/EmojiSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\NotificationsSettings.cs" Link="Services/Settings/NotificationsSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\PasscodeLockSettings.cs" Link="Services/Settings/PasscodeLockSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\PlaybackSettings.cs" Link="Services/Settings/PlaybackSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\StickersSettings.cs" Link="Services/Settings/StickersSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\ToolTipSettings.cs" Link="Services/Settings/ToolTipSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\TranslateSettings.cs" Link="Services/Settings/TranslateSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\VideoSettings.cs" Link="Services/Settings/VideoSettings.cs" />
+    <Compile Include="..\Telegram\Services\Settings\VoIPSettings.cs" Link="Services/Settings/VoIPSettings.cs" />
+    <Compile Include="..\Telegram\Services\SettingsLegacyService.cs" Link="Services/SettingsLegacyService.cs" />
+    <Compile Include="..\Telegram\Services\SettingsService.cs" Link="Services/SettingsService.cs" />
+    <Compile Include="..\Telegram\Services\ShortcutsService.cs" Link="Services/ShortcutsService.cs" />
+    <Compile Include="..\Telegram\Services\Theme\ThemeAccentInfo.cs" Link="Services/Theme/ThemeAccentInfo.cs" />
+    <Compile Include="..\Telegram\Services\Theme\ThemeBundledInfo.cs" Link="Services/Theme/ThemeBundledInfo.cs" />
+    <Compile Include="..\Telegram\Services\Theme\ThemeCustomInfo.cs" Link="Services/Theme/ThemeCustomInfo.cs" />
+    <Compile Include="..\Telegram\Services\ThemeService.Defaults.cs" Link="Services/ThemeService.Defaults.cs" />
+    <Compile Include="..\Telegram\Services\ThemeService.cs" Link="Services/ThemeService.cs" />
+    <Compile Include="..\Telegram\Services\TranslateService.cs" Link="Services/TranslateService.cs" />
+    <Compile Include="..\Telegram\Services\Updates\UpdateActiveCall.cs" Link="Services/Updates/UpdateActiveCall.cs" />
+    <Compile Include="..\Telegram\Services\Updates\UpdateAppVersion.cs" Link="Services/Updates/UpdateAppVersion.cs" />
+    <Compile Include="..\Telegram\Services\Updates\UpdateChatFoldersLayout.cs" Link="Services/Updates/UpdateChatFoldersLayout.cs" />
+    <Compile Include="..\Telegram\Services\Updates\UpdateConfetti.cs" Link="Services/Updates/UpdateConfetti.cs" />
+    <Compile Include="..\Telegram\Services\Updates\UpdatePasscodeLock.cs" Link="Services/Updates/UpdatePasscodeLock.cs" />
+    <Compile Include="..\Telegram\Services\Updates\UpdateWindowActivated.cs" Link="Services/Updates/UpdateWindowActivated.cs" />
+    <Compile Include="..\Telegram\Services\ViewService\ViewLifetimeControl.Uwp.cs" Link="Services/ViewService/ViewLifetimeControl.Uwp.cs" />
+    <Compile Include="..\Telegram\Services\ViewService\ViewService.cs" Link="Services/ViewService/ViewService.cs" />
+    <Compile Include="..\Telegram\Streams\AnimatedEmojiFileSource.cs" Link="Streams/AnimatedEmojiFileSource.cs" />
+    <Compile Include="..\Telegram\Streams\AnimatedImageSource.cs" Link="Streams/AnimatedImageSource.cs" />
+    <Compile Include="..\Telegram\Streams\CustomEmojiFileSource.cs" Link="Streams/CustomEmojiFileSource.cs" />
+    <Compile Include="..\Telegram\Streams\DelayedFileSource.cs" Link="Streams/DelayedFileSource.cs" />
+    <Compile Include="..\Telegram\Streams\LocalFileSource.cs" Link="Streams/LocalFileSource.cs" />
+    <Compile Include="..\Telegram\Streams\ParticlesImageSource.cs" Link="Streams/ParticlesImageSource.cs" />
+    <Compile Include="..\Telegram\Streams\ReactionFileSource.cs" Link="Streams/ReactionFileSource.cs" />
+    <Compile Include="..\Telegram\Streams\RemoteFilePrefetch.cs" Link="Streams/RemoteFilePrefetch.cs" />
+    <Compile Include="..\Telegram\Streams\RemoteFileSource.cs" Link="Streams/RemoteFileSource.cs" />
+    <Compile Include="..\Telegram\Strings\en\Resources.cs" Link="Strings/en/Resources.cs" />
+    <Compile Include="..\Telegram\Td\Api\ErrorCode.cs" Link="Td/Api/ErrorCode.cs" />
+    <Compile Include="..\Telegram\Td\Api\ErrorStarsNeeded.cs" Link="Td/Api/ErrorStarsNeeded.cs" />
+    <Compile Include="..\Telegram\Td\Api\ErrorType.cs" Link="Td/Api/ErrorType.cs" />
+    <Compile Include="..\Telegram\Td\Api\FormattedText.cs" Link="Td/Api/FormattedText.cs" />
+    <Compile Include="..\Telegram\Td\Api\InlineKeyboardButtonTypeSuggestionApprove.cs" Link="Td/Api/InlineKeyboardButtonTypeSuggestionApprove.cs" />
+    <Compile Include="..\Telegram\Td\Api\InlineKeyboardButtonTypeSuggestionDecline.cs" Link="Td/Api/InlineKeyboardButtonTypeSuggestionDecline.cs" />
+    <Compile Include="..\Telegram\Td\Api\InlineKeyboardButtonTypeSuggestionEdit.cs" Link="Td/Api/InlineKeyboardButtonTypeSuggestionEdit.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageAlbum.cs" Link="Td/Api/MessageAlbum.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageAlbumLastMessage.cs" Link="Td/Api/MessageAlbumLastMessage.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageAsyncStory.cs" Link="Td/Api/MessageAsyncStory.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageBigEmoji.cs" Link="Td/Api/MessageBigEmoji.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageChatEvent.cs" Link="Td/Api/MessageChatEvent.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageHeaderAccountInfo.cs" Link="Td/Api/MessageHeaderAccountInfo.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageHeaderDate.cs" Link="Td/Api/MessageHeaderDate.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageHeaderMessageTopic.cs" Link="Td/Api/MessageHeaderMessageTopic.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageHeaderNewThread.cs" Link="Td/Api/MessageHeaderNewThread.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageHeaderUnread.cs" Link="Td/Api/MessageHeaderUnread.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageId.cs" Link="Td/Api/MessageId.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageSponsored.cs" Link="Td/Api/MessageSponsored.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageTag.cs" Link="Td/Api/MessageTag.cs" />
+    <Compile Include="..\Telegram\Td\Api\MessageTranslateResult.cs" Link="Td/Api/MessageTranslateResult.cs" />
+    <Compile Include="..\Telegram\Td\Api\MinithumbnailId.cs" Link="Td/Api/MinithumbnailId.cs" />
+    <Compile Include="..\Telegram\Td\Api\NameColor.cs" Link="Td/Api/NameColor.cs" />
+    <Compile Include="..\Telegram\Td\Api\PremiumLimitTypeConnectedAccounts.cs" Link="Td/Api/PremiumLimitTypeConnectedAccounts.cs" />
+    <Compile Include="..\Telegram\Td\Api\ProfileColor.cs" Link="Td/Api/ProfileColor.cs" />
+    <Compile Include="..\Telegram\Td\Api\ReactionTypeEqualityComparer.cs" Link="Td/Api/ReactionTypeEqualityComparer.cs" />
+    <Compile Include="..\Telegram\Td\Api\TdExtensions.cs" Link="Td/Api/TdExtensions.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateChatMember.cs" Link="Td/Api/UpdateChatMember.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateChatSwitchInlineQuery.cs" Link="Td/Api/UpdateChatSwitchInlineQuery.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateGiftIsSaved.cs" Link="Td/Api/UpdateGiftIsSaved.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateGiftIsSold.cs" Link="Td/Api/UpdateGiftIsSold.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateGiftUpgraded.cs" Link="Td/Api/UpdateGiftUpgraded.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateGreetingSticker.cs" Link="Td/Api/UpdateGreetingSticker.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateMessageEffect.cs" Link="Td/Api/UpdateMessageEffect.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateMessageSummarizedText.cs" Link="Td/Api/UpdateMessageSummarizedText.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateMessageTranslatedText.cs" Link="Td/Api/UpdateMessageTranslatedText.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdatePremiumState.cs" Link="Td/Api/UpdatePremiumState.cs" />
+    <Compile Include="..\Telegram\Td\Api\UpdateUserIsContact.cs" Link="Td/Api/UpdateUserIsContact.cs" />
+    <Compile Include="..\Telegram\Td\Client.cs" Link="Td/Client.cs" />
+    <Compile Include="..\Telegram\Td\ClientEx.cs" Link="Td/ClientEx.cs" />
+    <Compile Include="..\Telegram\Td\ClientJson.cs" Link="Td/ClientJson.cs" />
+    <Compile Include="..\Telegram\Td\PtrClientJson.cs" Link="Td/PtrClientJson.cs" />
+    <Compile Include="..\Telegram\Td\TdJsonReader.cs" Link="Td/TdJsonReader.cs" />
+    <Compile Include="..\Telegram\Themes\Messages.xaml.cs" Link="Themes/Messages.xaml.cs">
+      <DependentUpon>Messages.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationCodeViewModel.cs" Link="ViewModels/Authorization/AuthorizationCodeViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationEmailAddressViewModel.cs" Link="ViewModels/Authorization/AuthorizationEmailAddressViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationEmailCodeViewModel.cs" Link="ViewModels/Authorization/AuthorizationEmailCodeViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationPasswordViewModel.cs" Link="ViewModels/Authorization/AuthorizationPasswordViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationRecoveryViewModel.cs" Link="ViewModels/Authorization/AuthorizationRecoveryViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationRegistrationViewModel.cs" Link="ViewModels/Authorization/AuthorizationRegistrationViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Authorization\AuthorizationViewModel.cs" Link="ViewModels/Authorization/AuthorizationViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\DownloadsViewModel.cs" Link="ViewModels/DownloadsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\BackgroundViewModel.cs" Link="ViewModels/BackgroundViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Business\BusinessHours.cs" Link="ViewModels/Business/BusinessHours.cs" />
+    <Compile Include="..\Telegram\ViewModels\ChatJoinRequestsViewModel.cs" Link="ViewModels/ChatJoinRequestsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ChatListViewModel.cs" Link="ViewModels/ChatListViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ChatNotificationsViewModel.cs" Link="ViewModels/ChatNotificationsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Chats\ChatGalleryViewModel.cs" Link="ViewModels/Chats/ChatGalleryViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Chats\ChatPhotosViewModel.cs" Link="ViewModels/Chats/ChatPhotosViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Chats\ChatSearchViewModel.cs" Link="ViewModels/Chats/ChatSearchViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Chats\ChatStoriesViewModel.cs" Link="ViewModels/Chats/ChatStoriesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ChooseChatsTracker.cs" Link="ViewModels/ChooseChatsTracker.cs" />
+    <Compile Include="..\Telegram\ViewModels\ChooseChatsViewModel.cs" Link="ViewModels/ChooseChatsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ChooseSoundViewModel.cs" Link="ViewModels/ChooseSoundViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ComposeViewModel.cs" Link="ViewModels/ComposeViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ContactsViewModel.cs" Link="ViewModels/ContactsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Create\NewChannelViewModel.cs" Link="ViewModels/Create/NewChannelViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Create\NewContactViewModel.cs" Link="ViewModels/Create/NewContactViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Create\NewGroupViewModel.cs" Link="ViewModels/Create/NewGroupViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IBackgroundDelegate.cs" Link="ViewModels/Delegates/IBackgroundDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IBasicAndSupergroupDelegate.cs" Link="ViewModels/Delegates/IBasicAndSupergroupDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IBasicGroupDelegate.cs" Link="ViewModels/Delegates/IBasicGroupDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IBusinessChatLinksDelegate.cs" Link="ViewModels/Delegates/IBusinessChatLinksDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IBusinessRepliesDelegate.cs" Link="ViewModels/Delegates/IBusinessRepliesDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IChatDelegate.cs" Link="ViewModels/Delegates/IChatDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IChatListDelegate.cs" Link="ViewModels/Delegates/IChatListDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IDelegable.cs" Link="ViewModels/Delegates/IDelegable.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IDialogDelegate.cs" Link="ViewModels/Delegates/IDialogDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IDirectMessagesTopicDelegate.cs" Link="ViewModels/Delegates/IDirectMessagesTopicDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IForumTopicDelegate.cs" Link="ViewModels/Delegates/IForumTopicDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IGalleryDelegate.cs" Link="ViewModels/Delegates/IGalleryDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IMessageDelegate.cs" Link="ViewModels/Delegates/IMessageDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IProfileDelegate.cs" Link="ViewModels/Delegates/IProfileDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IReactionsDelegate.cs" Link="ViewModels/Delegates/IReactionsDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ISavedMessagesChatsDelegate.cs" Link="ViewModels/Delegates/ISavedMessagesChatsDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ISettingsDelegate.cs" Link="ViewModels/Delegates/ISettingsDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ISignInDelegate.cs" Link="ViewModels/Delegates/ISignInDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ISupergroupDelegate.cs" Link="ViewModels/Delegates/ISupergroupDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ISupergroupEditDelegate.cs" Link="ViewModels/Delegates/ISupergroupEditDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ISupergroupMembersDelegate.cs" Link="ViewModels/Delegates/ISupergroupMembersDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\ITopicListDelegate.cs" Link="ViewModels/Delegates/ITopicListDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\Delegates\IUserDelegate.cs" Link="ViewModels/Delegates/IUserDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\DiagnosticsViewModel.cs" Link="ViewModels/DiagnosticsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogScheduledViewModel.cs" Link="ViewModels/DialogScheduledViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogViewModel.Delegate.cs" Link="ViewModels/DialogViewModel.Delegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogViewModel.Handle.cs" Link="ViewModels/DialogViewModel.Handle.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogViewModel.Inline.cs" Link="ViewModels/DialogViewModel.Inline.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogViewModel.Translate.cs" Link="ViewModels/DialogViewModel.Translate.cs" />
+    <Compile Include="..\Telegram\ViewModels\DialogViewModel.cs" Link="ViewModels/DialogViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Dialogs\DialogPendingTextMessage.cs" Link="ViewModels/Dialogs/DialogPendingTextMessage.cs" />
+    <Compile Include="..\Telegram\ViewModels\Dialogs\DialogPinnedMessagesViewModel.cs" Link="ViewModels/Dialogs/DialogPinnedMessagesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Dialogs\DialogUnreadMessagesViewModel.cs" Link="ViewModels/Dialogs/DialogUnreadMessagesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Dialogs\MessageCollection.cs" Link="ViewModels/Dialogs/MessageCollection.cs" />
+    <Compile Include="..\Telegram\ViewModels\Dialogs\MessageComposerHeader.cs" Link="ViewModels/Dialogs/MessageComposerHeader.cs" />
+    <Compile Include="..\Telegram\ViewModels\Drawers\AnimationDrawerViewModel.cs" Link="ViewModels/Drawers/AnimationDrawerViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Drawers\EffectDrawerViewModel.cs" Link="ViewModels/Drawers/EffectDrawerViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Drawers\EmojiDrawerViewModel.cs" Link="ViewModels/Drawers/EmojiDrawerViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Drawers\StickerDrawerViewModel.cs" Link="ViewModels/Drawers/StickerDrawerViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Folders\AddFolderViewModel.cs" Link="ViewModels/Folders/AddFolderViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Folders\FolderViewModel.cs" Link="ViewModels/Folders/FolderViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Folders\FoldersViewModel.cs" Link="ViewModels/Folders/FoldersViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Folders\RemoveFolderViewModel.cs" Link="ViewModels/Folders/RemoveFolderViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Folders\ShareFolderViewModel.cs" Link="ViewModels/Folders/ShareFolderViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryAnimation.cs" Link="ViewModels/Gallery/GalleryAnimation.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryChatPhoto.cs" Link="ViewModels/Gallery/GalleryChatPhoto.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryMedia.cs" Link="ViewModels/Gallery/GalleryMedia.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryMessage.cs" Link="ViewModels/Gallery/GalleryMessage.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryPhoto.cs" Link="ViewModels/Gallery/GalleryPhoto.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryVideo.cs" Link="ViewModels/Gallery/GalleryVideo.cs" />
+    <Compile Include="..\Telegram\ViewModels\Gallery\GalleryViewModelBase.cs" Link="ViewModels/Gallery/GalleryViewModelBase.cs" />
+    <Compile Include="..\Telegram\ViewModels\LogOutViewModel.cs" Link="ViewModels/LogOutViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\MainViewModel.cs" Link="ViewModels/MainViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\MessageDelegate.cs" Link="ViewModels/MessageDelegate.cs" />
+    <Compile Include="..\Telegram\ViewModels\MessageViewModel.cs" Link="ViewModels/MessageViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\MediaTabsViewModelBase.cs" Link="ViewModels/Profile/MediaTabsViewModelBase.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileBotsTabViewModel.cs" Link="ViewModels/Profile/ProfileBotsTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileChannelsTabViewModel.cs" Link="ViewModels/Profile/ProfileChannelsTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileGiftsTabViewModel.cs" Link="ViewModels/Profile/ProfileGiftsTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileGroupsTabViewModel.cs" Link="ViewModels/Profile/ProfileGroupsTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileMembersTabViewModel.cs" Link="ViewModels/Profile/ProfileMembersTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileSavedChatsTabViewModel.cs" Link="ViewModels/Profile/ProfileSavedChatsTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileStoriesTabViewModel.cs" Link="ViewModels/Profile/ProfileStoriesTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileTabsViewModel.cs" Link="ViewModels/Profile/ProfileTabsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Profile\ProfileTopicsTabViewModel.cs" Link="ViewModels/Profile/ProfileTopicsTabViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\ProfileViewModel.cs" Link="ViewModels/ProfileViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\SearchChannelsViewModel.cs" Link="ViewModels/SearchChannelsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\SearchChatsViewModel.cs" Link="ViewModels/SearchChatsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\SearchPostsViewModel.cs" Link="ViewModels/SearchPostsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\SearchWebAppsViewModel.cs" Link="ViewModels/SearchWebAppsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyAllowCallsViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyAllowCallsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyAllowChatInvitesViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyAllowChatInvitesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyAllowFindingByPhoneNumberViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyAllowFindingByPhoneNumberViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyAllowP2PCallsViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyAllowP2PCallsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyAutosaveGiftsViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyAutosaveGiftsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyNewChatViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyNewChatViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyPhoneViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyPhoneViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowBioViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowBioViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowBirthdateViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowBirthdateViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowForwardedViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowForwardedViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowPhoneViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowPhoneViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowPhotoViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowPhotoViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowProfileAudioViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowProfileAudioViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyShowStatusViewModel.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyShowStatusViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\Privacy\SettingsPrivacyViewModelBase.cs" Link="ViewModels/Settings/Privacy/SettingsPrivacyViewModelBase.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsAdvancedViewModel.cs" Link="ViewModels/Settings/SettingsAdvancedViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsAppearanceViewModel.cs" Link="ViewModels/Settings/SettingsAppearanceViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsAutoDeleteViewModel.cs" Link="ViewModels/Settings/SettingsAutoDeleteViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsBackgroundsViewModel.cs" Link="ViewModels/Settings/SettingsBackgroundsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsBlockedChatsViewModel.cs" Link="ViewModels/Settings/SettingsBlockedChatsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsDataAndStorageViewModel.cs" Link="ViewModels/Settings/SettingsDataAndStorageViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsDataAutoViewModel.cs" Link="ViewModels/Settings/SettingsDataAutoViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsLanguageViewModel.cs" Link="ViewModels/Settings/SettingsLanguageViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsNetworkViewModel.cs" Link="ViewModels/Settings/SettingsNetworkViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsNotificationsExceptionsViewModel.cs" Link="ViewModels/Settings/SettingsNotificationsExceptionsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsNotificationsViewModel.cs" Link="ViewModels/Settings/SettingsNotificationsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsPasscodeViewModel.cs" Link="ViewModels/Settings/SettingsPasscodeViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsPasswordViewModel.cs" Link="ViewModels/Settings/SettingsPasswordViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsPowerSavingViewModel.cs" Link="ViewModels/Settings/SettingsPowerSavingViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsPrivacyAndSecurityViewModel.cs" Link="ViewModels/Settings/SettingsPrivacyAndSecurityViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsProfileViewModel.cs" Link="ViewModels/Settings/SettingsProfileViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsProxyViewModel.cs" Link="ViewModels/Settings/SettingsProxyViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsSessionsViewModel.cs" Link="ViewModels/Settings/SettingsSessionsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsStorageViewModel.cs" Link="ViewModels/Settings/SettingsStorageViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsThemeViewModel.cs" Link="ViewModels/Settings/SettingsThemeViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsThemesViewModel.cs" Link="ViewModels/Settings/SettingsThemesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsUsernameViewModel.cs" Link="ViewModels/Settings/SettingsUsernameViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Settings\SettingsWebSessionsViewModel.cs" Link="ViewModels/Settings/SettingsWebSessionsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\SettingsViewModel.cs" Link="ViewModels/SettingsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\StandaloneGalleryViewModel.cs" Link="ViewModels/StandaloneGalleryViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\StickersViewModel.cs" Link="ViewModels/StickersViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Stories\ActiveStoriesViewModel.cs" Link="ViewModels/Stories/ActiveStoriesViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Stories\StoryListViewModel.cs" Link="ViewModels/Stories/StoryListViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Stories\StoryViewModel.cs" Link="ViewModels/Stories/StoryViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Supergroups\SupergroupAdministratorsViewModel.cs" Link="ViewModels/Supergroups/SupergroupAdministratorsViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Supergroups\SupergroupEditViewModelBase.cs" Link="ViewModels/Supergroups/SupergroupEditViewModelBase.cs" />
+    <Compile Include="..\Telegram\ViewModels\Supergroups\SupergroupMembersViewModel.cs" Link="ViewModels/Supergroups/SupergroupMembersViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Supergroups\SupergroupMembersViewModelBase.cs" Link="ViewModels/Supergroups/SupergroupMembersViewModelBase.cs" />
+    <Compile Include="..\Telegram\ViewModels\TopicListViewModel.cs" Link="ViewModels/TopicListViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Users\UserEditViewModel.cs" Link="ViewModels/Users/UserEditViewModel.cs" />
+    <Compile Include="..\Telegram\ViewModels\Users\UserPhotosViewModel.cs" Link="ViewModels/Users/UserPhotosViewModel.cs" />
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationCodePage.xaml.cs" Link="Views/Authorization/AuthorizationCodePage.xaml.cs">
+      <DependentUpon>AuthorizationCodePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationEmailAddressPage.xaml.cs" Link="Views/Authorization/AuthorizationEmailAddressPage.xaml.cs">
+      <DependentUpon>AuthorizationEmailAddressPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationEmailCodePage.xaml.cs" Link="Views/Authorization/AuthorizationEmailCodePage.xaml.cs">
+      <DependentUpon>AuthorizationEmailCodePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationPage.xaml.cs" Link="Views/Authorization/AuthorizationPage.xaml.cs">
+      <DependentUpon>AuthorizationPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationPasswordPage.xaml.cs" Link="Views/Authorization/AuthorizationPasswordPage.xaml.cs">
+      <DependentUpon>AuthorizationPasswordPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationRecoveryPage.xaml.cs" Link="Views/Authorization/AuthorizationRecoveryPage.xaml.cs">
+      <DependentUpon>AuthorizationRecoveryPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Authorization\AuthorizationRegistrationPage.xaml.cs" Link="Views/Authorization/AuthorizationRegistrationPage.xaml.cs">
+      <DependentUpon>AuthorizationRegistrationPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\BlankPage.xaml.cs" Link="Views/BlankPage.xaml.cs">
+      <DependentUpon>BlankPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Calls\VoipWindow.xaml.cs" Link="Views/Calls/VoipWindow.xaml.cs">
+      <DependentUpon>VoipWindow.xaml</DependentUpon>
+    </Compile>
+    <!-- u-group-call-ui-port Phase 0 -->
+    <Compile Include="..\Telegram\Views\Calls\GroupCallWindow.xaml.cs" Link="Views/Calls/GroupCallWindow.xaml.cs">
+      <DependentUpon>GroupCallWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Calls\LiveStreamWindow.xaml.cs" Link="Views/Calls/LiveStreamWindow.xaml.cs">
+      <DependentUpon>LiveStreamWindow.xaml</DependentUpon>
+    </Compile>
+    <!-- u-group-call-ui-port Phase 1 -->
+    <Compile Include="..\Telegram\Views\Calls\Popups\RecordVideoChatPopup.xaml.cs" Link="Views/Calls/Popups/RecordVideoChatPopup.xaml.cs">
+      <DependentUpon>RecordVideoChatPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Calls\Popups\ScheduleVideoChatPopup.xaml.cs" Link="Views/Calls/Popups/ScheduleVideoChatPopup.xaml.cs">
+      <DependentUpon>ScheduleVideoChatPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Calls\Popups\VideoChatAliasesPopup.xaml.cs" Link="Views/Calls/Popups/VideoChatAliasesPopup.xaml.cs">
+      <DependentUpon>VideoChatAliasesPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Calls\Popups\VideoChatStreamsPopup.xaml.cs" Link="Views/Calls/Popups/VideoChatStreamsPopup.xaml.cs">
+      <DependentUpon>VideoChatStreamsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\ChatPage.xaml.cs" Link="Views/ChatPage.xaml.cs">
+      <DependentUpon>ChatPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\ChatScheduledPage.xaml.cs" Link="Views/ChatScheduledPage.xaml.cs">
+      <DependentUpon>ChatScheduledPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\ChatView.Bubbles.xaml.cs" Link="Views/ChatView.Bubbles.xaml.cs">
+      <DependentUpon>ChatView.Bubbles.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\ChatView.Drawers.cs" Link="Views/ChatView.Drawers.cs" />
+    <Compile Include="..\Telegram\Views\ChatView.xaml.cs" Link="Views/ChatView.xaml.cs">
+      <DependentUpon>ChatView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Create\NewChannelPopup.xaml.cs" Link="Views/Create/NewChannelPopup.xaml.cs">
+      <DependentUpon>NewChannelPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Create\NewContactPopup.xaml.cs" Link="Views/Create/NewContactPopup.xaml.cs">
+      <DependentUpon>NewContactPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Create\NewGroupPopup.xaml.cs" Link="Views/Create/NewGroupPopup.xaml.cs">
+      <DependentUpon>NewGroupPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\DiagnosticsPage.xaml.cs" Link="Views/DiagnosticsPage.xaml.cs">
+      <DependentUpon>DiagnosticsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Folders\FolderPage.xaml.cs" Link="Views/Folders/FolderPage.xaml.cs">
+      <DependentUpon>FolderPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Folders\FoldersPage.xaml.cs" Link="Views/Folders/FoldersPage.xaml.cs">
+      <DependentUpon>FoldersPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Folders\Popups\AddFolderPopup.xaml.cs" Link="Views/Folders/Popups/AddFolderPopup.xaml.cs">
+      <DependentUpon>AddFolderPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Folders\Popups\RemoveFolderPopup.xaml.cs" Link="Views/Folders/Popups/RemoveFolderPopup.xaml.cs">
+      <DependentUpon>RemoveFolderPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Folders\Popups\ShareFolderPopup.xaml.cs" Link="Views/Folders/Popups/ShareFolderPopup.xaml.cs">
+      <DependentUpon>ShareFolderPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\HostedPage.cs" Link="Views/HostedPage.cs" />
+    <Compile Include="..\Telegram\Views\MainPage.xaml.cs" Link="Views/MainPage.xaml.cs">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Monetization\Popups\AboutAdsPopup.xaml.cs" Link="Views/Monetization/Popups/AboutAdsPopup.xaml.cs">
+      <DependentUpon>AboutAdsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Host\PasscodeWindow.xaml.cs" Link="Views/Host/PasscodeWindow.xaml.cs">
+      <DependentUpon>PasscodeWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\BackgroundPopup.xaml.cs" Link="Views/Popups/BackgroundPopup.xaml.cs">
+      <DependentUpon>BackgroundPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\DownloadsPopup.xaml.cs" Link="Views/Popups/DownloadsPopup.xaml.cs">
+      <DependentUpon>DownloadsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\CalendarPopup.xaml.cs" Link="Views/Popups/CalendarPopup.xaml.cs">
+      <DependentUpon>CalendarPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChatInviteFallbackPopup.xaml.cs" Link="Views/Popups/ChatInviteFallbackPopup.xaml.cs">
+      <DependentUpon>ChatInviteFallbackPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChatJoinRequestsPopup.xaml.cs" Link="Views/Popups/ChatJoinRequestsPopup.xaml.cs">
+      <DependentUpon>ChatJoinRequestsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChatMutePopup.xaml.cs" Link="Views/Popups/ChatMutePopup.xaml.cs">
+      <DependentUpon>ChatMutePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChatNotificationsPopup.xaml.cs" Link="Views/Popups/ChatNotificationsPopup.xaml.cs">
+      <DependentUpon>ChatNotificationsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChatTtlPopup.xaml.cs" Link="Views/Popups/ChatTtlPopup.xaml.cs">
+      <DependentUpon>ChatTtlPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseChatsOptions.cs" Link="Views/Popups/ChooseChatsOptions.cs" />
+    <Compile Include="..\Telegram\Views\Popups\ChooseChatsPopup.xaml.cs" Link="Views/Popups/ChooseChatsPopup.xaml.cs">
+      <DependentUpon>ChooseChatsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseColorPopup.xaml.cs" Link="Views/Popups/ChooseColorPopup.xaml.cs">
+      <DependentUpon>ChooseColorPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseCountriesPopup.xaml.cs" Link="Views/Popups/ChooseCountriesPopup.xaml.cs">
+      <DependentUpon>ChooseCountriesPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseOptionPopup.xaml.cs" Link="Views/Popups/ChooseOptionPopup.xaml.cs">
+      <DependentUpon>ChooseOptionPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseSoundPopup.xaml.cs" Link="Views/Popups/ChooseSoundPopup.xaml.cs">
+      <DependentUpon>ChooseSoundPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseStatusDurationPopup.xaml.cs" Link="Views/Popups/ChooseStatusDurationPopup.xaml.cs">
+      <DependentUpon>ChooseStatusDurationPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ChooseStoriesPopup.xaml.cs" Link="Views/Popups/ChooseStoriesPopup.xaml.cs">
+      <DependentUpon>ChooseStoriesPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\CocoonAboutPopup.xaml.cs" Link="Views/Popups/CocoonAboutPopup.xaml.cs">
+      <DependentUpon>CocoonAboutPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ContactsPopup.xaml.cs" Link="Views/Popups/ContactsPopup.xaml.cs">
+      <DependentUpon>ContactsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\CreatePollPopup.xaml.cs" Link="Views/Popups/CreatePollPopup.xaml.cs">
+      <DependentUpon>CreatePollPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\DeleteChatPopup.xaml.cs" Link="Views/Popups/DeleteChatPopup.xaml.cs">
+      <DependentUpon>DeleteChatPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\DoNotTranslatePopup.xaml.cs" Link="Views/Popups/DoNotTranslatePopup.xaml.cs">
+      <DependentUpon>DoNotTranslatePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\InputPopup.xaml.cs" Link="Views/Popups/InputPopup.xaml.cs">
+      <DependentUpon>InputPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\JoinChatPopup.xaml.cs" Link="Views/Popups/JoinChatPopup.xaml.cs">
+      <DependentUpon>JoinChatPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\LogOutPopup.xaml.cs" Link="Views/Popups/LogOutPopup.xaml.cs">
+      <DependentUpon>LogOutPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\LoginUrlInfoPopup.xaml.cs" Link="Views/Popups/LoginUrlInfoPopup.xaml.cs">
+      <DependentUpon>LoginUrlInfoPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ProxyPopup.xaml.cs" Link="Views/Popups/ProxyPopup.xaml.cs">
+      <DependentUpon>ProxyPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ReportAdsPopup.xaml.cs" Link="Views/Popups/ReportAdsPopup.xaml.cs">
+      <DependentUpon>ReportAdsPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ReportChatPopup.xaml.cs" Link="Views/Popups/ReportChatPopup.xaml.cs">
+      <DependentUpon>ReportChatPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\StickersPopup.xaml.cs" Link="Views/Popups/StickersPopup.xaml.cs">
+      <DependentUpon>StickersPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\TranslatePopup.xaml.cs" Link="Views/Popups/TranslatePopup.xaml.cs">
+      <DependentUpon>TranslatePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\TranslateToPopup.xaml.cs" Link="Views/Popups/TranslateToPopup.xaml.cs">
+      <DependentUpon>TranslateToPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Popups\ZoomableMediaPopup.xaml.cs" Link="Views/Popups/ZoomableMediaPopup.xaml.cs">
+      <DependentUpon>ZoomableMediaPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileAnimationsTabPage.xaml.cs" Link="Views/Profile/ProfileAnimationsTabPage.xaml.cs">
+      <DependentUpon>ProfileAnimationsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileBotsTabPage.xaml.cs" Link="Views/Profile/ProfileBotsTabPage.xaml.cs">
+      <DependentUpon>ProfileBotsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileChannelsTabPage.xaml.cs" Link="Views/Profile/ProfileChannelsTabPage.xaml.cs">
+      <DependentUpon>ProfileChannelsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileFilesTabPage.xaml.cs" Link="Views/Profile/ProfileFilesTabPage.xaml.cs">
+      <DependentUpon>ProfileFilesTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileGiftsTabPage.xaml.cs" Link="Views/Profile/ProfileGiftsTabPage.xaml.cs">
+      <DependentUpon>ProfileGiftsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileGroupsTabPage.xaml.cs" Link="Views/Profile/ProfileGroupsTabPage.xaml.cs">
+      <DependentUpon>ProfileGroupsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileLinksTabPage.xaml.cs" Link="Views/Profile/ProfileLinksTabPage.xaml.cs">
+      <DependentUpon>ProfileLinksTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileMediaTabPage.xaml.cs" Link="Views/Profile/ProfileMediaTabPage.xaml.cs">
+      <DependentUpon>ProfileMediaTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileMembersTabPage.xaml.cs" Link="Views/Profile/ProfileMembersTabPage.xaml.cs">
+      <DependentUpon>ProfileMembersTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileMusicTabPage.xaml.cs" Link="Views/Profile/ProfileMusicTabPage.xaml.cs">
+      <DependentUpon>ProfileMusicTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfilePollsTabPage.xaml.cs" Link="Views/Profile/ProfilePollsTabPage.xaml.cs">
+      <DependentUpon>ProfilePollsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileSavedChatsTabPage.xaml.cs" Link="Views/Profile/ProfileSavedChatsTabPage.xaml.cs">
+      <DependentUpon>ProfileSavedChatsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileSavedMessagesTabPage.xaml.cs" Link="Views/Profile/ProfileSavedMessagesTabPage.xaml.cs">
+      <DependentUpon>ProfileSavedMessagesTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileStoriesTabPage.xaml.cs" Link="Views/Profile/ProfileStoriesTabPage.xaml.cs">
+      <DependentUpon>ProfileStoriesTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileTabPage.cs" Link="Views/Profile/ProfileTabPage.cs" />
+    <Compile Include="..\Telegram\Views\Profile\ProfileTopicsTabPage.xaml.cs" Link="Views/Profile/ProfileTopicsTabPage.xaml.cs">
+      <DependentUpon>ProfileTopicsTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Profile\ProfileVoiceTabPage.xaml.cs" Link="Views/Profile/ProfileVoiceTabPage.xaml.cs">
+      <DependentUpon>ProfileVoiceTabPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\ProfilePage.xaml.cs" Link="Views/ProfilePage.xaml.cs">
+      <DependentUpon>ProfilePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\LoginEmail\SettingsLoginEmailAddressPopup.xaml.cs" Link="Views/Settings/LoginEmail/SettingsLoginEmailAddressPopup.xaml.cs">
+      <DependentUpon>SettingsLoginEmailAddressPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\LoginEmail\SettingsLoginEmailCodePopup.xaml.cs" Link="Views/Settings/LoginEmail/SettingsLoginEmailCodePopup.xaml.cs">
+      <DependentUpon>SettingsLoginEmailCodePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordConfirmPopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordConfirmPopup.xaml.cs">
+      <DependentUpon>SettingsPasswordConfirmPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordCreatePopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordCreatePopup.xaml.cs">
+      <DependentUpon>SettingsPasswordCreatePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordDonePopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordDonePopup.xaml.cs">
+      <DependentUpon>SettingsPasswordDonePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordEmailAddressPopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordEmailAddressPopup.xaml.cs">
+      <DependentUpon>SettingsPasswordEmailAddressPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordEmailCodePopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordEmailCodePopup.xaml.cs">
+      <DependentUpon>SettingsPasswordEmailCodePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordHintPopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordHintPopup.xaml.cs">
+      <DependentUpon>SettingsPasswordHintPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Password\SettingsPasswordIntroPopup.xaml.cs" Link="Views/Settings/Password/SettingsPasswordIntroPopup.xaml.cs">
+      <DependentUpon>SettingsPasswordIntroPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Phone\ChangePhoneNumberPopup.xaml.cs" Link="Views/Settings/Phone/ChangePhoneNumberPopup.xaml.cs">
+      <DependentUpon>ChangePhoneNumberPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsArchivePopup.xaml.cs" Link="Views/Settings/Popups/SettingsArchivePopup.xaml.cs">
+      <DependentUpon>SettingsArchivePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsBirthdatePopup.xaml.cs" Link="Views/Settings/Popups/SettingsBirthdatePopup.xaml.cs">
+      <DependentUpon>SettingsBirthdatePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsDataAutoView.xaml.cs" Link="Views/Settings/Popups/SettingsDataAutoView.xaml.cs">
+      <DependentUpon>SettingsDataAutoView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsPasscodeConfirmPopup.xaml.cs" Link="Views/Settings/Popups/SettingsPasscodeConfirmPopup.xaml.cs">
+      <DependentUpon>SettingsPasscodeConfirmPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsPasscodeInputPopup.xaml.cs" Link="Views/Settings/Popups/SettingsPasscodeInputPopup.xaml.cs">
+      <DependentUpon>SettingsPasscodeInputPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsPasscodePopup.xaml.cs" Link="Views/Settings/Popups/SettingsPasscodePopup.xaml.cs">
+      <DependentUpon>SettingsPasscodePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsSessionPopup.xaml.cs" Link="Views/Settings/Popups/SettingsSessionPopup.xaml.cs">
+      <DependentUpon>SettingsSessionPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Popups\SettingsUsernamePopup.xaml.cs" Link="Views/Settings/Popups/SettingsUsernamePopup.xaml.cs">
+      <DependentUpon>SettingsUsernamePopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowCallsPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyAllowCallsPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyAllowCallsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowChatInvitesPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyAllowChatInvitesPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyAllowChatInvitesPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowP2PCallsPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyAllowP2PCallsPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyAllowP2PCallsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyAllowPrivateVoiceAndVideoNoteMessagesPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyAutosaveGiftsPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyAutosaveGiftsPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyAutosaveGiftsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyNewChatPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyNewChatPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyNewChatPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyPhonePage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyPhonePage.xaml.cs">
+      <DependentUpon>SettingsPrivacyPhonePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowBioPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyShowBioPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyShowBioPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowBirthdatePage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyShowBirthdatePage.xaml.cs">
+      <DependentUpon>SettingsPrivacyShowBirthdatePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowForwardedPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyShowForwardedPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyShowForwardedPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowPhotoPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyShowPhotoPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyShowPhotoPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowProfileAudioPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyShowProfileAudioPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyShowProfileAudioPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\Privacy\SettingsPrivacyShowStatusPage.xaml.cs" Link="Views/Settings/Privacy/SettingsPrivacyShowStatusPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyShowStatusPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsAdvancedPage.xaml.cs" Link="Views/Settings/SettingsAdvancedPage.xaml.cs">
+      <DependentUpon>SettingsAdvancedPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsAppearancePage.xaml.cs" Link="Views/Settings/SettingsAppearancePage.xaml.cs">
+      <DependentUpon>SettingsAppearancePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsAutoDeletePage.xaml.cs" Link="Views/Settings/SettingsAutoDeletePage.xaml.cs">
+      <DependentUpon>SettingsAutoDeletePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsBackgroundsPage.xaml.cs" Link="Views/Settings/SettingsBackgroundsPage.xaml.cs">
+      <DependentUpon>SettingsBackgroundsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsBlockedChatsPage.xaml.cs" Link="Views/Settings/SettingsBlockedChatsPage.xaml.cs">
+      <DependentUpon>SettingsBlockedChatsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsDataAndStoragePage.xaml.cs" Link="Views/Settings/SettingsDataAndStoragePage.xaml.cs">
+      <DependentUpon>SettingsDataAndStoragePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsLanguagePage.xaml.cs" Link="Views/Settings/SettingsLanguagePage.xaml.cs">
+      <DependentUpon>SettingsLanguagePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsNetworkPage.xaml.cs" Link="Views/Settings/SettingsNetworkPage.xaml.cs">
+      <DependentUpon>SettingsNetworkPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsNotificationsExceptionsPage.xaml.cs" Link="Views/Settings/SettingsNotificationsExceptionsPage.xaml.cs">
+      <DependentUpon>SettingsNotificationsExceptionsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsNotificationsPage.xaml.cs" Link="Views/Settings/SettingsNotificationsPage.xaml.cs">
+      <DependentUpon>SettingsNotificationsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsPasscodePage.xaml.cs" Link="Views/Settings/SettingsPasscodePage.xaml.cs">
+      <DependentUpon>SettingsPasscodePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsPasswordPage.xaml.cs" Link="Views/Settings/SettingsPasswordPage.xaml.cs">
+      <DependentUpon>SettingsPasswordPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsPowerSavingPage.xaml.cs" Link="Views/Settings/SettingsPowerSavingPage.xaml.cs">
+      <DependentUpon>SettingsPowerSavingPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsPrivacyAndSecurityPage.xaml.cs" Link="Views/Settings/SettingsPrivacyAndSecurityPage.xaml.cs">
+      <DependentUpon>SettingsPrivacyAndSecurityPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsProfilePage.xaml.cs" Link="Views/Settings/SettingsProfilePage.xaml.cs">
+      <DependentUpon>SettingsProfilePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsProxyPage.xaml.cs" Link="Views/Settings/SettingsProxyPage.xaml.cs">
+      <DependentUpon>SettingsProxyPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsProxyPopup.xaml.cs" Link="Views/Settings/SettingsProxyPopup.xaml.cs">
+      <DependentUpon>SettingsProxyPopup.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsSessionsPage.xaml.cs" Link="Views/Settings/SettingsSessionsPage.xaml.cs">
+      <DependentUpon>SettingsSessionsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsStorageOptimizationPage.xaml.cs" Link="Views/Settings/SettingsStorageOptimizationPage.xaml.cs">
+      <DependentUpon>SettingsStorageOptimizationPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsStoragePage.xaml.cs" Link="Views/Settings/SettingsStoragePage.xaml.cs">
+      <DependentUpon>SettingsStoragePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsThemePage.xaml.cs" Link="Views/Settings/SettingsThemePage.xaml.cs">
+      <DependentUpon>SettingsThemePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsThemesPage.xaml.cs" Link="Views/Settings/SettingsThemesPage.xaml.cs">
+      <DependentUpon>SettingsThemesPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Settings\SettingsWebSessionsPage.xaml.cs" Link="Views/Settings/SettingsWebSessionsPage.xaml.cs">
+      <DependentUpon>SettingsWebSessionsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\SettingsPage.xaml.cs" Link="Views/SettingsPage.xaml.cs">
+      <DependentUpon>SettingsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Supergroups\SupergroupAdministratorsPage.xaml.cs" Link="Views/Supergroups/SupergroupAdministratorsPage.xaml.cs">
+      <DependentUpon>SupergroupAdministratorsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Supergroups\SupergroupMembersPage.xaml.cs" Link="Views/Supergroups/SupergroupMembersPage.xaml.cs">
+      <DependentUpon>SupergroupMembersPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\Telegram\Views\Users\UserEditPage.xaml.cs" Link="Views/Users/UserEditPage.xaml.cs">
+      <DependentUpon>UserEditPage.xaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
+</Project>

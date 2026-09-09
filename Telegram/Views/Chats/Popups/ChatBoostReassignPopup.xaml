@@ -1,0 +1,51 @@
+﻿<controls:ContentPopup x:Class="Telegram.Views.Chats.Popups.ChatBoostReassignPopup"
+                       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                       xmlns:local="using:Telegram.Views.Popups"
+                       xmlns:controls="using:Telegram.Controls"
+                       xmlns:cells="using:Telegram.Controls.Cells"
+                       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                       mc:Ignorable="d"
+                       Disconnected="OnUnloaded"
+                       Padding="0,24,0,0"
+                       IsDismissButtonVisible="True">
+
+    <Grid>
+        <ListView x:Name="ScrollingHost"
+                  SelectionMode="Multiple"
+                  SelectionChanged="OnSelectionChanged"
+                  ChoosingItemContainer="OnChoosingItemContainer"
+                  ContainerContentChanging="OnContainerContentChanging"
+                  ItemContainerStyle="{StaticResource DefaultListViewItemStyle}"
+                  Padding="12,0,12,74">
+            <ListView.Header>
+                <TextBlock x:Name="MessageLabel"
+                           Margin="12,0,12,8"
+                           Style="{StaticResource BodyTextBlockStyle}" />
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <cells:ProfileCell />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
+        </ListView>
+
+        <controls:ScrollViewerScrim Background="{ThemeResource ContentDialogTopOverlaySolid}"
+                                    ScrollingHost="{x:Bind ScrollingHost}"
+                                    BottomInset="56" />
+
+        <Button x:Name="PurchaseCommand"
+                Click="Purchase_Click"
+                Style="{StaticResource PremiumButtonStyle}"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Stretch"
+                Margin="24,0,24,24">
+            <controls:AnimatedTextBlock x:Name="PurchaseText"
+                                        Foreground="#FFFFFF" />
+        </Button>
+    </Grid>
+</controls:ContentPopup>

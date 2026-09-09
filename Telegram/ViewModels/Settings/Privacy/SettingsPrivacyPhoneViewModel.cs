@@ -1,0 +1,114 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.ComponentModel;
+using System.Threading.Tasks;
+using Telegram.Converters;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Settings.Privacy
+{
+    public partial class SettingsPrivacyPhoneViewModel : MultiViewModelBase
+    {
+        private readonly SettingsPrivacyShowPhoneViewModel _showPhone;
+        private readonly SettingsPrivacyAllowFindingByPhoneNumberViewModel _allowFindingByPhoneNumber;
+
+        public SettingsPrivacyPhoneViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, SettingsPrivacyShowPhoneViewModel showPhone, SettingsPrivacyAllowFindingByPhoneNumberViewModel allowFindingByPhoneNumber)
+            : base(clientService, settingsService, aggregator)
+        {
+            _showPhone = showPhone;
+            _allowFindingByPhoneNumber = allowFindingByPhoneNumber;
+
+            _showPhone.PropertyChanged += OnPropertyChanged;
+            _allowFindingByPhoneNumber.PropertyChanged += OnPropertyChanged;
+
+            Children.Add(showPhone);
+            Children.Add(allowFindingByPhoneNumber);
+        }
+
+        private void OnPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(HasChanged))
+            {
+                RaisePropertyChanged(nameof(HasChanged));
+            }
+        }
+
+        public SettingsPrivacyShowPhoneViewModel ShowPhone => _showPhone;
+        public SettingsPrivacyAllowFindingByPhoneNumberViewModel AllowFindingByPhoneNumber => _allowFindingByPhoneNumber;
+
+        private string _phoneNumber;
+        public string PhoneNumber
+        {
+            get => _phoneNumber;
+            set => Set(ref _phoneNumber, value);
+        }
+
+        protected override Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            if (ClientService.TryGetUser(ClientService.Options.MyId, out User user))
+            {
+                PhoneNumber = MeUrlPrefixConverter.Convert(ClientService, $"+{user.PhoneNumber}");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public override async void NavigatingFrom(NavigatingEventArgs args)
+        {
+            if (!_completed && HasChanged)
+            {
+                args.Cancel = true;
+
+                var confirm = await ShowPopupAsync(Strings.PrivacySettingsChangedAlert, Strings.UnsavedChanges, Strings.ApplyTheme, Strings.PassportDiscard);
+                if (confirm == ContentDialogResult.Primary)
+                {
+                    ContinueImpl(args);
+                }
+                else if (confirm == ContentDialogResult.Secondary)
+                {
+                    _completed = true;
+                    NavigationService.GoBack(args);
+                }
+            }
+        }
+
+        protected bool _completed;
+        public virtual bool HasChanged => ShowPhone.HasChanged || AllowFindingByPhoneNumber.HasChanged;
+
+        public void Continue()
+        {
+            ContinueImpl(null);
+        }
+
+        private async void ContinueImpl(NavigatingEventArgs args)
+        {
+            var response1 = await ShowPhone.SendAsync();
+            if (response1 is Error error1)
+            {
+                ShowToast(error1);
+                return;
+            }
+
+            var response2 = await AllowFindingByPhoneNumber.SendAsync();
+            if (response1 is Ok && response2 is Ok)
+            {
+                _completed = true;
+                NavigationService.GoBack(args);
+            }
+            else if (response2 is Error error2)
+            {
+                ShowToast(error2);
+            }
+        }
+    }
+}

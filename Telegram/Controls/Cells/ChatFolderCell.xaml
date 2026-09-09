@@ -1,0 +1,87 @@
+﻿<UserControl x:Class="Telegram.Controls.Cells.ChatFolderCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Telegram.Controls"
+             xmlns:cells="using:Telegram.Controls.Cells"
+             xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:not_win="http://uno.ui/not_win"
+             mc:Ignorable="d not_win"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <Grid Width="64"
+          Height="58"
+          CornerRadius="4">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="CommonStates"
+                              CurrentStateChanged="OnCurrentStateChanged">
+                <VisualState x:Name="Normal" />
+                <VisualState x:Name="PointerOver" />
+                <VisualState x:Name="Pressed" />
+                <VisualState x:Name="Selected" />
+                <VisualState x:Name="PointerOverSelected" />
+                <VisualState x:Name="PressedSelected" />
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="Icon"
+              Margin="0,10,0,0"
+              VerticalAlignment="Top">
+            <FontIcon x:Name="UnselectedIcon"
+                      Opacity="0.6"
+                      Glyph="{x:Bind ViewModel.IconGlyph, Mode=OneWay}"
+                      FontFamily="{StaticResource SymbolThemeFontFamily}"
+                      HorizontalAlignment="Center"
+                      FontSize="24" />
+            <FontIcon x:Name="SelectedIcon"
+                      Glyph="{x:Bind ViewModel.FilledIconGlyph, Mode=OneWay}"
+                      FontFamily="{StaticResource SymbolThemeFontFamily}"
+                      Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                      HorizontalAlignment="Center"
+                      FontSize="24" />
+            <controls:BadgeControl Text="{x:Bind ViewModel.UnreadCount, Mode=OneWay}"
+                                   IsUnmuted="{x:Bind ViewModel.IsUnmuted, Mode=OneWay}"
+                                   Visibility="{x:Bind ViewModel.ShowCount, Mode=OneWay}"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Top"
+                                   Margin="0,-4,8,0" />
+        </Grid>
+        <Border x:Name="TitlePresenter"
+                Opacity="0.8"
+                Margin="0,0,0,6"
+                Grid.Row="1">
+            <win:RichTextBlock x:Name="Title"
+                               cells:ChatFolderCell.Title="{x:Bind ViewModel.Name, Mode=OneWay}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               IsTextSelectionEnabled="False"
+                               FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                               FontSize="10">
+                <Paragraph />
+            </win:RichTextBlock>
+            <!--
+                RichTextBlock is [NotImplemented] for __SKIA__ in Uno (checked in Uno.UI.dll, not in
+                the docs): it lays out as an empty box, so the folder names simply were not there.
+                A TextBlock with the same Inlines renders, and ChatFolderCell.OnTitleChanged fills
+                either of the two.
+            -->
+            <not_win:TextBlock x:Name="Title"
+                               cells:ChatFolderCell.Title="{x:Bind ViewModel.Name, Mode=OneWay}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               IsTextSelectionEnabled="False"
+                               FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                               FontSize="10" />
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,555 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+using Telegram.Views.Supergroups.Popups;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels.Supergroups
+{
+    public partial record SelectionValue(int Value, string Text, bool IsCustom = false)
+    {
+        public override string ToString()
+        {
+            return Text;
+        }
+    }
+
+    public partial class SupergroupEditRestrictedViewModel : ViewModelBase, IDelegable<IMemberPopupDelegate>
+    {
+        public IMemberPopupDelegate Delegate { get; set; }
+
+        public SupergroupEditRestrictedViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+            var time = DateTime.Now.ToUnixTimeSeconds();
+
+            Duration = new()
+            {
+                new SelectionValue(time + 60 * 60, Locale.Declension(Strings.R.Hours, 1)),
+                new SelectionValue(time + 60 * 60 * 24, Locale.Declension(Strings.R.Days, 1)),
+                new SelectionValue(time + 60 * 60 * 24 * 7, Locale.Declension(Strings.R.Weeks, 1)),
+                new SelectionValue(time + 60 * 60 * 24 * 30, Locale.Declension(Strings.R.Months, 1)),
+                new SelectionValue(int.MaxValue, Strings.UserRestrictionsUntilForever),
+                new SelectionValue(int.MinValue, Strings.LimitByPeriodCustom)
+            };
+        }
+
+        private Chat _chat;
+        public Chat Chat
+        {
+            get => _chat;
+            set => Set(ref _chat, value);
+        }
+
+        private long _userId;
+
+        private ChatMember _member;
+        public ChatMember Member
+        {
+            get => _member;
+            set => Set(ref _member, value);
+        }
+
+        public ObservableCollection<SelectionValue> Duration { get; }
+
+        private SelectionValue _selectedDuration;
+        public SelectionValue SelectedDuration
+        {
+            get => _selectedDuration;
+            set => Set(ref _selectedDuration, value);
+        }
+
+        protected override async Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            // Currently, we only support editing admin rights for users
+            if (parameter is not SupergroupEditMemberArgs args || args.MemberId is not MessageSenderUser user)
+            {
+                return;
+            }
+
+            _userId = user.UserId;
+            Chat = ClientService.GetChat(args.ChatId);
+
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var response = await ClientService.SendAsync(new GetChatMember(chat.Id, args.MemberId));
+            if (response is ChatMember member)
+            {
+                var item = ClientService.GetUser(user.UserId);
+                var cache = ClientService.GetUserFull(user.UserId);
+
+                Delegate?.UpdateMember(chat, item, member);
+                Delegate?.UpdateUser(chat, item, cache, false, false);
+
+                if (cache == null)
+                {
+                    ClientService.Send(new GetUserFullInfo(user.UserId));
+                }
+
+                Member = member;
+                CustomTitle = member.Tag;
+
+                if (member.Status is ChatMemberStatusRestricted restricted)
+                {
+                    CanChangeInfo = restricted.Permissions.CanChangeInfo && chat.Permissions.CanChangeInfo;
+                    CanPinMessages = restricted.Permissions.CanPinMessages && chat.Permissions.CanPinMessages;
+                    CanInviteUsers = restricted.Permissions.CanInviteUsers && chat.Permissions.CanInviteUsers;
+                    CanSendPhotos = restricted.Permissions.CanSendPhotos && chat.Permissions.CanSendPhotos;
+                    CanSendVideos = restricted.Permissions.CanSendVideos && chat.Permissions.CanSendVideos;
+                    CanSendOtherMessages = restricted.Permissions.CanSendOtherMessages && chat.Permissions.CanSendOtherMessages;
+                    CanSendAudios = restricted.Permissions.CanSendAudios && chat.Permissions.CanSendAudios;
+                    CanSendDocuments = restricted.Permissions.CanSendDocuments && chat.Permissions.CanSendDocuments;
+                    CanSendVoiceNotes = restricted.Permissions.CanSendVoiceNotes && chat.Permissions.CanSendVoiceNotes;
+                    CanSendVideoNotes = restricted.Permissions.CanSendVideoNotes && chat.Permissions.CanSendVideoNotes;
+                    CanSendPolls = restricted.Permissions.CanSendPolls && chat.Permissions.CanSendPolls;
+                    CanAddLinkPreviews = restricted.Permissions.CanAddLinkPreviews && chat.Permissions.CanAddLinkPreviews;
+                    CanSendBasicMessages = restricted.Permissions.CanSendBasicMessages && chat.Permissions.CanSendBasicMessages;
+                    CanEditTag = restricted.Permissions.CanEditTag && chat.Permissions.CanEditTag;
+                }
+                else if (member.Status is ChatMemberStatusBanned banned)
+                {
+                    CanChangeInfo = false;
+                    CanPinMessages = false;
+                    CanInviteUsers = false;
+                    CanSendMediaMessages = false;
+                    CanSendBasicMessages = false;
+                    CanEditTag = false;
+                }
+                else
+                {
+                    CanChangeInfo = chat.Permissions.CanChangeInfo;
+                    CanPinMessages = chat.Permissions.CanPinMessages;
+                    CanInviteUsers = chat.Permissions.CanInviteUsers;
+                    CanSendPhotos = chat.Permissions.CanSendPhotos;
+                    CanSendVideos = chat.Permissions.CanSendVideos;
+                    CanSendOtherMessages = chat.Permissions.CanSendOtherMessages;
+                    CanSendAudios = chat.Permissions.CanSendAudios;
+                    CanSendDocuments = chat.Permissions.CanSendDocuments;
+                    CanSendVoiceNotes = chat.Permissions.CanSendVoiceNotes;
+                    CanSendVideoNotes = chat.Permissions.CanSendVideoNotes;
+                    CanSendPolls = chat.Permissions.CanSendPolls;
+                    CanAddLinkPreviews = chat.Permissions.CanAddLinkPreviews;
+                    CanSendBasicMessages = chat.Permissions.CanSendBasicMessages;
+                    CanEditTag = chat.Permissions.CanEditTag;
+                }
+
+                UpdateCanSendMediaMessages();
+            }
+        }
+
+        #region Flags
+
+        private bool _canSendBasicMessages;
+        public bool CanSendBasicMessages
+        {
+            get => _canSendBasicMessages;
+            set
+            {
+                if (Set(ref _canSendBasicMessages, value))
+                {
+                    // Don't allow send media
+                    if (!value && _canAddLinkPreviews)
+                    {
+                        CanAddLinkPreviews = false;
+                    }
+                }
+            }
+        }
+
+        private bool? _canSendMediaMessages;
+        public bool? CanSendMediaMessages
+        {
+            get => _canSendMediaMessages;
+            set
+            {
+                Set(ref _canSendMediaMessages, value);
+
+                if (value.HasValue)
+                {
+                    Set(ref _canSendPhotos, value.Value, nameof(CanSendPhotos));
+                    Set(ref _canSendVideos, value.Value, nameof(CanSendVideos));
+                    Set(ref _canSendOtherMessages, value.Value, nameof(CanSendOtherMessages));
+                    Set(ref _canSendAudios, value.Value, nameof(CanSendAudios));
+                    Set(ref _canSendDocuments, value.Value, nameof(CanSendDocuments));
+                    Set(ref _canSendVoiceNotes, value.Value, nameof(CanSendVoiceNotes));
+                    Set(ref _canSendVideoNotes, value.Value, nameof(CanSendVideoNotes));
+                    Set(ref _canSendPolls, value.Value, nameof(CanSendPolls));
+                    Set(ref _canAddLinkPreviews, value.Value, nameof(CanAddLinkPreviews));
+                    Set(ref _canReactToMessages, value.Value, nameof(CanReactToMessages));
+
+                    Set(ref _canSendCount, value.Value ? 10 : 0, nameof(CanSendCount));
+                }
+            }
+        }
+
+        private void UpdateCanSendMediaMessages()
+        {
+            var count = Count();
+
+            Set(ref _canSendCount, count, nameof(CanSendCount));
+            Set(ref _canSendMediaMessages, count == 0 ? false : count == 10 ? true : null, nameof(CanSendMediaMessages));
+        }
+
+        private int Count()
+        {
+            var count = 0;
+            if (_canAddLinkPreviews)
+            {
+                count++;
+            }
+            if (_canSendVoiceNotes)
+            {
+                count++;
+            }
+            if (_canSendVideoNotes)
+            {
+                count++;
+            }
+            if (_canSendVideos)
+            {
+                count++;
+            }
+            if (_canSendPhotos)
+            {
+                count++;
+            }
+            if (_canSendDocuments)
+            {
+                count++;
+            }
+            if (_canSendAudios)
+            {
+                count++;
+            }
+            if (_canSendOtherMessages)
+            {
+                count++;
+            }
+            if (_canSendPolls)
+            {
+                count++;
+            }
+            if (_canReactToMessages)
+            {
+                count++;
+            }
+
+            return count;
+        }
+
+        private int _canSendCount;
+        public int CanSendCount
+        {
+            get => _canSendCount;
+            set => Set(ref _canSendCount, value);
+        }
+
+
+        private bool _canSendPhotos;
+        public bool CanSendPhotos
+        {
+            get => _canSendPhotos;
+            set
+            {
+                if (Set(ref _canSendPhotos, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendVideos;
+        public bool CanSendVideos
+        {
+            get => _canSendVideos;
+            set
+            {
+                if (Set(ref _canSendVideos, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendOtherMessages;
+        public bool CanSendOtherMessages
+        {
+            get => _canSendOtherMessages;
+            set
+            {
+                if (Set(ref _canSendOtherMessages, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendAudios;
+        public bool CanSendAudios
+        {
+            get => _canSendAudios;
+            set
+            {
+                if (Set(ref _canSendAudios, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendDocuments;
+        public bool CanSendDocuments
+        {
+            get => _canSendDocuments;
+            set
+            {
+                if (Set(ref _canSendDocuments, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendVoiceNotes;
+        public bool CanSendVoiceNotes
+        {
+            get => _canSendVoiceNotes;
+            set
+            {
+                if (Set(ref _canSendVoiceNotes, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendVideoNotes;
+        public bool CanSendVideoNotes
+        {
+            get => _canSendVideoNotes;
+            set
+            {
+                if (Set(ref _canSendVideoNotes, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canSendPolls;
+        public bool CanSendPolls
+        {
+            get => _canSendPolls;
+            set
+            {
+                if (Set(ref _canSendPolls, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canAddLinkPreviews;
+        public bool CanAddLinkPreviews
+        {
+            get => _canAddLinkPreviews;
+            set
+            {
+                if (Set(ref _canAddLinkPreviews, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+        private bool _canReactToMessages;
+        public bool CanReactToMessages
+        {
+            get => _canReactToMessages;
+            set
+            {
+                if (Set(ref _canReactToMessages, value))
+                {
+                    UpdateCanSendMediaMessages();
+                }
+            }
+        }
+
+
+
+        private bool _canInviteUsers;
+        public bool CanInviteUsers
+        {
+            get => _canInviteUsers;
+            set => Set(ref _canInviteUsers, value);
+        }
+
+        private bool _canPinMessages;
+        public bool CanPinMessages
+        {
+            get => _canPinMessages;
+            set => Set(ref _canPinMessages, value);
+        }
+
+        private bool _canEditTag;
+        public bool CanEditTag
+        {
+            get => _canEditTag;
+            set => Set(ref _canEditTag, value);
+        }
+
+        private bool _canChangeInfo;
+        public bool CanChangeInfo
+        {
+            get => _canChangeInfo;
+            set => Set(ref _canChangeInfo, value);
+        }
+
+        #endregion
+
+        private string _customTitle;
+        public string CustomTitle
+        {
+            get => _customTitle;
+            set => Set(ref _customTitle, value);
+        }
+
+        public void OpenProfile()
+        {
+            var member = _member;
+            if (member == null)
+            {
+                return;
+            }
+
+            Delegate?.Hide();
+            NavigationService.NavigateToSender(member.MemberId);
+        }
+
+        public async void Continue()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var member = _member;
+            if (member == null)
+            {
+                return;
+            }
+
+            var supergroup = chat.Type as ChatTypeSupergroup;
+            if (supergroup == null)
+            {
+                return;
+            }
+
+            var status = new ChatMemberStatusRestricted
+            {
+                IsMember = true,
+                RestrictedUntilDate = SelectedDuration?.Value ?? 0,
+                Permissions = new ChatPermissions
+                {
+                    CanChangeInfo = _canChangeInfo,
+                    CanPinMessages = _canPinMessages,
+                    CanInviteUsers = _canInviteUsers,
+                    CanSendPhotos = _canSendPhotos,
+                    CanSendVideos = _canSendVideos,
+                    CanSendOtherMessages = _canSendOtherMessages,
+                    CanSendAudios = _canSendAudios,
+                    CanSendDocuments = _canSendDocuments,
+                    CanSendVoiceNotes = _canSendVoiceNotes,
+                    CanSendVideoNotes = _canSendVideoNotes,
+                    CanSendPolls = _canSendPolls,
+                    CanAddLinkPreviews = _canAddLinkPreviews,
+                    CanReactToMessages = _canReactToMessages,
+                    CanSendBasicMessages = _canSendBasicMessages,
+                    CanEditTag = _canEditTag,
+                }
+            };
+
+            var response = await ClientService.SendAsync(new SetChatMemberStatus(chat.Id, member.MemberId, status));
+            if (response is Ok)
+            {
+                if (member.MemberId is MessageSenderUser user && !string.Equals(_customTitle, member.Tag))
+                {
+                    var tag = await ClientService.SendAsync(new SetChatMemberTag(chat.Id, user.UserId, _customTitle ?? string.Empty));
+                    if (tag is Error error)
+                    {
+                        ShowToast(error);
+                        return;
+                    }
+                }
+
+                Aggregator.Publish(new UpdateChatMember(chat.Id, 0, 0, null, false, false, Member, new ChatMember(member.MemberId, _customTitle ?? string.Empty, ClientService.Options.MyId, member.JoinedChatDate, status)));
+                Delegate?.Hide();
+            }
+            else if (response is Error error)
+            {
+                ShowToast(error);
+            }
+        }
+
+        public ChatMemberStatus SelectedStatus => new ChatMemberStatusRestricted
+        {
+            IsMember = true,
+            RestrictedUntilDate = SelectedDuration?.Value ?? 0,
+            Permissions = new ChatPermissions
+            {
+                CanChangeInfo = _canChangeInfo,
+                CanPinMessages = _canPinMessages,
+                CanInviteUsers = _canInviteUsers,
+                CanSendPhotos = _canSendPhotos,
+                CanSendVideos = _canSendVideos,
+                CanSendOtherMessages = _canSendOtherMessages,
+                CanSendAudios = _canSendAudios,
+                CanSendDocuments = _canSendDocuments,
+                CanSendVoiceNotes = _canSendVoiceNotes,
+                CanSendVideoNotes = _canSendVideoNotes,
+                CanSendPolls = _canSendPolls,
+                CanAddLinkPreviews = _canAddLinkPreviews,
+                CanReactToMessages = _canReactToMessages,
+                CanSendBasicMessages = _canSendBasicMessages,
+                CanEditTag = _canEditTag,
+            }
+        };
+
+        public async void Dismiss()
+        {
+            if (_chat is not Chat chat || _member is not ChatMember member)
+            {
+                return;
+            }
+
+            var response = await ClientService.SendAsync(new SetChatMemberStatus(chat.Id, member.MemberId, new ChatMemberStatusBanned()));
+            if (response is Ok)
+            {
+                Aggregator.Publish(new UpdateChatMember(chat.Id, 0, 0, null, false, false, Member, new ChatMember(member.MemberId, member.Tag, ClientService.Options.MyId, member.JoinedChatDate, new ChatMemberStatusBanned())));
+                Delegate?.Hide();
+            }
+            else if (response is Error error)
+            {
+                ShowToast(error);
+            }
+        }
+    }
+}

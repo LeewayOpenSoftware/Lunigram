@@ -1,0 +1,182 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Business.BusinessPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:local="using:Telegram.Views"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  mc:Ignorable="d"
+                  NavigationMode="Root">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <Page.Resources>
+        <DataTemplate x:Key="PaymentOptionTemplate">
+            <Grid DataContextChanged="OnDataContextChanged">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <Grid HorizontalAlignment="Left">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="Title"
+                                   Style="{StaticResource BaseTextBlockStyle}" />
+                        <controls:BadgeControl x:Name="Badge"
+                                               Text="NEW"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Bottom"
+                                               Margin="4,0,0,0"
+                                               CornerRadius="4"
+                                               Grid.Column="1" />
+
+                    </Grid>
+                    <TextBlock x:Name="Total"
+                               FontSize="{ThemeResource ControlContentThemeFontSize}"
+                               FontFamily="{ThemeResource ContentControlThemeFontFamily}"
+                               Foreground="{ThemeResource SystemControlDisabledChromeDisabledLowBrush}"
+                               Margin="0,0,0,12" />
+                </StackPanel>
+                <TextBlock x:Name="Price"
+                           FontSize="{ThemeResource ControlContentThemeFontSize}"
+                           FontFamily="{ThemeResource ContentControlThemeFontFamily}"
+                           Foreground="{ThemeResource SystemControlDisabledChromeDisabledLowBrush}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,0,6"
+                           Grid.Column="1" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Items}"
+                                ItemClick="OnItemClick"
+                                IsItemClickEnabled="True"
+                                SelectionMode="None"
+                                ChoosingItemContainer="OnChoosingItemContainer"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                Padding="0,0,0,72">
+            <ListView.Header>
+                <controls:SettingsPanel>
+                    <controls:SettingsHeadline x:Name="Headline"
+                                               Source="ms-appx:///Assets/Animations/Business.tgs"
+                                               LoopCount="1" />
+
+                    <controls:HeaderedControl x:Name="PaymentOptions"
+                                              x:Load="{x:Bind ViewModel.CanPurchase, Mode=OneWay}">
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsAnnualOptionSelected, Mode=TwoWay}"
+                                                      ContentTemplate="{StaticResource PaymentOptionTemplate}"
+                                                      Content="{x:Bind ViewModel.AnnualOption, Mode=OneWay}"
+                                                      HorizontalContentAlignment="Stretch" />
+
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsMonthlyOptionSelected, Mode=TwoWay}"
+                                                      ContentTemplate="{StaticResource PaymentOptionTemplate}"
+                                                      Content="{x:Bind ViewModel.MonthlyOption, Mode=OneWay}"
+                                                      HorizontalContentAlignment="Stretch" />
+                    </controls:HeaderedControl>
+                </controls:SettingsPanel>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="58" />
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border x:Name="IconPanel"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Margin="16,0,0,0"
+                                Padding="2"
+                                CornerRadius="4"
+                                Grid.RowSpan="2">
+                            <TextBlock x:Name="Icon"
+                                       FontSize="20"
+                                       AutomationProperties.AccessibilityView="Raw"
+                                       FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                       Foreground="#FFFFFF" />
+                        </Border>
+
+                        <TextBlock x:Name="Title"
+                                   FontSize="{ThemeResource ControlContentThemeFontSize}"
+                                   FontFamily="{ThemeResource ContentControlThemeFontFamily}"
+                                   AutomationProperties.AccessibilityView="Raw"
+                                   Margin="0,11,12,12"
+                                   Grid.Column="1" />
+                        <TextBlock x:Name="Subtitle"
+                                   FontSize="12"
+                                   FontFamily="{ThemeResource ContentControlThemeFontFamily}"
+                                   Foreground="{ThemeResource SystemControlDisabledChromeDisabledLowBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,-10,12,12"
+                                   Grid.Column="1"
+                                   Grid.Row="1" />
+
+                        <TextBlock x:Name="Chevron"
+                                   Text="&#xE0E3;"
+                                   FontSize="20"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                   Margin="-6,0,6,0"
+                                   Grid.Column="2"
+                                   Grid.RowSpan="2" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <controls:SettingsPanel IsFooter="True">
+                    <controls:HeaderedControl Visibility="{x:Bind ViewModel.IsPremium, Mode=OneWay}"
+                                              IsFooterLink="True"
+                                              Header="{CustomResource ShowAdsTitle}"
+                                              Footer="{CustomResource ShowAdsInfo}"
+                                              Margin="0,16,0,0">
+                        <controls:FauxCheckBox IsChecked="{x:Bind ViewModel.HasSponsoredMessagesEnabled, Mode=TwoWay}"
+                                               Content="{CustomResource ShowAds}"
+                                               Style="{StaticResource SettingsCheckBoxStyle}" />
+                    </controls:HeaderedControl>
+                </controls:SettingsPanel>
+            </ListView.Footer>
+        </controls:TableListView>
+
+        <Grid x:Name="PurchasePanel"
+              x:Load="{x:Bind ViewModel.CanPurchase, Mode=OneWay}"
+              VerticalAlignment="Bottom"
+              HorizontalAlignment="Stretch"
+              Margin="24,12,24,24"
+              MaxWidth="1000"
+              Grid.Row="1">
+            <Rectangle x:Name="PurchaseShadow"
+                       Loaded="PurchaseShadow_Loaded"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch"
+                       Fill="White"
+                       Margin="0"
+                       RadiusX="4"
+                       RadiusY="4">
+            </Rectangle>
+            <Button x:Name="PurchaseCommand"
+                    Click="{x:Bind ViewModel.Purchase}"
+                    Content="{x:Bind ConvertPurchase(ViewModel.IsPremium, ViewModel.SelectedOption), Mode=OneWay, FallbackValue=Empty}"
+                    Style="{StaticResource PremiumButtonStyle}"
+                    HorizontalAlignment="Stretch"
+                    Height="36" />
+        </Grid>
+
+    </Grid>
+</local:HostedPage>

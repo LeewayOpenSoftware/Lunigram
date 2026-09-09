@@ -1,0 +1,1633 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Helpers">
+      <UniqueIdentifier>{903ec3d1-7f79-41e7-a41d-2ef61411b312}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Qr">
+      <UniqueIdentifier>{554d0aa9-cb6c-4e0c-9761-3424c8d861cd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SVG">
+      <UniqueIdentifier>{20f48c9c-22c5-4b5f-9ac3-113a8c4eaa06}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Composition">
+      <UniqueIdentifier>{721dff3e-daaf-45ba-955e-038df064ed5c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier">
+      <UniqueIdentifier>{5fa98185-a396-4fbe-b443-b54257ec33f7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id">
+      <UniqueIdentifier>{ad3ce729-5091-4465-9254-7b3960195713}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common">
+      <UniqueIdentifier>{7a55714e-ea60-4a8f-8e3f-2ea61986c632}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common\fel">
+      <UniqueIdentifier>{98933604-7603-4426-b3d6-ec1261f76461}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common\file">
+      <UniqueIdentifier>{95b6a589-549b-4036-8a6b-0e3241201986}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common\flatbuffers">
+      <UniqueIdentifier>{81ca3d3a-f642-4303-851e-b10b096dee83}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common\lite_base">
+      <UniqueIdentifier>{27154b53-a676-4045-9d38-a0d6eb1d274c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common\lite_strings">
+      <UniqueIdentifier>{5f63c3eb-1346-47af-9e92-e758dd11c17c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\common\math">
+      <UniqueIdentifier>{41309afa-38e3-490b-9884-453728d45e47}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\fb_model">
+      <UniqueIdentifier>{e07f872a-e273-43f9-9f4f-185c9fb5c785}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\features">
+      <UniqueIdentifier>{8e62f377-d038-40ac-a02e-ba7f74879276}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\lang_id\script">
+      <UniqueIdentifier>{e7b62ceb-9534-4d39-a266-0f9c42e7227c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libtextclassifier\libutf">
+      <UniqueIdentifier>{807e2bc0-b3e4-456f-ad2e-ee65cf6aa813}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Opus">
+      <UniqueIdentifier>{c84427d8-aa86-4b0c-b833-1c0df91bb5a5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Highlight">
+      <UniqueIdentifier>{3795340d-96c8-44cd-9b1f-85bbe0b2927a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp">
+      <UniqueIdentifier>{ece67f00-1732-4ef2-acfd-51f2a52475fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\dec">
+      <UniqueIdentifier>{dae578f1-7e1a-4ccb-aa80-62a577ad9f7e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\dsp">
+      <UniqueIdentifier>{4626321e-3126-4359-91af-0e4ea910ca50}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\enc">
+      <UniqueIdentifier>{3bf52080-ca02-44a3-844c-c789891acc27}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\utils">
+      <UniqueIdentifier>{3ef22212-ddbe-4679-90db-3253e404772a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\webp">
+      <UniqueIdentifier>{5b2e924a-3a5a-42b9-b34c-fab84dd94a18}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\sharpyuv">
+      <UniqueIdentifier>{c20900ef-2816-4363-908f-05ee254f325c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libwebp\demux">
+      <UniqueIdentifier>{d0ccdb7a-8a40-43aa-91c1-c022df2e3775}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="InternalsRT">
+      <UniqueIdentifier>{2a54e86b-aff6-450a-81af-2d98899ae281}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Detours">
+      <UniqueIdentifier>{fa873c42-155d-4565-92ce-cb208010b179}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="AI">
+      <UniqueIdentifier>{672d3627-1f9c-4ddb-94d7-15d35e5e91e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cache">
+      <UniqueIdentifier>{f8194a42-b7ad-4e28-89a0-c1c3a3f3a3bb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Media">
+      <UniqueIdentifier>{fbafba8b-41cb-4c9e-8146-d54d4dac9573}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Controls">
+      <UniqueIdentifier>{14a28a5e-dd0f-4312-b94f-d38d569960a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX">
+      <UniqueIdentifier>{9cee19d2-4e6c-40eb-98c1-a3ac4775ec92}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\atom">
+      <UniqueIdentifier>{7a2ec725-39c7-45e1-8ed3-46bd7d21cfdb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\box">
+      <UniqueIdentifier>{940cf78b-1b74-4450-8cd9-3386084c14fb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\core">
+      <UniqueIdentifier>{c6c1eca5-b360-4dbc-a86d-23fbe9cce2c3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\fonts">
+      <UniqueIdentifier>{251468dc-ecb9-45fc-ba51-0ed5b0fee17a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\graphic">
+      <UniqueIdentifier>{6682ad3a-85d5-42da-9d78-239042693437}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\utils">
+      <UniqueIdentifier>{61528aa7-5eae-4023-abe8-cdab7a9cbcda}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\res">
+      <UniqueIdentifier>{810654af-be02-4fd5-a269-a71f436030ed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\res\builtin">
+      <UniqueIdentifier>{c7598ba4-bebf-4b89-8880-7a90f90738c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\res\font">
+      <UniqueIdentifier>{41af31ef-b175-4278-bc57-201a5cc9d553}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\res\parser">
+      <UniqueIdentifier>{13432079-d0c5-4596-b1c5-64cf92ab118f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\res\reg">
+      <UniqueIdentifier>{3fc38c1a-ced1-4de4-8da1-5353c721e7f3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MicroTeX\res\sym">
+      <UniqueIdentifier>{12b6c3c7-f476-47e5-b338-a9314b4729b3}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="NativeUtils.cpp" />
+    <ClCompile Include="QR\BitBuffer.cpp">
+      <Filter>Qr</Filter>
+    </ClCompile>
+    <ClCompile Include="QR\QrCode.cpp">
+      <Filter>Qr</Filter>
+    </ClCompile>
+    <ClCompile Include="QR\QrSegment.cpp">
+      <Filter>Qr</Filter>
+    </ClCompile>
+    <ClCompile Include="SVG\nanosvg.cpp">
+      <Filter>SVG</Filter>
+    </ClCompile>
+    <ClCompile Include="Generated Files\module.g.cpp" />
+    <ClCompile Include="Direct2DDevice.cpp" />
+    <ClCompile Include="VideoAnimation.cpp" />
+    <ClCompile Include="Helpers\LibraryHelper.cpp">
+      <Filter>Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="Composition\CompositionDevice.cpp">
+      <Filter>Composition</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\lang-id.cc">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\lang-id-wrapper.cc">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\custom-tokenizer.cc">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\embedding-feature-extractor.cc">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\embedding-network.cc">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\embedding-network-params.cc">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\utf8.cc">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\fel\feature-extractor.cc">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\fel\fel-parser.cc">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\fel\task-context.cc">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\fel\workspace.cc">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\fel\feature-descriptors.cc">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\file\mmap.cc">
+      <Filter>libtextclassifier\lang_id\common\file</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\file\file-utils.cc">
+      <Filter>libtextclassifier\lang_id\common\file</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\flatbuffers\embedding-network-params-from-flatbuffer.cc">
+      <Filter>libtextclassifier\lang_id\common\flatbuffers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\flatbuffers\model-utils.cc">
+      <Filter>libtextclassifier\lang_id\common\flatbuffers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\compact-logging-raw.cc">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\compact-logging.cc">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\lite_strings\str-split.cc">
+      <Filter>libtextclassifier\lang_id\common\lite_strings</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\lite_strings\numbers.cc">
+      <Filter>libtextclassifier\lang_id\common\lite_strings</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\math\checksum.cc">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\math\fastexp.cc">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\math\hash.cc">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\common\math\softmax.cc">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\fb_model\model-provider-from-fb.cc">
+      <Filter>libtextclassifier\lang_id\fb_model</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\fb_model\lang-id-from-fb.cc">
+      <Filter>libtextclassifier\lang_id\fb_model</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\features\relevant-script-feature.cc">
+      <Filter>libtextclassifier\lang_id\features</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\features\char-ngram-feature.cc">
+      <Filter>libtextclassifier\lang_id\features</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\features\light-sentence-features.cc">
+      <Filter>libtextclassifier\lang_id\features</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\script\tiny-script-detector.cc">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\script\approx-script.cc">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\script\approx-script-data.cc">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libtextclassifier\lang_id\script\script-detector.cc">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\rune.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrcat.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrchr.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrcmp.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrcpy.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrdup.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrecpy.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrlen.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrncat.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrncmp.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrncpy.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrrchr.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runestrstr.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\runetype.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\utfecpy.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\utflen.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\utfnlen.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\utfrrune.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\utfrune.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libutf\utfutf.c">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClCompile>
+    <ClCompile Include="BufferSurface.cpp" />
+    <ClCompile Include="PixelBuffer.cpp" />
+    <ClCompile Include="TelegramWebviewProxy.cpp" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="Highlight\SyntaxToken.cpp">
+      <Filter>Highlight</Filter>
+    </ClCompile>
+    <ClCompile Include="Highlight\TextToken.cpp">
+      <Filter>Highlight</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\alpha_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\buffer_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\frame_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\idec_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\io_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\quant_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\tree_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\vp8_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\vp8l_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dec\webp_dec.c">
+      <Filter>libwebp\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\alpha_processing.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\alpha_processing_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\alpha_processing_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\alpha_processing_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\alpha_processing_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\cost.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\cost_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\cost_mips32.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\cost_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\cost_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\cpu.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_clip_tables.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_mips32.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\dec_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc_mips32.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\enc_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\filters.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\filters_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\filters_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\filters_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\filters_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc_mips32.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_enc_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\lossless_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\rescaler.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\rescaler_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\rescaler_mips32.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\rescaler_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\rescaler_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\rescaler_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\ssim.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\ssim_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\upsampling.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\upsampling_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\upsampling_msa.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\upsampling_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\upsampling_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\upsampling_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\yuv.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\yuv_mips_dsp_r2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\yuv_mips32.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\yuv_neon.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\yuv_sse2.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\dsp\yuv_sse41.c">
+      <Filter>libwebp\dsp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\bit_reader_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\bit_writer_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\color_cache_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\filters_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\huffman_encode_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\huffman_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\quant_levels_dec_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\quant_levels_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\random_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\rescaler_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\thread_utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\utils\utils.c">
+      <Filter>libwebp\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv_cpu.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv_csp.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv_dsp.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv_gamma.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv_neon.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\sharpyuv\sharpyuv_sse2.c">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\demux\anim_decode.c">
+      <Filter>libwebp\demux</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libwebp\src\demux\demux.c">
+      <Filter>libwebp\demux</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libprisma\libprisma\Highlight.cpp">
+      <Filter>Highlight</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libprisma\libprisma\LanguageTree.cpp">
+      <Filter>Highlight</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libprisma\libprisma\SyntaxHighlighter.cpp">
+      <Filter>Highlight</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\libprisma\libprisma\TokenList.cpp">
+      <Filter>Highlight</Filter>
+    </ClCompile>
+    <ClCompile Include="InternalsRT\CoreWindowHelpers.cpp">
+      <Filter>InternalsRT</Filter>
+    </ClCompile>
+    <ClCompile Include="Composition\DirectRectangleClip2.cpp">
+      <Filter>Composition</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\creatwth.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\detours.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\disasm.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\disolarm.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\disolarm64.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\disolia64.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\disolx64.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\disolx86.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\image.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\modules.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Composition\WindowVisual.cpp">
+      <Filter>Composition</Filter>
+    </ClCompile>
+    <ClCompile Include="AI\TextRecognizer.cpp">
+      <Filter>AI</Filter>
+    </ClCompile>
+    <ClCompile Include="AI\TextRecognizerDefault.cpp">
+      <Filter>AI</Filter>
+    </ClCompile>
+    <ClCompile Include="AI\RecognizedLine.cpp">
+      <Filter>AI</Filter>
+    </ClCompile>
+    <ClCompile Include="AI\RecognizedText.cpp">
+      <Filter>AI</Filter>
+    </ClCompile>
+    <ClCompile Include="AI\RecognizedWord.cpp">
+      <Filter>AI</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayer.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerBufferingEventArgs.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerDurationChangedEventArgs.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerLogEventArgs.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerPositionChangedEventArgs.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerStreamSelectedEventArgs.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerSwapChain.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerStateChangedEventArgs.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="Media\AsyncMediaPlayerOptions.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\latex.cpp">
+      <Filter>MicroTeX</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\render.cpp">
+      <Filter>MicroTeX</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\atom_basic.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\atom_char.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\atom_impl.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\atom_matrix.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\atom_row.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\atom_space.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\colors_def.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\atom\unit_conversion.cpp">
+      <Filter>MicroTeX\atom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\box\box.cpp">
+      <Filter>MicroTeX\box</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\box\box_factory.cpp">
+      <Filter>MicroTeX\box</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\box\box_group.cpp">
+      <Filter>MicroTeX\box</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\box\box_single.cpp">
+      <Filter>MicroTeX\box</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\core.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\formula.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\formula_def.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\glue.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\localized_num.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\macro.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\macro_def.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\macro_impl.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\core\parser.cpp">
+      <Filter>MicroTeX\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\fonts\alphabet.cpp">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\fonts\font_basic.cpp">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\fonts\font_info.cpp">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\fonts\fonts.cpp">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\builtin\formula_mappings.res.cpp">
+      <Filter>MicroTeX\res\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\builtin\symbol_mapping.res.cpp">
+      <Filter>MicroTeX\res\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\builtin\tex_param.res.cpp">
+      <Filter>MicroTeX\res\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\builtin\tex_symbols.res.cpp">
+      <Filter>MicroTeX\res\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\bi10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\bx10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmbsy10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmbx10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmbxti10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmex10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmmi10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmmi10_unchanged.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmmib10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmmib10_unchanged.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmr10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmss10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmssbx10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmssi10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmsy10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmti10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmti10_unchanged.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\cmtt10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\dsrom10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\eufb10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\eufm10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\i10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\moustache.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\msam10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\msbm10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\r10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\r10_unchanged.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\rsfs10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\sb10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\sbi10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\si10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\special.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\ss10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\stmary10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\font\tt10.def.cpp">
+      <Filter>MicroTeX\res\font</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\reg\builtin_font_reg.cpp">
+      <Filter>MicroTeX\res\reg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\reg\builtin_syms_reg.cpp">
+      <Filter>MicroTeX\res\reg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\sym\amsfonts.def.cpp">
+      <Filter>MicroTeX\res\sym</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\sym\amssymb.def.cpp">
+      <Filter>MicroTeX\res\sym</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\sym\base.def.cpp">
+      <Filter>MicroTeX\res\sym</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\sym\stmaryrd.def.cpp">
+      <Filter>MicroTeX\res\sym</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\res\sym\symspecial.def.cpp">
+      <Filter>MicroTeX\res\sym</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\utils\string_utils.cpp">
+      <Filter>MicroTeX\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\utils\utf.cpp">
+      <Filter>MicroTeX\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Libraries\MicroTeX\src\utils\utils.cpp">
+      <Filter>MicroTeX\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="graphic_dwrite.cpp" />
+    <ClCompile Include="Cache\FrameCacheReader.cpp">
+      <Filter>Cache</Filter>
+    </ClCompile>
+    <ClCompile Include="Cache\FrameCacheService.cpp">
+      <Filter>Cache</Filter>
+    </ClCompile>
+    <ClCompile Include="Cache\FrameCacheWriter.cpp">
+      <Filter>Cache</Filter>
+    </ClCompile>
+    <ClCompile Include="LottieAnimation.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="Helpers\MathHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="NativeUtils.h" />
+    <ClInclude Include="StringUtils.h" />
+    <ClInclude Include="QR\BitBuffer.hpp">
+      <Filter>Qr</Filter>
+    </ClInclude>
+    <ClInclude Include="QR\QrCode.hpp">
+      <Filter>Qr</Filter>
+    </ClInclude>
+    <ClInclude Include="QR\QrSegment.hpp">
+      <Filter>Qr</Filter>
+    </ClInclude>
+    <ClInclude Include="SVG\nanosvg.h">
+      <Filter>SVG</Filter>
+    </ClInclude>
+    <ClInclude Include="Direct2DDevice.h" />
+    <ClInclude Include="VideoAnimation.h" />
+    <ClInclude Include="Helpers\COMHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Helpers\DebugHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Helpers\LibraryHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Helpers\StringHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Composition\CompositionDevice.h">
+      <Filter>Composition</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\lang-id.h">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\lang-id-wrapper.h">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\light-sentence.h">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\model-provider.h">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\custom-tokenizer.h">
+      <Filter>libtextclassifier\lang_id</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\embedding-feature-extractor.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\embedding-feature-interface.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\embedding-network.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\embedding-network-params.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\registry.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\stl-util.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\utf8.h">
+      <Filter>libtextclassifier\lang_id\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\fel\feature-descriptors.h">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\fel\feature-extractor.h">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\fel\feature-types.h">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\fel\fel-parser.h">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\fel\task-context.h">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\fel\workspace.h">
+      <Filter>libtextclassifier\lang_id\common\fel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\file\mmap.h">
+      <Filter>libtextclassifier\lang_id\common\file</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\file\file-utils.h">
+      <Filter>libtextclassifier\lang_id\common\file</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\flatbuffers\embedding-network-params-from-flatbuffer.h">
+      <Filter>libtextclassifier\lang_id\common\flatbuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\flatbuffers\model-utils.h">
+      <Filter>libtextclassifier\lang_id\common\flatbuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\compact-logging-raw.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\endian.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\float16.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\integral-types.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\logging.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\macros.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\attributes.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\casts.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\compact-logging.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_base\compact-logging-levels.h">
+      <Filter>libtextclassifier\lang_id\common\lite_base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_strings\stringpiece.h">
+      <Filter>libtextclassifier\lang_id\common\lite_strings</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_strings\str-split.h">
+      <Filter>libtextclassifier\lang_id\common\lite_strings</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_strings\numbers.h">
+      <Filter>libtextclassifier\lang_id\common\lite_strings</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\lite_strings\str-cat.h">
+      <Filter>libtextclassifier\lang_id\common\lite_strings</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\math\algorithm.h">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\math\checksum.h">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\math\fastexp.h">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\math\hash.h">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\math\softmax.h">
+      <Filter>libtextclassifier\lang_id\common\math</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\fb_model\model-provider-from-fb.h">
+      <Filter>libtextclassifier\lang_id\fb_model</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\fb_model\lang-id-from-fb.h">
+      <Filter>libtextclassifier\lang_id\fb_model</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\features\light-sentence-features.h">
+      <Filter>libtextclassifier\lang_id\features</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\features\relevant-script-feature.h">
+      <Filter>libtextclassifier\lang_id\features</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\features\char-ngram-feature.h">
+      <Filter>libtextclassifier\lang_id\features</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\script\tiny-script-detector.h">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\script\approx-script.h">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\script\approx-script-data.h">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\script\script-detector.h">
+      <Filter>libtextclassifier\lang_id\script</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\flatbuffers\model_generated.h">
+      <Filter>libtextclassifier\lang_id\common\flatbuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libtextclassifier\lang_id\common\flatbuffers\embedding-network_generated.h">
+      <Filter>libtextclassifier\lang_id\common\flatbuffers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libutf\runetypebody.h">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libutf\utf.h">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libutf\utfdef.h">
+      <Filter>libtextclassifier\libutf</Filter>
+    </ClInclude>
+    <ClInclude Include="BufferSurface.h" />
+    <ClInclude Include="PixelBuffer.h" />
+    <ClInclude Include="TelegramWebviewProxy.h" />
+    <ClInclude Include="DebugUtils.h" />
+    <ClInclude Include="Highlight\SyntaxToken.h">
+      <Filter>Highlight</Filter>
+    </ClInclude>
+    <ClInclude Include="Highlight\TextToken.h">
+      <Filter>Highlight</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dec\alphai_dec.h">
+      <Filter>libwebp\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dec\common_dec.h">
+      <Filter>libwebp\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dec\vp8_dec.h">
+      <Filter>libwebp\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dec\vp8i_dec.h">
+      <Filter>libwebp\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dec\vp8li_dec.h">
+      <Filter>libwebp\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dec\webpi_dec.h">
+      <Filter>libwebp\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\common_sse2.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\common_sse41.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\cpu.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\dsp.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\lossless.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\lossless_common.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\mips_macro.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\msa_macro.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\neon.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\quant.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\dsp\yuv.h">
+      <Filter>libwebp\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\bit_reader_inl_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\bit_reader_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\bit_writer_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\color_cache_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\endian_inl_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\filters_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\huffman_encode_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\huffman_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\quant_levels_dec_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\quant_levels_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\random_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\rescaler_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\thread_utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\utils\utils.h">
+      <Filter>libwebp\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\format_constants.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\mux.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\mux_types.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\types.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\decode.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\demux.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\src\webp\encode.h">
+      <Filter>libwebp\webp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\sharpyuv\sharpyuv.h">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\sharpyuv\sharpyuv_cpu.h">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\sharpyuv\sharpyuv_csp.h">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\sharpyuv\sharpyuv_dsp.h">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libwebp\sharpyuv\sharpyuv_gamma.h">
+      <Filter>libwebp\sharpyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libprisma\libprisma\Highlight.h">
+      <Filter>Highlight</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libprisma\libprisma\LanguageTree.h">
+      <Filter>Highlight</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libprisma\libprisma\SyntaxHighlighter.h">
+      <Filter>Highlight</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\libprisma\libprisma\TokenList.h">
+      <Filter>Highlight</Filter>
+    </ClInclude>
+    <ClInclude Include="InternalsRT\CoreWindowHelpers.h">
+      <Filter>InternalsRT</Filter>
+    </ClInclude>
+    <ClInclude Include="Composition\DirectRectangleClip2.h">
+      <Filter>Composition</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\detours.h">
+      <Filter>Detours</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\detver.h">
+      <Filter>Detours</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\MemoryApi.h">
+      <Filter>Detours</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\CoreWindowCustomDPI\InternalsRT.Detours\MissingImports.h">
+      <Filter>Detours</Filter>
+    </ClInclude>
+    <ClInclude Include="Composition\WindowVisual.h">
+      <Filter>Composition</Filter>
+    </ClInclude>
+    <ClInclude Include="Composition\DwmThumbnail.h">
+      <Filter>Composition</Filter>
+    </ClInclude>
+    <ClInclude Include="AI\TextRecognizer.h">
+      <Filter>AI</Filter>
+    </ClInclude>
+    <ClInclude Include="AI\TextRecognizerDefault.h">
+      <Filter>AI</Filter>
+    </ClInclude>
+    <ClInclude Include="AI\TextRecognizerOne.h">
+      <Filter>AI</Filter>
+    </ClInclude>
+    <ClInclude Include="AI\RecognizedLine.h">
+      <Filter>AI</Filter>
+    </ClInclude>
+    <ClInclude Include="AI\RecognizedText.h">
+      <Filter>AI</Filter>
+    </ClInclude>
+    <ClInclude Include="AI\RecognizedWord.h">
+      <Filter>AI</Filter>
+    </ClInclude>
+    <ClInclude Include="Helpers\BlurHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayer.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerBufferingEventArgs.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerDurationChangedEventArgs.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerLogEventArgs.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerPositionChangedEventArgs.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerStreamSelectedEventArgs.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerSwapChain.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerStateChangedEventArgs.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Media\AsyncMediaPlayerOptions.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="Controls\FrameworkElementEx.h">
+      <Filter>Controls</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\common.h">
+      <Filter>MicroTeX</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\config.h">
+      <Filter>MicroTeX</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\latex.h">
+      <Filter>MicroTeX</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\render.h">
+      <Filter>MicroTeX</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom_basic.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom_char.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom_impl.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom_matrix.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom_row.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\atom\atom_space.h">
+      <Filter>MicroTeX\atom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\box\box.h">
+      <Filter>MicroTeX\box</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\box\box_factory.h">
+      <Filter>MicroTeX\box</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\box\box_group.h">
+      <Filter>MicroTeX\box</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\box\box_single.h">
+      <Filter>MicroTeX\box</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\core\core.h">
+      <Filter>MicroTeX\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\core\formula.h">
+      <Filter>MicroTeX\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\core\glue.h">
+      <Filter>MicroTeX\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\core\macro.h">
+      <Filter>MicroTeX\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\core\macro_impl.h">
+      <Filter>MicroTeX\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\core\parser.h">
+      <Filter>MicroTeX\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\alphabet.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\font_basic.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\font_info.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\font_reg.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\fonts.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\symbol_reg.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\fonts\tex_font.h">
+      <Filter>MicroTeX\fonts</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\graphic\graphic.h">
+      <Filter>MicroTeX\graphic</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\graphic\graphic_basic.h">
+      <Filter>MicroTeX\graphic</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\res\font_def.res.h">
+      <Filter>MicroTeX\res</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\res\symbol_def.res.h">
+      <Filter>MicroTeX\res</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\res\reg\builtin_font_reg.h">
+      <Filter>MicroTeX\res\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\res\reg\builtin_syms_reg.h">
+      <Filter>MicroTeX\res\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\dict_tree.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\enums.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\exceptions.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\indexed_arr.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\log.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\nums.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\string_utils.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\utf.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Libraries\MicroTeX\src\utils\utils.h">
+      <Filter>MicroTeX\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="graphic_dwrite.h" />
+    <ClInclude Include="Cache\FrameCacheFormat.h">
+      <Filter>Cache</Filter>
+    </ClInclude>
+    <ClInclude Include="Cache\FrameCacheReader.h">
+      <Filter>Cache</Filter>
+    </ClInclude>
+    <ClInclude Include="Cache\FrameCacheService.h">
+      <Filter>Cache</Filter>
+    </ClInclude>
+    <ClInclude Include="Cache\FrameCacheWriter.h">
+      <Filter>Cache</Filter>
+    </ClInclude>
+    <ClInclude Include="Cache\FrameCodec.h">
+      <Filter>Cache</Filter>
+    </ClInclude>
+    <ClInclude Include="Cache\FrameProducer.h">
+      <Filter>Cache</Filter>
+    </ClInclude>
+    <ClInclude Include="LottieAnimation.h" />
+    <ClInclude Include="LottieFrameProducer.h" />
+    <ClInclude Include="LottieStringUtils.h" />
+    <ClInclude Include="TlottieFrameProducer.h" />
+    <ClInclude Include="VideoFrameProducer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Telegram.Native.def" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="NativeUtils.idl" />
+    <Midl Include="Direct2DDevice.idl" />
+    <Midl Include="VideoAnimation.idl" />
+    <Midl Include="AudioPitchEffect.idl" />
+    <Midl Include="HttpProxyWatcher.idl" />
+    <Midl Include="Composition\CompositionDevice.idl">
+      <Filter>Composition</Filter>
+    </Midl>
+    <Midl Include="ScreenshotManager.idl" />
+    <Midl Include="LanguageIdentification.idl" />
+    <Midl Include="QrBuffer.idl" />
+    <Midl Include="CachedVideoAnimation.idl" />
+    <Midl Include="LottieAnimation.idl" />
+    <Midl Include="BufferSurface.idl" />
+    <Midl Include="Opus\OpusOutput.idl">
+      <Filter>Opus</Filter>
+    </Midl>
+    <Midl Include="PixelBuffer.idl" />
+    <Midl Include="TelegramWebviewProxy.idl" />
+    <Midl Include="VideoAnimationStreamSource.idl" />
+    <Midl Include="Highlight\SyntaxToken.idl">
+      <Filter>Highlight</Filter>
+    </Midl>
+    <Midl Include="Highlight\TextToken.idl">
+      <Filter>Highlight</Filter>
+    </Midl>
+    <Midl Include="FileStreamFromApp.idl" />
+    <Midl Include="LokiRng.idl" />
+    <Midl Include="SurfaceImage.idl" />
+    <Midl Include="FatalError.idl" />
+    <Midl Include="ParticlesAnimation.idl" />
+    <Midl Include="TextFormat.idl" />
+    <Midl Include="Composition\DirectRectangleClip2.idl">
+      <Filter>Composition</Filter>
+    </Midl>
+    <Midl Include="Composition\WindowVisual.idl">
+      <Filter>Composition</Filter>
+    </Midl>
+    <Midl Include="AI\TextRecognizer.idl">
+      <Filter>AI</Filter>
+    </Midl>
+    <Midl Include="AI\RecognizedLine.idl">
+      <Filter>AI</Filter>
+    </Midl>
+    <Midl Include="AI\RecognizedText.idl">
+      <Filter>AI</Filter>
+    </Midl>
+    <Midl Include="AI\RecognizedWord.idl">
+      <Filter>AI</Filter>
+    </Midl>
+    <Midl Include="AnimationEffects.idl" />
+    <Midl Include="ChatBackgroundPattern.idl" />
+    <Midl Include="Media\AsyncMediaPlayer.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerBufferingEventArgs.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerDurationChangedEventArgs.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerLogEventArgs.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerPositionChangedEventArgs.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerStreamSelectedEventArgs.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerSwapChain.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Media\AsyncMediaPlayerStateChangedEventArgs.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="MessageBubbleNineGrid.idl" />
+    <Midl Include="Media\AsyncMediaPlayerOptions.idl">
+      <Filter>Media</Filter>
+    </Midl>
+    <Midl Include="Controls\AnimatedImageBase.idl">
+      <Filter>Controls</Filter>
+    </Midl>
+    <Midl Include="Controls\ControlEx.idl">
+      <Filter>Controls</Filter>
+    </Midl>
+    <Midl Include="Controls\FormattedTextBlockBase.idl">
+      <Filter>Controls</Filter>
+    </Midl>
+    <Midl Include="FreeformGradientSurface.idl" />
+    <Midl Include="GarbageCollectionMonitor.idl" />
+    <Midl Include="RichMathSurface.idl" />
+  </ItemGroup>
+</Project>

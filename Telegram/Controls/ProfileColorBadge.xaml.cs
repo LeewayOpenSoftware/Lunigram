@@ -1,0 +1,107 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Microsoft.Graphics.Canvas.Geometry;
+using System.Diagnostics;
+using Telegram.Common;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
+
+namespace Telegram.Controls
+{
+    public sealed partial class ProfileColorBadge : UserControl
+    {
+        private IClientService _clientService;
+
+        private int _accentColorId;
+        private int _profileAccentColorId;
+
+        public ProfileColorBadge()
+        {
+            InitializeComponent();
+        }
+
+        private void OnActualThemeChanged(FrameworkElement sender, object args)
+        {
+            if (_clientService != null)
+            {
+                SetColors(_clientService, _accentColorId, _profileAccentColorId);
+            }
+        }
+
+        public void SetUser(IClientService clientService, User user)
+        {
+            SetColors(clientService, user.AccentColorId, user.ProfileAccentColorId);
+        }
+
+        public void SetChat(IClientService clientService, Chat chat)
+        {
+            SetColors(clientService, chat.Type is ChatTypeSupergroup { IsChannel: true } ? chat.AccentColorId : -1, chat.ProfileAccentColorId);
+        }
+
+        private void SetColors(IClientService clientService, int nameId, int profileId)
+        {
+            _clientService = clientService;
+            _accentColorId = nameId;
+            _profileAccentColorId = profileId;
+
+            if (ApiInfo.IsPackagedRelease)
+            {
+                Debug.Assert(WindowContext.Current.ActualTheme == ActualTheme);
+            }
+
+            if (clientService.TryGetProfileColor(profileId, out ProfileColor profile))
+            {
+                var colors = profile.ForTheme(ActualTheme);
+
+                ProfilePrimary.Background = new SolidColorBrush(colors.PaletteColors[0]);
+                ProfileSecondary.Fill = colors.PaletteColors.Count > 1
+                    ? new SolidColorBrush(colors.PaletteColors[1])
+                    : null;
+
+                ProfilePrimary.Visibility = Visibility.Visible;
+
+                var ellipse1 = CanvasGeometry.CreateRectangle(null, 0, 0, 24, 24);
+                var ellipse2 = CanvasGeometry.CreateEllipse(null, 28, 12, 12, 12);
+                var group = CanvasGeometry.CreateGroup(null, new[] { ellipse1, ellipse2 }, CanvasFilledRegionDetermination.Alternate);
+
+                var visual = ElementComposition.GetElementVisual(NamePrimary);
+                visual.Clip = BootStrapper.Current.Compositor.CreateGeometricClip(BootStrapper.Current.Compositor.CreatePathGeometry(new CompositionPath(group)));
+            }
+            else
+            {
+                ProfilePrimary.Visibility = Visibility.Collapsed;
+            }
+
+            if (nameId >= 0)
+            {
+                var name = clientService.GetAccentColor(nameId);
+                var color = name.ForTheme(ActualTheme);
+
+                NamePrimary.Background = new SolidColorBrush(color[0]);
+                NameSecondary.Fill = color.Count > 1
+                    ? new SolidColorBrush(color[1])
+                    : null;
+                NameTertiary.Fill = color.Count > 2
+                    ? new SolidColorBrush(color[2])
+                    : null;
+
+                NamePrimary.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                NamePrimary.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+}

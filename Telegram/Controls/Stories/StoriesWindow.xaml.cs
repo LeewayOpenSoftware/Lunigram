@@ -1,0 +1,1376 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Microsoft.UI.Xaml.Controls;
+using System;
+using System.Numerics;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Controls.Drawers;
+using Telegram.Controls.Media;
+using Telegram.Controls.Messages;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Services.Keyboard;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Telegram.ViewModels.Stories;
+using Telegram.Views.Stories.Popups;
+using Windows.Foundation;
+using Windows.UI;
+using Microsoft.UI.Composition;
+using Windows.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using WindowActivatedEventArgs = Microsoft.UI.Xaml.WindowActivatedEventArgs;
+using FontWeights = Microsoft.UI.Text.FontWeights;
+using Colors = Microsoft.UI.Colors;
+
+namespace Telegram.Controls.Stories
+{
+    public enum StoryOpenOrigin
+    {
+        ProfilePhoto,
+        Mention,
+        Card
+    }
+
+    public sealed partial class StoriesWindow : OverlayWindow
+    {
+        private readonly DispatcherTimer _stealthTimer;
+        private readonly DispatcherQueue _dispatcherQueue;
+
+        public StoriesWindow(XamlRoot xamlRoot)
+            : base(xamlRoot)
+        {
+            InitializeComponent();
+            InitializeStickers();
+
+            _stealthTimer = new DispatcherTimer();
+            _stealthTimer.Interval = TimeSpan.FromSeconds(1);
+            _stealthTimer.Tick += StealthTimer_Tick;
+
+            _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        }
+
+        private void StealthTimer_Tick(object sender, object e)
+        {
+            UpdateStealthTimer();
+        }
+
+        private void UpdateStealthTimer()
+        {
+            if (_viewModel == null || _viewModel.ClientService.StealthMode.ActiveUntilDate == 0)
+            {
+                _stealthTimer.Stop();
+                TextField.PlaceholderText = Strings.ReplyPrivately;
+            }
+            else
+            {
+                var untilDate = Converters.Formatter.ToLocalTime(_viewModel.ClientService.StealthMode.ActiveUntilDate);
+                var timeLeft = untilDate - DateTime.Now;
+
+                TextField.PlaceholderText = string.Format(Strings.StealthModeActiveHint, timeLeft.ToString("mm\\:ss"));
+            }
+        }
+
+        protected override void MaskTitleAndStatusBar(WindowContext window)
+        {
+            base.MaskTitleAndStatusBar(window);
+            window.SetTitleBar(TitleBar);
+        }
+
+        protected override void OnPointerWheelChanged(PointerRoutedEventArgs e)
+        {
+            // TODO: optimize for touch screen, change direction and decrease speed.
+
+            var point = e.GetCurrentPoint(this);
+            var direction = point.Properties.MouseWheelDelta > 0
+                ? Direction.Backward
+                : Direction.Forward;
+
+            Move(direction);
+
+            e.Handled = true;
+
+            try
+            {
+                base.OnPointerWheelChanged(e);
+            }
+            catch
+            {
+                // All the remote procedure calls must be wrapped in a try-catch block
+            }
+        }
+
+        private void StoriesWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            var layer = ElementComposition.GetElementVisual(Layer);
+            var backButton = ElementComposition.GetElementVisual(BackButton);
+            var viewport = ElementComposition.GetElementVisual(Viewport);
+            var composer = ElementComposition.GetElementVisual(Composer);
+            ElementCompositionPreview.SetIsTranslationEnabled(Composer, true);
+
+            var opacity = composer.Compositor.CreateScalarKeyFrameAnimation();
+            opacity.InsertKeyFrame(0, 0);
+            opacity.InsertKeyFrame(1, 1);
+            opacity.Duration = Constants.FastAnimation;
+
+            for (int i = 0; i < _indexes.Length; i++)
+            {
+                var child = LayoutRoot.Children[i] as StoryContent;
+                var index = _indexes[i];
+                var real = _index + index - 3;
+
+                if (index == 3)
+                {
+                    child.TryStart(_ciccio, _origin);
+                }
+                else
+                {
+                    var visual = ElementComposition.GetElementVisual(child);
+                    visual.StartAnimation("Opacity", opacity);
+                }
+            }
+
+            var translation = composer.Compositor.CreateScalarKeyFrameAnimation();
+            translation.InsertKeyFrame(0, -48);
+            translation.InsertKeyFrame(1, 0);
+            translation.Duration = Constants.FastAnimation;
+
+            layer.StartAnimation("Opacity", opacity);
+            backButton.StartAnimation("Opacity", opacity);
+            viewport.StartAnimation("Opacity", opacity);
+            composer.StartAnimation("Opacity", opacity);
+            composer.StartAnimation("Translation.Y", translation);
+        }
+
+        private bool _done;
+
+        protected override void OnBackRequestedOverride(object sender, BackRequestedRoutedEventArgs e)
+        {
+            if (_done)
+            {
+                return;
+            }
+
+            _done = true;
+            e.Handled = true;
+
+            IsHitTestVisible = false;
+            ActiveCard?.Suspend(StoryPauseSource.Window);
+
+            var layer = ElementComposition.GetElementVisual(Layer);
+            var backButton = ElementComposition.GetElementVisual(BackButton);
+            var viewport = ElementComposition.GetElementVisual(Viewport);
+            var composer = ElementComposition.GetElementVisual(Composer);
+            ElementCompositionPreview.SetIsTranslationEnabled(Composer, true);
+
+            var batch = layer.Compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+            batch.Completed += (s, args) =>
+            {
+                Hide();
+            };
+
+            var opacity = composer.Compositor.CreateScalarKeyFrameAnimation();
+            opacity.InsertKeyFrame(1, 0);
+            opacity.InsertKeyFrame(0, 1);
+            opacity.Duration = Constants.FastAnimation;
+
+            for (int i = 0; i < _indexes.Length; i++)
+            {
+                var child = LayoutRoot.Children[i] as StoryContent;
+                var index = _indexes[i];
+                var real = _index + index - 3;
+
+                if (index == 3 && _closing != null)
+                {
+                    var viewModel = _viewModel.Items[real];
+
+                    var origin = _closing(viewModel);
+                    if (origin.IsEmpty)
+                    {
+                        var visual = ElementComposition.GetElementVisual(child);
+                        visual.StartAnimation("Opacity", opacity);
+                    }
+                    else
+                    {
+                        child.TryStart(_ciccio, origin, false);
+                    }
+                }
+                else
+                {
+                    var visual = ElementComposition.GetElementVisual(child);
+                    visual.StartAnimation("Opacity", opacity);
+                }
+            }
+
+            var translation = composer.Compositor.CreateScalarKeyFrameAnimation();
+            translation.InsertKeyFrame(1, -48);
+            translation.InsertKeyFrame(0, 0);
+            translation.Duration = Constants.FastAnimation;
+
+            layer.StartAnimation("Opacity", opacity);
+            backButton.StartAnimation("Opacity", opacity);
+            viewport.StartAnimation("Opacity", opacity);
+            composer.StartAnimation("Opacity", opacity);
+            composer.StartAnimation("Translation.Y", translation);
+
+            batch.End();
+        }
+
+        #region Stickers
+
+        private void InitializeStickers()
+        {
+            StickersPanel.EmojiClick = Emojis_ItemClick;
+
+            StickersPanel.StickerClick += Stickers_ItemClick;
+            //StickersPanel.StickerContextRequested += Sticker_ContextRequested;
+            //StickersPanel.SettingsClick += StickersPanel_SettingsClick;
+
+            StickersPanel.AnimationClick += Animations_ItemClick;
+            //StickersPanel.AnimationContextRequested += Animation_ContextRequested;
+        }
+
+        private void Emojis_ItemClick(object emoji)
+        {
+            if (emoji is string text)
+            {
+                TextField.InsertText(text);
+            }
+            else if (emoji is Sticker sticker)
+            {
+                TextField.InsertEmoji(sticker);
+            }
+
+            //_focusState.Set(FocusState.Programmatic);
+        }
+
+        public void Stickers_ItemClick(object sender, StickerDrawerItemClickEventArgs e)
+        {
+            var index = _indexes[_synchronizedIndex];
+            var real = _index + index - 3;
+
+            var viewModel = _viewModel.Items[real];
+
+            viewModel.SendSticker(e.Sticker, SchedulingState.Auto, null, null, e.FromStickerSet);
+            ButtonStickers.Collapse();
+
+            //_focusState.Set(FocusState.Programmatic);
+        }
+
+        public void Animations_ItemClick(object sender, ItemClickEventArgs e)
+        {
+            var index = _indexes[_synchronizedIndex];
+            var real = _index + index - 3;
+
+            var viewModel = _viewModel.Items[real];
+
+            viewModel.SendAnimation(e.ClickedItem as Animation);
+            ButtonStickers.Collapse();
+
+            //_focusState.Set(FocusState.Programmatic);
+        }
+
+        #endregion
+
+        private StoryListViewModel _viewModel;
+        public StoryListViewModel ViewModel => _viewModel ??= DataContext as StoryListViewModel;
+
+        private Windows.Foundation.Rect _origin;
+        private StoryOpenOrigin _ciccio;
+        private Func<ActiveStoriesViewModel, Rect> _closing;
+
+        public void Update(StoryListViewModel viewModel, ActiveStoriesViewModel activeStories, StoryOpenOrigin origin, Rect point, Func<ActiveStoriesViewModel, Rect> closing)
+        {
+            _ciccio = origin;
+            _origin = point;
+            _closing = closing;
+
+            viewModel.Aggregator.Subscribe<UpdateStoryStealthMode>(this, Handle);
+
+            Update(viewModel, activeStories);
+            UpdateStealthTimer();
+
+            Handle(viewModel.ClientService.StealthMode);
+        }
+
+        public void Handle(UpdateStoryStealthMode update)
+        {
+            if (update.ActiveUntilDate > 0)
+            {
+                _dispatcherQueue.TryEnqueue(_stealthTimer.Start);
+            }
+            else
+            {
+                _dispatcherQueue.TryEnqueue(UpdateStealthTimer);
+            }
+        }
+
+        private void Update(StoryListViewModel viewModel, ActiveStoriesViewModel activeStories)
+        {
+            Logger.Info();
+
+            if (_viewModel != viewModel)
+            {
+                _viewModel = viewModel;
+                DataContext = viewModel;
+
+                _index = viewModel.Items.IndexOf(activeStories);
+                _total = viewModel.Items.Count;
+            }
+
+            for (int i = 0; i < _indexes.Length; i++)
+            {
+                var child = LayoutRoot.Children[i] as StoryContent;
+                var index = _indexes[i];
+                var real = _index + index - 3;
+
+                if (real >= 0 && real < _total)
+                {
+                    child.Visibility = Visibility.Visible;
+                    child.Update(viewModel.Items[real], real == _index, index);
+
+                    child.Completed -= OnCompleted;
+                    child.ContextRequested -= Story_ContextRequested;
+
+                    if (index == 3)
+                    {
+                        _synchronizedIndex = i;
+
+                        child.Completed += OnCompleted;
+                        child.ContextRequested += Story_ContextRequested;
+
+                        Composer.DataContext = viewModel.Items[real];
+
+                        var selectedItem = viewModel.Items[real].SelectedItem;
+                        if (selectedItem == null)
+                        {
+                            return;
+                        }
+
+                        if (selectedItem.Content is StoryContentLive)
+                        {
+                            Interactions.Visibility = Visibility.Collapsed;
+                            LiveInteractions.Visibility = Visibility.Visible;
+                            ChannelInteractions.Visibility = Visibility.Collapsed;
+                            TextArea.Visibility = Visibility.Collapsed;
+
+                            LiveInteractions.Update(child, activeStories, selectedItem);
+                        }
+                        else if (viewModel.Items[real].IsMyStory)
+                        {
+                            Interactions.Visibility = Visibility.Visible;
+                            LiveInteractions.Visibility = Visibility.Collapsed;
+                            ChannelInteractions.Visibility = Visibility.Collapsed;
+                            TextArea.Visibility = Visibility.Collapsed;
+
+                            Interactions.Update(selectedItem);
+                            LiveInteractions.Unload();
+                        }
+                        else if (selectedItem.Chat.Type is ChatTypeSupergroup || !selectedItem.CanBeReplied)
+                        {
+                            Interactions.Visibility = Visibility.Collapsed;
+                            LiveInteractions.Visibility = Visibility.Collapsed;
+                            ChannelInteractions.Visibility = Visibility.Visible;
+                            TextArea.Visibility = Visibility.Collapsed;
+
+                            ChannelInteractions.Update(selectedItem);
+                            LiveInteractions.Unload();
+                        }
+                        else if (selectedItem.CanBeReplied)
+                        {
+                            Interactions.Visibility = Visibility.Collapsed;
+                            LiveInteractions.Visibility = Visibility.Collapsed;
+                            ChannelInteractions.Visibility = Visibility.Collapsed;
+                            TextArea.Visibility = Visibility.Visible;
+
+                            LiveInteractions.Unload();
+                        }
+                        else
+                        {
+                            Interactions.Visibility = Visibility.Collapsed;
+                            LiveInteractions.Visibility = Visibility.Collapsed;
+                            ChannelInteractions.Visibility = Visibility.Collapsed;
+                            TextArea.Visibility = Visibility.Collapsed;
+
+                            LiveInteractions.Unload();
+                        }
+                    }
+                }
+                else
+                {
+                    child.Visibility = Visibility.Collapsed;
+                }
+            }
+
+            if (_index == _total - 1 && _viewModel.Items is ISupportIncrementalLoading incremental && incremental.HasMoreItems)
+            {
+                _ = incremental.LoadMoreItemsAsync(20);
+            }
+        }
+
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            float height = MathF.Min((float)e.NewSize.Height, 720);
+            float width = MathF.Min((float)e.NewSize.Width, 720);
+
+            float ratioX = height / 9;
+            float ratioY = height / 16;
+            float ratio = Math.Min(ratioX, ratioY);
+
+            float aatioX = width / 9;
+            float aatioY = width / 16;
+            float aatio = Math.Max(aatioX, aatioY);
+
+            ratio = Math.Min(ratio, aatio);
+
+            float y = 16 * ratio;
+            float x = 9 * ratio;
+
+            float small = (x - 0) * 0.40f;
+            float margin = small * 0.2f;
+
+            for (int i = 0; i < _indexes.Length; i++)
+            {
+                var child = LayoutRoot.Children[i] as StoryContent;
+                child.Width = x;
+                child.Height = y;
+                child.Margin = new Thickness();
+
+                var index = _indexes[i];
+                var real = _index + index - 3;
+
+                var visual = ElementComposition.GetElementVisual(LayoutRoot.Children[i]);
+                visual.CenterPoint = new Vector3(x / 2, y / 2, 0);
+                visual.Scale = new Vector3(index == 3 ? 1 : 0.4f);
+
+                ElementCompositionPreview.SetIsTranslationEnabled(LayoutRoot.Children[i], true);
+
+                if (index < 3 || index > 3)
+                {
+                    var zero = x / 2 + small / 2 - small;
+                    zero += (small + margin) * (index < 3 ? (3 - index) : (index - 3));
+                    zero *= index < 3 ? -1 : 1;
+
+                    visual.Properties.InsertVector3("Translation", new Vector3(zero, 0, 0));
+                }
+                else
+                {
+                    visual.Properties.InsertVector3("Translation", new Vector3(0, 0, 0));
+                }
+            }
+
+            Viewport.Width = x + 48;
+            Composer.Width = x + 24;
+            Composer.Margin = new Thickness(0, 0, 0, (ActualHeight - y) / 2 - 48 - 4);
+
+            StickersPanel.Width = x + 24;
+        }
+
+        private float ItemOffset(int index)
+        {
+            float height = MathF.Min((float)LayoutRoot.ActualHeight, 1280);
+
+            float ratioX = height / 9;
+            float ratioY = height / 16;
+            float ratio = Math.Min(ratioX, ratioY);
+
+            float y = 16 * ratio;
+            float x = 9 * ratio;
+
+            float small = (x - 0) * 0.40f;
+            float margin = small * 0.2f;
+
+            if (index < 3 || index > 3)
+            {
+                var zero = x / 2 + small / 2 - small;
+                zero += (small + margin) * (index < 3 ? (3 - index) : (index - 3));
+                zero *= index < 3 ? -1 : 1;
+
+                return zero;
+            }
+
+            return 0;
+        }
+
+        private readonly int[] _indexes = new int[]
+        {
+            0, 1, 2, 3, 4, 5, 6
+        };
+
+        private void Prev_Click(object sender, RoutedEventArgs e)
+        {
+            Move(Direction.Backward);
+        }
+
+        private void Next_Click(object sender, RoutedEventArgs e)
+        {
+            Move(Direction.Forward);
+        }
+
+        private int _index = 0;
+        private int _total = 15;
+
+        private int _synchronizedIndex = 3;
+
+        private bool Move(Direction direction, int increment = 1, bool force = false)
+        {
+            Logger.Info();
+
+            if (!force)
+            {
+                var user = _viewModel.Items[_index];
+
+                var item = user.Items.IndexOf(user.SelectedItem);
+                if ((item > 0 && direction == Direction.Backward) || (item < user.Items.Count - 1 && direction == Direction.Forward))
+                {
+                    user.SelectedItem = user.Items[direction == Direction.Forward ? item + 1 : item - 1];
+
+                    Update(_viewModel, user);
+                    return true;
+                }
+            }
+
+            if (_index < _total - increment && direction == Direction.Forward)
+            {
+                _index += increment;
+            }
+            else if (_index >= increment && direction == Direction.Backward)
+            {
+                _index -= increment;
+            }
+            else
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _indexes.Length; i++)
+            {
+                var previous = _indexes[i];
+
+                for (int j = 0; j < increment; j++)
+                {
+                    if (direction == Direction.Forward)
+                    {
+                        if (_indexes[i] == 0)
+                        {
+                            _indexes[i] = 6;
+                            previous = 7;
+                        }
+                        else
+                        {
+                            _indexes[i]--;
+                        }
+                    }
+                    else
+                    {
+                        if (_indexes[i] == 6)
+                        {
+                            _indexes[i] = 0;
+                            previous = -1;
+                        }
+                        else
+                        {
+                            _indexes[i]++;
+                        }
+                    }
+                }
+
+                var index = _indexes[i];
+                var real = _index + index - 3;
+
+                if (index == 3)
+                {
+                    _synchronizedIndex = i;
+                }
+
+                if (LayoutRoot.Children[i] is FrameworkElement elle)
+                {
+                    elle.Visibility = real >= 0 && real < _total ? Visibility.Visible : Visibility.Collapsed;
+                }
+
+                ElementCompositionPreview.SetIsTranslationEnabled(LayoutRoot.Children[i], true);
+
+                var visual = ElementComposition.GetElementVisual(LayoutRoot.Children[i]);
+
+                //var from = ItemOffset(previous);
+                //var to = ItemOffset(index);
+
+                var translate = visual.Compositor.CreateScalarKeyFrameAnimation();
+                translate.InsertKeyFrame(0, ItemOffset(previous));
+                translate.InsertKeyFrame(1, ItemOffset(index));
+                //translate.Duration = TimeSpan.FromSeconds(5);
+
+                visual.StartAnimation("Translation.X", translate);
+
+                if (previous == 3 || index == 3)
+                {
+                    var scale = visual.Compositor.CreateVector3KeyFrameAnimation();
+                    //scale.InsertKeyFrame(index == 3 ? 1 : 0, new Vector3(1.00f));
+                    //scale.InsertKeyFrame(index == 3 ? 0 : 1, new Vector3(0.40f));
+                    scale.InsertKeyFrame(1, new Vector3(index == 3 ? 1.00f : 0.40f));
+                    //scale.Duration = TimeSpan.FromSeconds(5);
+
+                    visual.StartAnimation("Scale", scale);
+                }
+                else
+                {
+                    visual.Scale = new Vector3(0.40f);
+                }
+
+                if (LayoutRoot.Children[i] is StoryContent content)
+                {
+                    content.Animate(previous, index);
+                }
+            }
+
+            Update(_viewModel, _viewModel.Items[_index]);
+            return true;
+        }
+
+        private void OnCompleted(object sender, EventArgs e)
+        {
+            if (Move(Direction.Forward))
+            {
+                return;
+            }
+
+            TryHide(ContentDialogResult.None);
+        }
+
+        private void TextArea_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+
+        }
+
+        private void TextField_TextChanging(RichEditBox sender, RichEditBoxTextChangingEventArgs args)
+        {
+            if (args.IsContentChanging)
+            {
+                CheckButtonsVisibility();
+            }
+        }
+
+        private void TextField_Tapped(object sender, TappedRoutedEventArgs e)
+        {
+
+        }
+
+        private void TextField_Sending(object sender, EventArgs e)
+        {
+
+        }
+
+        private void Attach_Click(object sender, RoutedEventArgs e)
+        {
+            var index = _indexes[_synchronizedIndex];
+            var real = _index + index - 3;
+
+            var viewModel = _viewModel.Items[real];
+
+            var chat = viewModel.Chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var flyout = new MenuFlyout();
+
+            var photoRights = !viewModel.VerifyRights(chat, x => x.CanSendPhotos);
+            var videoRights = !viewModel.VerifyRights(chat, x => x.CanSendVideos);
+            var documentRights = !viewModel.VerifyRights(chat, x => x.CanSendDocuments);
+
+            var messageRights = !viewModel.VerifyRights(chat, x => x.CanSendBasicMessages);
+            var pollRights = !viewModel.VerifyRights(chat, x => x.CanSendPolls, Strings.GlobalAttachMediaRestricted, Strings.AttachMediaRestrictedForever, Strings.AttachMediaRestricted, out string pollsLabel);
+
+            var pollsAllowed = chat.Type is ChatTypeSupergroup or ChatTypeBasicGroup;
+            if (!pollsAllowed && ViewModel.ClientService.TryGetUser(chat, out User user))
+            {
+                pollsAllowed = user.Type is UserTypeBot;
+            }
+
+            if (photoRights || videoRights)
+            {
+                flyout.CreateFlyoutItem(viewModel.SendMedia, Strings.PhotoOrVideo, Icons.Image);
+                flyout.CreateFlyoutItem(viewModel.SendCamera, Strings.ChatCamera, Icons.Camera);
+            }
+
+            if (documentRights)
+            {
+                flyout.CreateFlyoutItem(viewModel.SendDocument, Strings.ChatDocument, Icons.Document);
+            }
+
+            if (messageRights)
+            {
+                flyout.CreateFlyoutItem(viewModel.SendLocation, Strings.ChatLocation, Icons.Location);
+            }
+
+            if (pollRights && pollsAllowed)
+            {
+                flyout.CreateFlyoutItem(viewModel.SendPoll, Strings.Poll, Icons.Poll);
+            }
+
+            if (messageRights)
+            {
+                flyout.CreateFlyoutItem(viewModel.SendContact, Strings.AttachContact, Icons.Person);
+            }
+
+            if (flyout.Items.Count > 0)
+            {
+                flyout.ShowAt(ButtonAttach, FlyoutPlacementMode.TopEdgeAlignedLeft);
+            }
+        }
+
+        private void btnSendMessage_Click(object sender, RoutedEventArgs e)
+        {
+            Send();
+        }
+
+        private void TextField_Accept(FormattedTextBox sender, EventArgs args)
+        {
+            Send();
+        }
+
+        private async void Send()
+        {
+            var text = TextField.GetFormattedText(true);
+
+            var index = _indexes[_synchronizedIndex];
+            var real = _index + index - 3;
+
+            var viewModel = _viewModel.Items[real];
+
+            var chat = viewModel.Chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            await viewModel.SendMessageAsync(text);
+        }
+
+        private void Send_ContextRequested(UIElement sender, ContextRequestedEventArgs args)
+        {
+
+        }
+
+        private void Interactions_DeleteClick(object sender, RoutedEventArgs e)
+        {
+            var user = ViewModel.Items[_index];
+
+            var story = user.SelectedItem;
+            if (story != null)
+            {
+                DeleteStory(story);
+            }
+        }
+
+        private async void Interactions_ViewersClick(object sender, RoutedEventArgs e)
+        {
+            var user = ViewModel.Items[_index];
+
+            var story = user.SelectedItem;
+            if (story != null)
+            {
+                ActiveCard.Suspend(StoryPauseSource.Popup);
+
+                var confirm = await ViewModel.ShowPopupAsync(new StoryInteractionsPopup(), story, requestedTheme: ElementTheme.Dark);
+                if (await ContinuePopupAsync(confirm == ContentDialogResult.Primary, new PremiumStoryFeaturePermanentViewsHistory()))
+                {
+                    ActiveCard.Resume(StoryPauseSource.Popup);
+                }
+            }
+        }
+
+        private void Interactions_ShareClick(object sender, RoutedEventArgs e)
+        {
+            var user = ViewModel.Items[_index];
+
+            var story = user.SelectedItem;
+            if (story != null)
+            {
+                ShareStory(story);
+            }
+        }
+
+        private async Task<bool> ContinuePopupAsync(bool shouldPurchase, PremiumStoryFeature feature)
+        {
+            if (shouldPurchase && ViewModel.IsPremiumAvailable && !ViewModel.IsPremium)
+            {
+                var popup = new Telegram.Views.Premium.Popups.FeaturesPopup(ViewModel.ClientService, null, new[] { new PremiumFeatureUpgradedStories() }, null, null, null, null, new PremiumFeatureUpgradedStories());
+
+                var confirm = await ViewModel.ShowPopupAsync(popup, requestedTheme: ElementTheme.Dark);
+                if (confirm == ContentDialogResult.Primary)
+                {
+                    await ViewModel.NavigationService.ShowPromoAsync(new PremiumSourceStoryFeature(feature), ElementTheme.Dark);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void Story_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is UIElement element)
+            {
+                sender = element.GetParent<StoryContent>();
+            }
+
+            if (sender is StoryContent story)
+            {
+                var index = LayoutRoot.Children.IndexOf(story);
+                var adjus = _indexes[index];
+
+                var distance = adjus - _indexes[_synchronizedIndex];
+
+                Move(distance > 0 ? Direction.Forward : Direction.Backward, Math.Abs(distance), true);
+            }
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            _viewModel.NavigationService.Window.Activated += OnActivated;
+
+            StoriesWindow_Loaded(sender, e);
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            _viewModel.NavigationService.Window.Activated -= OnActivated;
+
+            _viewModel?.Aggregator.Unsubscribe(this);
+            _stealthTimer.Stop();
+        }
+
+        private void OnActivated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs e)
+        {
+            if (e.WindowActivationState != Windows.UI.Core.WindowActivationState.Deactivated)
+            {
+                ActiveCard.Resume(StoryPauseSource.Window);
+            }
+            else
+            {
+                ActiveCard.Suspend(StoryPauseSource.Window);
+            }
+        }
+
+        private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs args)
+        {
+            if (args.Key is VirtualKey.Space /*&& args.Modifiers == VirtualKeyModifiers.None*/)
+            {
+                var focused = FocusManager.GetFocusedElement(XamlRoot);
+                if (focused is not RichEditBox)
+                {
+                    ActiveCard.Toggle();
+                    args.Handled = true;
+                }
+            }
+        }
+
+        private void OnProcessKeyboardAccelerators(UIElement sender, ProcessKeyboardAcceleratorEventArgs args)
+        {
+            var keyCode = (int)args.Key;
+
+            if (args.Key is VirtualKey.Left or VirtualKey.GamepadLeftShoulder or VirtualKey.PageUp && args.Modifiers == VirtualKeyModifiers.None)
+            {
+                Move(Direction.Backward, force: args.Key is VirtualKey.PageUp);
+                args.Handled = true;
+            }
+            else if (args.Key is VirtualKey.Right or VirtualKey.GamepadRightShoulder or VirtualKey.PageDown && args.Modifiers == VirtualKeyModifiers.None)
+            {
+                Move(Direction.Forward, force: args.Key is VirtualKey.PageDown);
+                args.Handled = true;
+            }
+            //else if (args.VirtualKey is VirtualKey.C && args.OnlyControl)
+            //{
+            //    ViewModel?.Copy();
+            //    args.Handled = true;
+            //}
+            //else if (args.VirtualKey is VirtualKey.S && args.OnlyControl)
+            //{
+            //    ViewModel?.Save();
+            //    args.Handled = true;
+            //}
+            //else if (args.VirtualKey is VirtualKey.F11 || (args.VirtualKey is VirtualKey.F && args.OnlyControl))
+            //{
+            //    FullScreen_Click(null, null);
+            //    args.Handled = true;
+            //}
+            //else if (keyCode is 187 or 189 || args.VirtualKey is VirtualKey.Add or VirtualKey.Subtract)
+            //{
+            //    ScrollingHost.Zoom(keyCode is 187 || args.VirtualKey is VirtualKey.Add);
+            //    args.Handled = true;
+            //}
+            //else if (args.VirtualKey is VirtualKey.Up && _mediaPlayer?.Source != null)
+            //{
+            //    _mediaPlayer.Volume = Math.Clamp(_mediaPlayer.Volume + 0.1, 0, 1);
+            //    args.Handled = true;
+            //}
+            //else if (args.VirtualKey is VirtualKey.Down && _mediaPlayer?.Source != null)
+            //{
+            //    _mediaPlayer.Volume = Math.Clamp(_mediaPlayer.Volume - 0.1, 0, 1);
+            //    args.Handled = true;
+            //}
+        }
+
+        private void Story_ContextRequested(UIElement sender, ContextRequestedEventArgs args)
+        {
+            var activeStories = _viewModel.Items[_index];
+
+            var flyout = new MenuFlyout();
+            flyout.Closing += Flyout_Closing;
+
+            PopulateMenuFlyout(flyout, activeStories);
+
+            if (flyout.ShowAt(sender as FrameworkElement, args))
+            {
+                ActiveCard.Suspend(StoryPauseSource.Flyout);
+            }
+        }
+
+        private void Story_ContextRequested(object sender, StoryEventArgs e)
+        {
+            var element = sender as FrameworkElement;
+            var activeStories = e.ActiveStories;
+
+            var flyout = new MenuFlyout();
+            flyout.Closing += Flyout_Closing;
+
+            PopulateMenuFlyout(flyout, e.ActiveStories);
+
+            if (flyout.ShowAt(sender as FrameworkElement, FlyoutPlacementMode.BottomEdgeAlignedRight))
+            {
+                ActiveCard.Suspend(StoryPauseSource.Flyout);
+            }
+        }
+
+        private void PopulateMenuFlyout(MenuFlyout flyout, ActiveStoriesViewModel activeStories)
+        {
+            var story = activeStories?.SelectedItem;
+            if (story == null)
+            {
+                return;
+            }
+
+            if (story.CanBeReplied)
+            {
+                flyout.Opened += async (s, args) =>
+                {
+                    var response = await activeStories.ClientService.SendAsync(new GetStoryAvailableReactions(8));
+                    if (response is AvailableReactions reactions && flyout.IsOpen)
+                    {
+                        if (reactions.TopReactions.Count > 0
+                            || reactions.PopularReactions.Count > 0
+                            || reactions.RecentReactions.Count > 0)
+                        {
+                            ReactionsMenuFlyout.ShowAt(reactions, story, null, flyout);
+                        }
+                    }
+                };
+            }
+
+            if (activeStories.ClientService.TryGetUser(activeStories.Chat, out User supportUser) && supportUser.IsSupport)
+            {
+                if (story.CanBeForwarded && story.Content is StoryContentPhoto or StoryContentVideo && (story.ClientService.IsPremium || story.ClientService.IsPremiumAvailable))
+                {
+                    flyout.CreateFlyoutItem(SaveStory, story, story.Content is StoryContentPhoto ? Strings.SavePhoto : Strings.SaveVideo, story.ClientService.IsPremium ? Icons.SaveAs : Icons.SaveAsLocked);
+                }
+
+                if (story.Chat.Type is ChatTypePrivate && (story.ClientService.IsPremium || story.ClientService.IsPremiumAvailable))
+                {
+                    flyout.CreateFlyoutItem(StealthStory, story, Strings.StealthModeButton, story.ClientService.IsPremium ? Icons.Stealth : Icons.StealthLocked);
+                }
+
+                return;
+            }
+
+            var muted = ViewModel.Settings.Notifications.GetMuteStories(activeStories.Chat);
+            var archived = activeStories.List is StoryListArchive;
+
+            if (story.CanToggleIsPostedToChatPage)
+            {
+                flyout.CreateFlyoutItem(ViewModel.ArchiveStory, story, story.IsPostedToChatPage ? Strings.ArchiveStory : Strings.SaveToProfile, story.IsPostedToChatPage ? Icons.StoriesPinnedOff : Icons.StoriesPinned);
+            }
+
+            if (story.Chat.Type is ChatTypePrivate && !activeStories.IsMyStory)
+            {
+                flyout.CreateFlyoutItem(ViewModel.MuteProfile, activeStories, muted ? Strings.NotificationsStoryUnmute2 : Strings.NotificationsStoryMute2, muted ? Icons.Alert : Icons.AlertOff);
+            }
+
+            flyout.CreateFlyoutItem(ViewModel.ShowProfile, activeStories, archived ? Strings.UnarchiveStories : Strings.ArchivePeerStories, archived ? Icons.Unarchive : Icons.Archive);
+
+            //if (activeStories.IsMyStory || story.ClientService.IsPremium || story.ClientService.IsPremiumAvailable)
+            //{
+            //    flyout.CreateFlyoutItem(QualityStory, story, "Quality thing");
+            //}
+
+            if (story.CanBeForwarded && story.Content is StoryContentPhoto or StoryContentVideo && (activeStories.IsMyStory || story.ClientService.IsPremium || story.ClientService.IsPremiumAvailable))
+            {
+                flyout.CreateFlyoutItem(SaveStory, story, story.Content is StoryContentPhoto ? Strings.SavePhoto : Strings.SaveVideo, activeStories.IsMyStory || story.ClientService.IsPremium ? Icons.SaveAs : Icons.SaveAsLocked);
+            }
+
+            if (story.Chat.Type is ChatTypePrivate && !activeStories.IsMyStory && (story.ClientService.IsPremium || story.ClientService.IsPremiumAvailable))
+            {
+                flyout.CreateFlyoutItem(StealthStory, story, Strings.StealthModeButton, story.ClientService.IsPremium ? Icons.Stealth : Icons.StealthLocked);
+            }
+
+            if (story.ClientService.TryGetUser(story.Chat, out User user) && user.HasActiveUsername(out _))
+            {
+                flyout.CreateFlyoutItem(CopyLink, story, Strings.CopyLink, Icons.Link);
+            }
+
+            if (story.CanBeForwarded)
+            {
+                flyout.CreateFlyoutItem(ShareStory, story, Strings.StickersShare, Icons.Share);
+            }
+
+            if (ViewModel.TranslateService.CanTranslateText(story.Caption))
+            {
+                flyout.CreateFlyoutItem(TranslateStory, story, Strings.TranslateMessage, Icons.Translate);
+            }
+
+            if (story.CanBeDeleted)
+            {
+                flyout.CreateFlyoutItem(DeleteStory, story, Strings.Delete, Icons.Delete, destructive: true);
+            }
+            else
+            {
+                flyout.CreateFlyoutItem(ReportStory, story, Strings.ReportChat, Icons.ErrorCircle);
+            }
+        }
+
+        private void CopyLink(StoryViewModel story)
+        {
+            ActiveCard?.CopyLink(story);
+        }
+
+        private async void ReportStory(StoryViewModel story)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Popup);
+            await ViewModel.ReportStoryAsync(story);
+            ActiveCard.Resume(StoryPauseSource.Popup);
+        }
+
+        private async void TranslateStory(StoryViewModel story)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Popup);
+            await ViewModel.TranslateStoryAsync(story);
+            ActiveCard.Resume(StoryPauseSource.Popup);
+        }
+
+        private async void ShareStory(StoryViewModel story)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Popup);
+            await ViewModel.ShareStoryAsync(story);
+            ActiveCard.Resume(StoryPauseSource.Popup);
+        }
+
+        private async void DeleteStory(StoryViewModel story)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Popup);
+            await ViewModel.DeleteStoryAsync(story);
+            ActiveCard.Resume(StoryPauseSource.Popup);
+        }
+
+        private async void StealthStory(StoryViewModel story)
+        {
+            if (story.ClientService.StealthMode.ActiveUntilDate > 0)
+            {
+                ActiveCard.Suspend(StoryPauseSource.Popup);
+                await ViewModel.ShowPopupAsync(Strings.StealthModeOnHint, Strings.StealthModeOn, Strings.OK, requestedTheme: ElementTheme.Dark);
+                ActiveCard.Resume(StoryPauseSource.Popup);
+
+                return;
+
+                var text = Strings.StealthModeOn + Environment.NewLine + Strings.StealthModeOnHint;
+                var entity = new TextEntity(0, Strings.StealthModeOn.Length, new TextEntityTypeBold());
+
+                ToastPopup.Show(XamlRoot, new FormattedText(text, new[] { entity }));
+            }
+            else if (story.ClientService.IsPremium)
+            {
+                ActiveCard.Suspend(StoryPauseSource.Popup);
+
+                var popup = new StealthPopup(ViewModel.ClientService, false);
+                await ViewModel.ShowPopupAsync(popup, requestedTheme: ElementTheme.Dark);
+
+                ActiveCard.Resume(StoryPauseSource.Popup);
+            }
+            else
+            {
+                ActiveCard.Suspend(StoryPauseSource.Popup);
+
+                if (await ContinuePopupAsync(true, new PremiumStoryFeatureStealthMode()))
+                {
+                    ActiveCard.Resume(StoryPauseSource.Popup);
+                }
+            }
+        }
+
+        private void QualityStory(StoryViewModel story)
+        {
+            AppSettings.Playback.HighQuality = !AppSettings.Playback.HighQuality;
+            ActiveCard.UpdateQuality();
+        }
+
+        private async void SaveStory(StoryViewModel story)
+        {
+            if (story.ClientService.IsPremium)
+            {
+                ViewModel.SaveStory(story);
+            }
+            else
+            {
+                ActiveCard.Suspend(StoryPauseSource.Popup);
+
+                if (await ContinuePopupAsync(true, new PremiumStoryFeatureSaveStories()))
+                {
+                    ActiveCard.Resume(StoryPauseSource.Popup);
+                }
+            }
+        }
+
+        private void Flyout_Closing(FlyoutBase sender, FlyoutBaseClosingEventArgs args)
+        {
+            sender.Closing -= Flyout_Closing;
+            ActiveCard.Resume(StoryPauseSource.Flyout);
+        }
+
+        public TeachingTip ShowToast(FrameworkElement target, string text, TeachingTipPlacementMode placement = TeachingTipPlacementMode.TopRight)
+        {
+            return ShowToast(target, text, ToastPopupIcon.None, placement);
+        }
+
+        public TeachingTip ShowToast(FrameworkElement target, string text, ToastPopupIcon icon, TeachingTipPlacementMode placement = TeachingTipPlacementMode.TopRight)
+        {
+            var toast = ToastPopup.Show(target, text, icon, placement, ElementTheme.Dark);
+            toast.Closing += Toast_Closing;
+            ActiveCard.Suspend(StoryPauseSource.Toast);
+            return toast;
+        }
+
+        public Task<ContentDialogResult> ShowActionAsync(FrameworkElement target, object text, TeachingTipPlacementMode placement, ElementTheme requestedTheme = ElementTheme.Dark)
+        {
+            var toast = ToastPopup.ShowImpl(XamlRoot, null as FormattedText, null, placement, requestedTheme, target: target);
+            if (toast?.Content is Grid content)
+            {
+                var tsc = new TaskCompletionSource<ContentDialogResult>();
+                var undo = new Button()
+                {
+                    Content = text,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Colors.White),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Style = BootStrapper.Current.Resources["AccentTextButtonStyle"] as Style,
+                    Margin = new Thickness(-12, -12, -12, -12),
+                    Padding = new Thickness(12, 7, 12, 8),
+                    MinHeight = 40
+                };
+
+                void handler(object sender, RoutedEventArgs e)
+                {
+                    Logger.Info("closed");
+
+                    tsc.TrySetResult(ContentDialogResult.Primary);
+                    undo.Click -= handler;
+
+                    toast.IsOpen = false;
+                }
+
+                void closed(TeachingTip sender, TeachingTipClosedEventArgs e)
+                {
+                    tsc.TrySetResult(ContentDialogResult.None);
+                    sender.Closed -= closed;
+                }
+
+                undo.Click += handler;
+                toast.Closed += closed;
+
+                toast.Content = undo;
+
+                toast.Closing += Toast_Closing;
+                ActiveCard.Suspend(StoryPauseSource.Toast);
+
+                return tsc.Task;
+            }
+
+            return Task.FromResult(ContentDialogResult.None);
+        }
+
+        private void Toast_Closing(TeachingTip sender, TeachingTipClosingEventArgs args)
+        {
+            sender.Closing -= Toast_Closing;
+            ActiveCard.Resume(StoryPauseSource.Toast);
+        }
+
+        private void ButtonStickers_Opening(object sender, EventArgs e)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Stickers);
+        }
+
+        private void ButtonStickers_Closing(object sender, EventArgs e)
+        {
+            ActiveCard.Resume(StoryPauseSource.Stickers);
+        }
+
+        private void ButtonRecord_Started(object sender, EventArgs e)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Record);
+        }
+
+        private void ButtonRecord_Stopped(object sender, EventArgs e)
+        {
+            ActiveCard.Resume(StoryPauseSource.Record);
+        }
+
+        private void TextField_GotFocus(object sender, RoutedEventArgs e)
+        {
+            ActiveCard.Suspend(StoryPauseSource.Text);
+        }
+
+        private void TextField_LostFocus(object sender, RoutedEventArgs e)
+        {
+            ActiveCard.Resume(StoryPauseSource.Text);
+        }
+
+        private StoryContent ActiveCard => LayoutRoot.Children[_synchronizedIndex] as StoryContent;
+
+        private void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            TryHide(ContentDialogResult.Primary);
+        }
+
+        private bool _backGesture;
+
+        private void Layer_Tapped(object sender, TappedRoutedEventArgs e)
+        {
+            if (_backGesture)
+            {
+                _backGesture = false;
+                return;
+            }
+
+            TryHide(ContentDialogResult.Primary);
+        }
+
+        private void Layer_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (InputListener.IsPointerGoBackGesture(e.GetCurrentPoint(this)))
+            {
+                _backGesture = true;
+            }
+        }
+
+        private bool _oldEmpty = true;
+
+        private void CheckButtonsVisibility()
+        {
+            var empty = TextField.IsEmpty;
+            if (empty != _oldEmpty)
+            {
+                ButtonStickers.Source = empty
+                    ? AppSettings.Stickers.SelectedTab
+                    : Services.Settings.StickersTab.Emoji;
+            }
+
+            FrameworkElement elementHide = null;
+            FrameworkElement elementShow = null;
+
+            if (empty != _oldEmpty)
+            {
+                if (empty)
+                {
+                    elementHide = btnSendMessage;
+                    elementShow = ButtonRecord;
+                }
+                else
+                {
+                    elementHide = ButtonRecord;
+                    elementShow = btnSendMessage;
+                }
+            }
+
+            if (elementHide == null || elementShow == null)
+            {
+                return;
+            }
+
+            var visualHide = ElementComposition.GetElementVisual(elementHide);
+            var visualShow = ElementComposition.GetElementVisual(elementShow);
+
+            visualHide.CenterPoint = new Vector3(24);
+            visualShow.CenterPoint = new Vector3(24);
+
+            var batch = visualShow.Compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+            batch.Completed += (s, args) =>
+            {
+                elementHide.Visibility = Visibility.Collapsed;
+                elementShow.Visibility = Visibility.Visible;
+
+                visualHide.Scale = visualShow.Scale = new Vector3(1);
+                visualHide.Opacity = visualShow.Opacity = 1;
+            };
+
+            var hide1 = visualShow.Compositor.CreateVector3KeyFrameAnimation();
+            hide1.InsertKeyFrame(0, new Vector3(1));
+            hide1.InsertKeyFrame(1, new Vector3(0));
+
+            var hide2 = visualShow.Compositor.CreateScalarKeyFrameAnimation();
+            hide2.InsertKeyFrame(0, 1);
+            hide2.InsertKeyFrame(1, 0);
+
+            visualHide.StartAnimation("Scale", hide1);
+            visualHide.StartAnimation("Opacity", hide2);
+
+            elementShow.Visibility = Visibility.Visible;
+
+            var show1 = visualShow.Compositor.CreateVector3KeyFrameAnimation();
+            show1.InsertKeyFrame(1, new Vector3(1));
+            show1.InsertKeyFrame(0, new Vector3(0));
+
+            var show2 = visualShow.Compositor.CreateScalarKeyFrameAnimation();
+            show2.InsertKeyFrame(1, 1);
+            show2.InsertKeyFrame(0, 0);
+
+            visualShow.StartAnimation("Scale", show1);
+            visualShow.StartAnimation("Opacity", show2);
+
+            batch.End();
+
+            _oldEmpty = empty;
+        }
+    }
+
+    [Flags]
+    public enum StoryPauseSource
+    {
+        None = 0,
+        Stickers = 1 << 10,
+        Record = 1 << 1,
+        Text = 1 << 2,
+        Toast = 1 << 3,
+        Flyout = 1 << 4,
+        Popup = 1 << 5,
+        Interaction = 1 << 6,
+        Caption = 1 << 7,
+        Window = 1 << 8,
+        Live = 1 << 9
+    }
+
+    enum Direction
+    {
+        Forward,
+        Backward
+    }
+}

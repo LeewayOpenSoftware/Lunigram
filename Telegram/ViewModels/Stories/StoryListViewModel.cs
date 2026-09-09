@@ -1,0 +1,535 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Controls.Stories;
+using Telegram.Native;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.Views;
+using Telegram.Views.Popups;
+using Windows.Foundation;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
+
+namespace Telegram.ViewModels.Stories
+{
+    public partial class StoryListViewModel : ViewModelBase
+    {
+        private readonly IStorageService _storageService;
+        private readonly ITranslateService _translateService;
+
+        public StoryListViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, StoryList storyList)
+            : base(clientService, settingsService, aggregator)
+        {
+            _storageService = Session.Resolve<IStorageService>();
+            _translateService = Session.Resolve<ITranslateService>();
+
+            Items = new ItemsCollection(clientService, aggregator, this, storyList);
+        }
+
+        public StoryListViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, params ActiveStoriesViewModel[] items)
+            : base(clientService, settingsService, aggregator)
+        {
+            _storageService = Session.Resolve<IStorageService>();
+            _translateService = Session.Resolve<ITranslateService>();
+
+            Items = new ObservableCollection<ActiveStoriesViewModel>(items);
+        }
+
+        public static StoryListViewModel Create(INavigationService navigationService, ActiveStoriesViewModel activeStories)
+        {
+            return new StoryListViewModel(activeStories.ClientService, activeStories.Settings, activeStories.Aggregator, activeStories)
+            {
+                NavigationService = navigationService
+            };
+        }
+
+        public void UpdateSelectedItem()
+        {
+            foreach (var activeStories in Items)
+            {
+                StoryViewModel selected = null;
+
+                foreach (var story in activeStories.Items)
+                {
+                    if (story.Id > activeStories.MaxReadStoryId)
+                    {
+                        selected = story;
+                        break;
+                    }
+                }
+
+                activeStories.SelectedItem = selected ?? activeStories.Items.FirstOrDefault();
+            }
+        }
+
+        public ITranslateService TranslateService => _translateService;
+
+        public override INavigationService NavigationService
+        {
+            get => base.NavigationService;
+            set
+            {
+                base.NavigationService = value;
+                this.Items.ForEach(x => x.NavigationService = value);
+            }
+        }
+
+        public ObservableCollection<ActiveStoriesViewModel> Items { get; }
+
+        public void SendMessage(ActiveStoriesViewModel activeStories)
+        {
+            var chat = activeStories.Chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            NavigationService.NavigateToChat(chat);
+        }
+
+        public void OpenProfile(ActiveStoriesViewModel activeStories)
+        {
+            var chat = activeStories.Chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate)
+            {
+                NavigationService.Navigate(typeof(ProfilePage), chat.Id);
+            }
+            else
+            {
+                NavigationService.NavigateToChat(chat);
+            }
+        }
+
+        public void MuteProfile(ActiveStoriesViewModel activeStories)
+        {
+            var chat = activeStories.Chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var settings = chat.NotificationSettings.Clone();
+            settings.UseDefaultMuteStories = false;
+            settings.MuteStories = !settings.MuteStories;
+
+            ClientService.Send(new SetChatNotificationSettings(chat.Id, settings));
+
+            if (ClientService.TryGetUser(activeStories.Chat, out User user))
+            {
+                ShowToast(string.Format(settings.MuteStories ? Strings.NotificationsStoryMutedHint : Strings.NotificationsStoryUnmutedHint, user.FirstName));
+            }
+            else
+            {
+                ShowToast(string.Format(settings.MuteStories ? Strings.NotificationsStoryMutedHint : Strings.NotificationsStoryUnmutedHint, activeStories.Chat.Title));
+            }
+        }
+
+        public void HideProfile(ActiveStoriesViewModel activeStories)
+        {
+            if (activeStories.CanBeArchived)
+            {
+                ClientService.Send(new SetChatActiveStoriesList(activeStories.ChatId, new StoryListArchive()));
+            }
+            else
+            {
+                ClientService.Send(new RemoveTopChat(new TopChatCategoryUsers(), activeStories.ChatId));
+            }
+
+            if (ClientService.TryGetUser(activeStories.Chat, out User user))
+            {
+                ShowToast(string.Format(Strings.StoriesMovedToContacts, user.FirstName));
+            }
+            else
+            {
+                ShowToast(string.Format(Strings.StoriesMovedToContacts, activeStories.Chat.Title));
+            }
+        }
+
+        public void ShowProfile(ActiveStoriesViewModel activeStories)
+        {
+            ClientService.Send(new SetChatActiveStoriesList(activeStories.ChatId, new StoryListMain()));
+
+            if (ClientService.TryGetUser(activeStories.Chat, out User user))
+            {
+                ShowToast(string.Format(Strings.StoriesMovedToDialogs, user.FirstName));
+            }
+            else
+            {
+                ShowToast(string.Format(Strings.StoriesMovedToDialogs, activeStories.Chat.Title));
+            }
+        }
+
+        public Task ShareStoryAsync(StoryViewModel story)
+        {
+#if LINUX
+            // ChooseChatsPopup is 3.443 lines and is not in the Linux subset (the same reason
+            // SettingsPrivacyPageEx gives for the privacy exception lists). Kept as a method so
+            // that the story viewer, when it lands, compiles against the same surface.
+            Logger.Info("ShareStoryAsync: ChooseChatsPopup is out of the Linux subset");
+            return Task.CompletedTask;
+#else
+            return ShowPopupAsync(new ChooseChatsPopup(), new ChooseChatsConfigurationShareStory(story.PosterChatId, story.Id), requestedTheme: ElementTheme.Dark);
+#endif
+        }
+
+        public Task TranslateStoryAsync(StoryViewModel story)
+        {
+#if LINUX
+            // TranslatePopup is not in the Linux subset. Same note as above: this guard is the
+            // settings batch unblocking the shared tree, not a decision about stories.
+            Logger.Info("TranslatePopup is not available on Linux");
+            return Task.CompletedTask;
+#else
+            var language = LanguageIdentification.IdentifyLanguage(story.Caption.Text);
+            var popup = new TranslatePopup(_translateService, story.Caption, language, Settings.Translate.To, !story.CanBeForwarded)
+            {
+                RequestedTheme = ElementTheme.Dark
+            };
+
+            return ShowPopupAsync(popup);
+#endif
+        }
+
+        public async Task DeleteStoryAsync(StoryViewModel story)
+        {
+            var message = Strings.DeleteStorySubtitle;
+            var title = Strings.DeleteStoryTitle;
+
+            var confirm = await ShowPopupAsync(message, title, Strings.Delete, Strings.Cancel, destructive: true);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                ClientService.Send(new DeleteStory(story.PosterChatId, story.Id));
+            }
+        }
+
+        public void ArchiveStory(StoryViewModel story)
+        {
+            ClientService.Send(new ToggleStoryIsPostedToChatPage(story.PosterChatId, story.Id, !story.IsPostedToChatPage));
+
+            ShowToast(story.IsPostedToChatPage ? Strings.StoryRemovedFromProfile : Strings.StorySavedToProfile);
+        }
+
+        public
+#if !LINUX
+            async
+#endif
+            Task ReportStoryAsync(StoryViewModel story)
+        {
+#if LINUX
+            // ReportStoryPopup is not in the Linux subset yet.
+            Logger.Info("ReportStoryAsync: ReportStoryPopup is out of the Linux subset");
+            return Task.CompletedTask;
+#else
+            await ShowPopupAsync(new ReportStoryPopup(ClientService, NavigationService, story.PosterChatId, story.Id, null, string.Empty)
+            {
+                RequestedTheme = ElementTheme.Dark
+            });
+#endif
+        }
+
+        public async void SaveStory(StoryViewModel story)
+        {
+            var file = story.GetFile();
+            if (file != null)
+            {
+                await _storageService.SaveFileAsAsync(XamlRoot, file);
+            }
+        }
+
+        protected ActiveStoriesViewModel Create(ChatActiveStories activeStories, Chat chat)
+        {
+            return new ActiveStoriesViewModel(ClientService, Settings, Aggregator, activeStories, chat)
+            {
+                NavigationService = NavigationService
+            };
+        }
+
+        public void OpenStory(ActiveStoriesViewModel activeStories, Rect origin, Func<ActiveStoriesViewModel, Rect> closing)
+        {
+            var viewModel = new StoryListViewModel(ClientService, Settings, Aggregator, Items.ToArray());
+            viewModel.NavigationService = NavigationService;
+            viewModel.UpdateSelectedItem();
+
+            // Telegram.Controls.Stories.StoriesWindow: upstream it is
+            // Controls/Stories/StoriesWindow.xaml(.cs); on Linux the story viewer batch rebuilt it
+            // as Telegram.Linux/Stories/StoriesWindow.cs, same namespace, same class name. Upstream
+            // 12.10 added a XamlRoot parameter for its per-window popups; the Linux window is
+            // single-rooted and takes none, so the call site is fenced now.
+            var window = new StoriesWindow(NavigationService.XamlRoot);
+            window.Update(viewModel, activeStories, StoryOpenOrigin.ProfilePhoto, origin, closing);
+            _ = window.ShowAsync();
+        }
+
+        public void SetList(StoryList storyList)
+        {
+            if (Items is ItemsCollection collection && !collection.StoryList.AreTheSame(storyList))
+            {
+                _ = collection.ReloadAsync(storyList);
+            }
+        }
+
+        public partial class ItemsCollection : ObservableCollection<ActiveStoriesViewModel>, ISupportIncrementalLoading
+        {
+            private readonly IClientService _clientService;
+            private readonly IEventAggregator _aggregator;
+
+            private CancellationTokenSource _token = new();
+            private readonly Dictionary<long, ActiveStoriesViewModel> _chats = new();
+
+            private readonly StoryListViewModel _viewModel;
+
+            private StoryList _storyList;
+
+            private bool _hasMoreItems = true;
+
+            private long _lastChatId;
+            private long _lastOrder;
+
+            public StoryList StoryList => _storyList;
+
+            public ItemsCollection(IClientService clientService, IEventAggregator aggregator, StoryListViewModel viewModel, StoryList storyList)
+            {
+                _clientService = clientService;
+                _aggregator = aggregator;
+
+                _viewModel = viewModel;
+
+                _storyList = storyList;
+
+                _ = LoadMoreItemsAsync(0);
+            }
+
+            public Task ReloadAsync(StoryList storyList)
+            {
+                _token?.Cancel();
+                _token = new CancellationTokenSource();
+
+                _aggregator.Unsubscribe(this);
+                _hasMoreItems = false;
+
+                _lastChatId = 0;
+                _lastOrder = 0;
+
+                _storyList = storyList;
+
+                _chats.Clear();
+                Clear();
+
+                return LoadMoreItemsAsync();
+            }
+
+            public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
+            {
+                return IncrementalLoading.Run(token => LoadMoreItemsAsync());
+            }
+
+            private async Task<LoadMoreItemsResult> LoadMoreItemsAsync()
+            {
+                var token = _token;
+                var totalCount = 0u;
+
+                var response = await _clientService.GetStoryListAsync(_storyList, Count, 20);
+                if (response is Telegram.Td.Api.Chats chats && !token.IsCancellationRequested)
+                {
+                    foreach (var activeStories in _clientService.GetActiveStorieses(chats.ChatIds))
+                    {
+                        var order = activeStories.Order;
+                        if (order != 0)
+                        {
+                            // TODO: is this redundant?
+                            var next = NextIndexOf(activeStories.ChatId, order);
+                            if (next >= 0 && _clientService.TryGetChat(activeStories.ChatId, out Chat chat))
+                            {
+                                if (_chats.TryGetValue(activeStories.ChatId, out var prev))
+                                {
+                                    Remove(prev);
+                                }
+
+                                var item = _viewModel.Create(activeStories, chat);
+
+                                _chats[activeStories.ChatId] = item;
+                                Insert(Math.Min(Count, next), item);
+
+                                totalCount++;
+                            }
+
+                            _lastChatId = activeStories.ChatId;
+                            _lastOrder = order;
+                        }
+                    }
+
+                    IsEmpty = Count == 0;
+
+                    _hasMoreItems = chats.TotalCount >= 0;
+                    Subscribe();
+
+                    if (_hasMoreItems == false)
+                    {
+                        OnPropertyChanged(new PropertyChangedEventArgs("HasMoreItems"));
+                    }
+                }
+
+                return new LoadMoreItemsResult
+                {
+                    Count = totalCount
+                };
+            }
+
+            private void Subscribe()
+            {
+                _aggregator.Subscribe<UpdateChatActiveStories>(this, Handle)
+                    .Subscribe<UpdateStory>(Handle)
+                    .Subscribe<UpdateStoryDeleted>(Handle);
+            }
+
+            public bool HasMoreItems => _hasMoreItems;
+
+            #region Handle
+
+            public void Handle(UpdateChatActiveStories update)
+            {
+                if ((update.ActiveStories.List is StoryListMain && _storyList is StoryListMain) || (update.ActiveStories.List is StoryListArchive && _storyList is StoryListArchive))
+                {
+                    _viewModel.BeginOnUIThread(() => UpdateChatOrder(update.ActiveStories, update.ActiveStories.Order));
+                }
+                else
+                {
+                    _viewModel.BeginOnUIThread(() => UpdateChatOrder(update.ActiveStories, 0));
+                }
+            }
+
+            public void Handle(UpdateStory update)
+            {
+                if (_chats.TryGetValue(update.Story.PosterChatId, out var item))
+                {
+                    item.Handle(update);
+                }
+            }
+
+            public void Handle(UpdateStoryDeleted update)
+            {
+                if (_chats.TryGetValue(update.StoryPosterChatId, out var item))
+                {
+                    item.Handle(update);
+                }
+            }
+
+            private void UpdateChatOrder(ChatActiveStories activeStories, long order)
+            {
+                if (_chats.TryGetValue(activeStories.ChatId, out var item))
+                {
+                    item.Update(activeStories);
+                    UpdateChatOrder(item, order, true);
+                }
+                else if (order != 0 && _clientService.TryGetChat(activeStories.ChatId, out Chat chat))
+                {
+                    item = _viewModel.Create(activeStories, chat);
+                    UpdateChatOrder(item, order, true);
+                }
+            }
+
+            private void UpdateChatOrder(ActiveStoriesViewModel activeStories, long order, bool lastMessage)
+            {
+                if (order > 0 && (order > _lastOrder || !_hasMoreItems || (order == _lastOrder && activeStories.ChatId >= _lastChatId)))
+                {
+                    var next = NextIndexOf(activeStories.ChatId, order);
+                    if (next >= 0)
+                    {
+                        if (_chats.ContainsKey(activeStories.ChatId))
+                        {
+                            Remove(activeStories);
+                        }
+
+                        _chats[activeStories.ChatId] = activeStories;
+                        Insert(Math.Min(Count, next), activeStories);
+
+                        if (next == Count - 1)
+                        {
+                            _lastChatId = activeStories.ChatId;
+                            _lastOrder = order;
+                        }
+
+                        IsEmpty = Count == 0;
+                    }
+                    else
+                    {
+                        activeStories.RaisePropertyChanged(nameof(activeStories.Item));
+                    }
+                }
+                else if (_chats.ContainsKey(activeStories.ChatId))
+                {
+                    _chats.Remove(activeStories.ChatId);
+                    Remove(activeStories);
+
+                    IsEmpty = Count == 0;
+                }
+            }
+
+            private int NextIndexOf(long chatId, long order)
+            {
+                var prev = -1;
+                var next = 0;
+
+                for (int i = 0; i < Count; i++)
+                {
+                    var item = this[i];
+                    if (item.ChatId == chatId)
+                    {
+                        prev = i;
+                        continue;
+                    }
+
+                    if (order > item.Order || order == item.Order && chatId >= item.ChatId)
+                    {
+                        return next == prev ? -1 : next;
+                    }
+
+                    next++;
+                }
+
+                return Count;
+            }
+
+            #endregion
+
+            private bool _isEmpty;
+            public bool IsEmpty
+            {
+                get
+                {
+                    return _isEmpty;
+                }
+                set
+                {
+                    if (_isEmpty != value)
+                    {
+                        _isEmpty = value;
+                        OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsEmpty)));
+                    }
+                }
+            }
+        }
+    }
+}

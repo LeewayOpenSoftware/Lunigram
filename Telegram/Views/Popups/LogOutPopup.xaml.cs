@@ -1,0 +1,80 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using Telegram.Controls;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.ViewModels;
+using Telegram.Views.Host;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace Telegram.Views
+{
+    public sealed partial class LogOutPopup : ContentPopup
+    {
+        public LogOutViewModel ViewModel => DataContext as LogOutViewModel;
+
+        public LogOutPopup()
+        {
+            InitializeComponent();
+            Title = Strings.LogOutTitle;
+
+            PrimaryButtonText = Strings.LogOutTitle;
+            SecondaryButtonText = Strings.Cancel;
+
+            if (LifetimeService.Current.Count < 3)
+            {
+                FindName(nameof(AddAccount));
+            }
+
+            Closed += OnClosed;
+        }
+
+        private void OnClosed(ContentDialog sender, ContentDialogClosedEventArgs args)
+        {
+            if (args.Result == ContentDialogResult.Primary)
+            {
+                ViewModel.Logout();
+            }
+        }
+
+        private void AddAnotherAccount_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+
+            if (XamlRoot.Content is WindowPresenter { Content: RootWindow root })
+            {
+                root.Create();
+            }
+        }
+
+        private void Passcode_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            ViewModel.OpenPasscode();
+        }
+
+        private void Storage_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            ViewModel.OpenStorage();
+        }
+
+        private void PhoneNumber_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            ViewModel.ChangePhoneNumber();
+        }
+
+        private void Question_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            ViewModel.Ask();
+        }
+    }
+}

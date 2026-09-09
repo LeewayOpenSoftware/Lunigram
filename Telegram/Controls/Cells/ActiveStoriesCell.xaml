@@ -1,0 +1,88 @@
+﻿<UserControl x:Class="Telegram.Controls.Cells.ActiveStoriesCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Telegram.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="300"
+             d:DesignWidth="400">
+
+    <Grid x:Name="LayoutRoot"
+          Width="72"
+          Padding="0,12,0,8">
+        <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="PhotoCiccio"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                CornerRadius="24"
+                Width="48"
+                Height="48">
+            <Grid x:Name="PhotoRoot"
+                  Width="48"
+                  Height="48">
+                <controls:ProfilePicture x:Name="Photo"
+                                         Size="40"
+                                         Shape="Ellipse" />
+                <Grid x:Name="SegmentsRoot">
+                    <controls:ActiveStoriesSegments x:Name="SegmentsSmall"
+                                                    IsLiveBadgeVisible="False"
+                                                    IsEnabled="False"
+                                                    IsHitTestVisible="False"
+                                                    IsTabStop="False"
+                                                    Width="48"
+                                                    Height="48"
+                                                    Canvas.ZIndex="1" />
+                    <controls:ActiveStoriesSegments x:Name="Segments"
+                                                    IsLiveBadgeVisible="False"
+                                                    IsEnabled="False"
+                                                    IsHitTestVisible="False"
+                                                    IsTabStop="False"
+                                                    Width="48"
+                                                    Height="48" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!--
+            Collapsed until the Trigger setter says otherwise. It sets the visibility both ways on
+            every push, so this changes nothing on Windows; what it removes is the frame in which a
+            red LIVE badge is painted under every avatar because the binding has not run yet.
+        -->
+        <Border x:Name="LiveBadge"
+                Visibility="Collapsed"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Background="#FF2C55"
+                BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderThickness="2"
+                CornerRadius="8"
+                Height="16"
+                MinWidth="16"
+                Margin="0,0,0,-2">
+            <TextBlock Foreground="#FFFFFF"
+                       Text="{CustomResource LiveStoryBadge}"
+                       TextLineBounds="Tight"
+                       TextAlignment="Center"
+                       OpticalMarginAlignment="TrimSideBearings"
+                       FontSize="9"
+                       Padding="4,0,4,0"
+                       VerticalAlignment="Center"
+                       Typography.NumeralAlignment="Tabular" />
+        </Border>
+
+        <TextBlock x:Name="Title"
+                   Margin="0,4,0,0"
+                   TextAlignment="Center"
+                   TextWrapping="NoWrap"
+                   TextTrimming="CharacterEllipsis"
+                   FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   HorizontalAlignment="Stretch"
+                   Grid.Row="1" />
+
+    </Grid>
+</UserControl>

@@ -1,0 +1,463 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using Telegram.Common;
+using Telegram.ViewModels.Gallery;
+using Windows.UI;
+using Windows.UI.Core.Preview;
+using Windows.UI.ViewManagement;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Colors = Microsoft.UI.Colors;
+
+namespace Telegram.Controls.Gallery
+{
+    public sealed partial class GalleryCompactOverlay : UserControlEx
+    {
+        private AppWindow _window;
+        private bool _disposed;
+
+        private GalleryViewModelBase _viewModel;
+        private VideoPlayerBase _player;
+
+        private static volatile GalleryCompactOverlay _current;
+        private static readonly object _lock = new();
+
+#if INSTRUMENTATION
+        // A STRONG static, so while picture-in-picture is up this is a legitimate
+        // root — and if it is ever left set after the window closes, it is a leak of
+        // the whole overlay, the transport controls and the player with it. Exposed
+        // so GalleryWindow's analysis can tell those two cases apart.
+        internal static GalleryCompactOverlay DebugCurrent => _current;
+
+        internal System.Collections.Generic.IEnumerable<object> DebugChildren()
+        {
+            yield return Controls;
+            yield return _player;
+        }
+#endif
+
+        public GalleryCompactOverlay(AppWindow window, GalleryViewModelBase viewModel, GalleryMedia media, VideoPlayerBase player)
+        {
+            InitializeComponent();
+
+            Telegram.Common.Instrumentation.Register(this);
+
+            _window = window;
+            _disposed = false;
+
+            // Subscribe to window lifecycle events
+            if (_window != null)
+            {
+                _window.Closed += OnWindowClosed;
+            }
+
+            _viewModel = viewModel;
+            _player = player;
+            _player.TreeUpdated += OnTreeUpdated;
+
+            Presenter.Constraint = media.Constraint;
+            Presenter.Children.Insert(0, player);
+
+            Controls.Attach(player);
+            Controls.IsCompact = true;
+
+            _current = this;
+
+            //var view = ApplicationView.GetForCurrentView();
+            //view.TitleBar.ButtonForegroundColor = Colors.White;
+
+            var visual = ElementComposition.GetElementVisual(ControlsRoot);
+            visual.Opacity = 0;
+        }
+
+        private void OnWindowClosed(AppWindow sender, AppWindowClosedEventArgs args)
+        {
+            Logger.Info("Window closed externally");
+            CleanupWindow();
+        }
+
+        private void CleanupWindow()
+        {
+            lock (_lock)
+            {
+                if (_window != null)
+                {
+                    try
+                    {
+                        _window.Closed -= OnWindowClosed;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Window already disposed, ignore
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Error unsubscribing from window events", ex);
+                    }
+
+                    _window = null;
+                }
+
+                _disposed = true;
+
+                if (_current == this)
+                {
+                    _current = null;
+                }
+            }
+        }
+
+        private void OnTreeUpdated(VideoPlayerBase sender, EventArgs args)
+        {
+            // Hopefully this is always triggered after Unloaded/Loaded
+            // And even if the events are raced and triggered in the opposite order
+            // Not causing Disconnected/Connected to be triggered.
+            sender.IsUnloadedExpected = false;
+            sender.TreeUpdated -= OnTreeUpdated;
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            Logger.Info();
+
+            Controls.Unload();
+
+            _player = null;
+            CleanupWindow();
+        }
+
+        protected override void OnPointerEntered(PointerRoutedEventArgs e)
+        {
+            ShowHideTransport(true);
+
+            try
+            {
+                base.OnPointerEntered(e);
+            }
+            catch
+            {
+                // All the remote procedure calls must be wrapped in a try-catch block
+            }
+        }
+
+        protected override void OnPointerExited(PointerRoutedEventArgs e)
+        {
+            ShowHideTransport(false);
+
+            try
+            {
+                base.OnPointerExited(e);
+            }
+            catch
+            {
+                // All the remote procedure calls must be wrapped in a try-catch block
+            }
+        }
+
+        private bool _transportCollapsed = true;
+
+        private void ShowHideTransport(bool show)
+        {
+            if (show != _transportCollapsed)
+            {
+                return;
+            }
+
+            if (show is false && XamlRoot != null)
+            {
+                foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
+                {
+                    return;
+                }
+            }
+
+            _transportCollapsed = !show;
+
+            var visual = ElementComposition.GetElementVisual(ControlsRoot);
+            var opacity = visual.Compositor.CreateScalarKeyFrameAnimation();
+            opacity.InsertKeyFrame(0, show ? 0 : 1);
+            opacity.InsertKeyFrame(1, show ? 1 : 0);
+
+            visual.StartAnimation("Opacity", opacity);
+        }
+
+        private async void Controls_CompactClick(object sender, RoutedEventArgs e)
+        {
+            Logger.Info();
+
+            AppWindow window;
+            lock (_lock)
+            {
+                window = _window;
+                if (window == null || _current == null || _disposed)
+                {
+                    Logger.Info("Button was already pressed or window disposed");
+                    return;
+                }
+
+                // Clear references immediately to prevent double-processing
+                _window = null;
+                _current = null;
+                _disposed = true;
+            }
+
+            _player.IsUnloadedExpected = true;
+            Presenter.Children.RemoveAt(0);
+
+            if (FeatureTokenGenerator.TryUnlockFeature("com.microsoft.windows.applicationwindow"))
+            {
+                try
+                {
+                    var prevId = CoreAppWindowPreview.GetIdFromWindow(window);
+                    var nextId = ApplicationView.GetForCurrentView().Id;
+                    await ApplicationViewSwitcher.TryShowAsStandaloneAsync(nextId);
+                    await ApplicationViewSwitcher.SwitchAsync(nextId, prevId);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Error switching application views", ex);
+                    // All the remote procedure calls must be wrapped in a try-catch block
+                }
+            }
+
+            _ = GalleryWindow.ShowAsync(_viewModel.XamlRoot, _viewModel, null, 0, _player);
+
+            // Close the window with proper error handling
+            try
+            {
+                _ = window.CloseAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                Logger.Info("Window already disposed during compact click");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error closing window during compact click", ex);
+            }
+        }
+
+        private void Play(GalleryViewModelBase viewModel, VideoPlayerBase player)
+        {
+            _viewModel = viewModel;
+            _player = player;
+            _player.TreeUpdated += OnTreeUpdated;
+
+            Presenter.Children.RemoveAt(0);
+            Presenter.Children.Insert(0, player);
+
+            Controls.Attach(player);
+        }
+
+        private void PauseImpl()
+        {
+            try
+            {
+                _player?.Pause();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error pausing player", ex);
+            }
+        }
+
+        private void Close()
+        {
+            Logger.Info("Closing");
+
+            AppWindow window;
+            lock (_lock)
+            {
+                window = _window;
+                if (window == null || _disposed)
+                {
+                    Logger.Info("Window already null or disposed");
+                    return;
+                }
+
+                // Clear reference first to prevent multiple close attempts
+                _window = null;
+                _disposed = true;
+            }
+
+            try
+            {
+                _ = window.CloseAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                Logger.Info("Window already disposed during close");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error closing window", ex);
+            }
+        }
+
+        public static void Pause()
+        {
+            GalleryCompactOverlay current;
+            lock (_lock)
+            {
+                current = _current;
+            }
+
+            if (current != null && current.HasThreadAccess())
+            {
+                current.PauseImpl();
+            }
+            else if (current != null)
+            {
+                try
+                {
+                    current.BeginOnUIThread(() => Pause());
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Error scheduling pause on UI thread", ex);
+                }
+            }
+        }
+
+        public static async void CreateOrUpdate(GalleryViewModelBase viewModel, GalleryMedia item, VideoPlayerBase player)
+        {
+            GalleryCompactOverlay currentToClose = null;
+            bool shouldCreate = false;
+
+            // Determine action under lock
+            lock (_lock)
+            {
+                if (_current != null && _current.HasThreadAccess() && !_current._disposed)
+                {
+                    Logger.Info("Exists on the current thread");
+                    try
+                    {
+                        _current.Play(viewModel, player);
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Error updating existing overlay", ex);
+                        // Fall through to create new one
+                        currentToClose = _current;
+                        _current = null;
+                        shouldCreate = true;
+                    }
+                }
+                else
+                {
+                    Logger.Info("Does not exist, or different thread, or disposed - will create new");
+                    currentToClose = _current;
+                    _current = null;
+                    shouldCreate = true;
+                }
+            }
+
+            // Close existing window if needed (outside lock to avoid deadlock)
+            if (currentToClose != null)
+            {
+                try
+                {
+                    if (currentToClose.HasThreadAccess())
+                    {
+                        currentToClose.Close();
+                    }
+                    else
+                    {
+                        currentToClose.BeginOnUIThread(() => currentToClose.Close());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Error closing existing overlay", ex);
+                }
+            }
+
+            if (!shouldCreate)
+            {
+                return;
+            }
+
+            try
+            {
+                // TODO: there is a problem when creating the overlay from a secondary window
+                // as the AppWindow will be destroyed as soon as the secondary window gets closed.
+
+                // Reset the state so that hopefully the window gets the right size/position
+                AppWindow.ClearPersistedState("Gallery");
+
+                var appWindow = await AppWindow.TryCreateAsync();
+                if (appWindow == null)
+                {
+                    Logger.Error("Failed to create AppWindow");
+                    return;
+                }
+
+                appWindow.PersistedStateId = "Gallery";
+                appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
+                appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+                appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
+                appWindow.TitleBar.ButtonForegroundColor = Colors.White;
+
+                // Is CompactOverlay supported for this AppWindow? If not, then stop.
+                if (appWindow.Presenter.IsPresentationSupported(AppWindowPresentationKind.CompactOverlay))
+                {
+                    var appWindowContent = new GalleryCompactOverlay(appWindow, viewModel, item, player);
+
+                    // Create a new frame for the window
+                    // Navigate the frame to the CompactOverlay page inside it.
+                    //appWindowFrame.Navigate(typeof(SecondaryAppWindowPage));
+                    // Attach the frame to the window
+                    ElementCompositionPreview.SetAppWindowContent(appWindow, appWindowContent);
+                    // Let's set the title so that we can tell the windows apart
+
+                    var switched = appWindow.Presenter.RequestPresentation(AppWindowPresentationKind.CompactOverlay);
+                    if (switched)
+                    {
+                        await appWindow.TryShowAsync();
+
+                        // Double call because at times it fails
+                        appWindow.Presenter.RequestPresentation(AppWindowPresentationKind.CompactOverlay);
+                    }
+                    else
+                    {
+                        Logger.Error("Failed to switch to CompactOverlay presentation");
+                        try
+                        {
+                            await appWindow.CloseAsync();
+                        }
+                        catch (Exception closeEx)
+                        {
+                            Logger.Error("Error closing window after failed presentation switch", closeEx);
+                        }
+                    }
+                }
+                else
+                {
+                    Logger.Error("CompactOverlay presentation not supported");
+                    try
+                    {
+                        await appWindow.CloseAsync();
+                    }
+                    catch (Exception closeEx)
+                    {
+                        Logger.Error("Error closing window after unsupported presentation", closeEx);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error creating new overlay window", ex);
+            }
+        }
+    }
+}

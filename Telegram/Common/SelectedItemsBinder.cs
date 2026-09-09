@@ -1,0 +1,254 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using Telegram.Collections;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace Telegram.Common
+{
+    public enum SelectedItemsMode
+    {
+        None,
+        Auto
+    }
+
+    public partial class SelectedItemsBinder : DependencyObject
+    {
+        #region Attached
+
+        public static SelectedItemsBinder GetAttached(DependencyObject obj)
+        {
+            return (SelectedItemsBinder)obj.GetValue(AttachedProperty);
+        }
+
+        public static void SetAttached(DependencyObject obj, SelectedItemsBinder value)
+        {
+            obj.SetValue(AttachedProperty, value);
+        }
+
+        public static readonly DependencyProperty AttachedProperty =
+            DependencyProperty.RegisterAttached("Attached", typeof(SelectedItemsBinder), typeof(ListViewBase), new PropertyMetadata(null, OnSynchronizerChanged));
+
+        private static void OnSynchronizerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (e.OldValue is SelectedItemsBinder oldValue)
+            {
+                oldValue.UnsubscribeFromEvents();
+            }
+
+            if (e.NewValue is SelectedItemsBinder newValue)
+            {
+                newValue.Attach(d as ListViewBase);
+            }
+        }
+
+        #endregion
+
+        #region SelectedItems
+
+        public INotifyCollectionChanged SelectedItems
+        {
+            get { return (INotifyCollectionChanged)GetValue(SelectedItemsProperty); }
+            set { SetValue(SelectedItemsProperty, value); }
+        }
+
+        public static readonly DependencyProperty SelectedItemsProperty =
+            DependencyProperty.Register("SelectedItems", typeof(INotifyCollectionChanged), typeof(SelectedItemsBinder), new PropertyMetadata(null, OnSelectedItemsChanged));
+
+        private static void OnSelectedItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            ((SelectedItemsBinder)d).OnSelectedItemsChanged((INotifyCollectionChanged)e.NewValue, (INotifyCollectionChanged)e.OldValue);
+        }
+
+        private void OnSelectedItemsChanged(INotifyCollectionChanged newValue, INotifyCollectionChanged oldValue)
+        {
+            if (oldValue != null)
+            {
+                oldValue.CollectionChanged += Context_CollectionChanged;
+            }
+
+#if LINUX
+            // The binder is built before it is attached: XAML sets the properties of the
+            // <SelectedItemsBinder> element and only then assigns it to the attached property
+            // that calls Attach. On Windows the SelectedItems x:Bind lands later, from
+            // Bindings.Update, and _listView is already there; do not bet the page on Uno
+            // agreeing about that order, because the miss here is a NullReferenceException
+            // raised while the page is being built.
+            if (_listView == null)
+            {
+                return;
+            }
+
+#endif
+            if (_listView.IsLoaded)
+            {
+                Transfer(SelectedItems as IList, _listView.SelectedItems);
+            }
+        }
+
+        #endregion
+
+        #region SelectionMode
+
+        public SelectedItemsMode SelectionMode
+        {
+            get { return (SelectedItemsMode)GetValue(SelectionModeProperty); }
+            set { SetValue(SelectionModeProperty, value); }
+        }
+
+        public static readonly DependencyProperty SelectionModeProperty =
+            DependencyProperty.Register("SelectionMode", typeof(SelectedItemsMode), typeof(SelectedItemsBinder), new PropertyMetadata(SelectedItemsMode.None));
+
+        #endregion
+
+        #region IsItemClickEnabled
+
+        public bool IsItemClickEnabled
+        {
+            get { return (bool)GetValue(IsItemClickEnabledProperty); }
+            set { SetValue(IsItemClickEnabledProperty, value); }
+        }
+
+        public static readonly DependencyProperty IsItemClickEnabledProperty =
+            DependencyProperty.Register("IsItemClickEnabled", typeof(bool), typeof(SelectedItemsBinder), new PropertyMetadata(false));
+
+        #endregion
+
+        private ListViewBase _listView;
+        private FrameworkElementState _manager;
+
+        private void Attach(ListViewBase view)
+        {
+            _listView = view;
+
+            _manager = new FrameworkElementState(view);
+            _manager.Loaded += OnLoaded;
+            _manager.Unloaded += OnUnloaded;
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            Transfer(SelectedItems as IList, _listView.SelectedItems);
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            UnsubscribeFromEvents();
+        }
+
+        private void SelectedItems_CollectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            Transfer(_listView.SelectedItems, SelectedItems as IList);
+
+            if (SelectionMode == SelectedItemsMode.Auto)
+            {
+                if (_listView.SelectedItems.Count == 0 && _listView.SelectionMode == ListViewSelectionMode.Multiple)
+                {
+                    _listView.SelectionMode = ListViewSelectionMode.None;
+                    _listView.IsItemClickEnabled = IsItemClickEnabled;
+                }
+            }
+        }
+
+        private void Context_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (SelectionMode == SelectedItemsMode.Auto && SelectedItems is IList list)
+            {
+                if (list.Count > 0 && _listView.SelectionMode == ListViewSelectionMode.None)
+                {
+                    _listView.SelectionMode = ListViewSelectionMode.Multiple;
+                    _listView.IsItemClickEnabled = false;
+                }
+                else if (list.Count == 0 && _listView.SelectionMode == ListViewSelectionMode.Multiple)
+                {
+                    _listView.SelectionMode = ListViewSelectionMode.None;
+                    _listView.IsItemClickEnabled = IsItemClickEnabled;
+                }
+            }
+
+            Transfer(SelectedItems as IList, _listView.SelectedItems);
+        }
+
+        protected void SubscribeToEvents(ListViewBase listView)
+        {
+            if (_listView != null)
+            {
+                _listView.SelectionChanged -= SelectedItems_CollectionChanged;
+            }
+
+            _listView = listView;
+
+            if (_listView != null)
+            {
+                _listView.SelectionChanged += SelectedItems_CollectionChanged;
+            }
+
+            if (SelectedItems != null)
+            {
+                SelectedItems.CollectionChanged -= Context_CollectionChanged;
+                SelectedItems.CollectionChanged += Context_CollectionChanged;
+            }
+        }
+
+        private void UnsubscribeFromEvents()
+        {
+            if (_listView != null)
+            {
+                _listView.SelectionChanged -= SelectedItems_CollectionChanged;
+            }
+
+            if (SelectedItems != null)
+            {
+                SelectedItems.CollectionChanged -= Context_CollectionChanged;
+            }
+        }
+
+        private void Transfer(IEnumerable source, IEnumerable target)
+        {
+            UnsubscribeFromEvents();
+
+            if (_listView.SelectionMode == ListViewSelectionMode.Multiple && source != null && target != null)
+            {
+                if (target is IRangeObservableCollection collection)
+                {
+                    collection.ReplaceWithT(source);
+                }
+                else if (target is IList<object> list && source is IList last)
+                {
+                    try
+                    {
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            object o = list[i];
+
+                            if (last.Contains(o))
+                                continue;
+
+                            list.Remove(o);
+                            i--;
+                        }
+
+                        foreach (var o in source)
+                        {
+                            if (list.Contains(o))
+                                continue;
+
+                            list.Add(o);
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            SubscribeToEvents(_listView);
+        }
+    }
+}

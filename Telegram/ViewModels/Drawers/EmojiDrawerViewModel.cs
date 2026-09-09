@@ -1,0 +1,776 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Telegram.Collections;
+using Telegram.Common;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td.Api;
+using WinRT;
+
+namespace Telegram.ViewModels.Drawers
+{
+    public enum EmojiDrawerMode
+    {
+        Chat,
+        Reactions,
+        EmojiStatus,
+        ChatEmojiStatus,
+        ChatPhoto,
+        UserPhoto,
+        Background,
+        Topics,
+        Text
+    }
+
+    public partial class EmojiDrawerViewModel : ViewModelBase
+    {
+        private bool _updated;
+
+        private readonly StickerSetViewModel _reactionTopSet;
+        private readonly StickerSetViewModel _reactionRecentSet;
+        private readonly StickerSetViewModel _reactionUpgradedSet;
+
+        public EmojiDrawerViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+            //Items = new DiffObservableCollection<object>(new EmojiSetDiffHandler());
+            Items = new RangeObservableCollection<object>();
+
+            _reactionTopSet = new StickerSetViewModel(ClientService, new StickerSetInfo
+            {
+                Title = string.Empty,
+                Name = "tg/recentlyUsed",
+                IsInstalled = true
+            });
+
+            _reactionRecentSet = new StickerSetViewModel(ClientService, new StickerSetInfo
+            {
+                Title = Strings.RecentStickers,
+                Name = "tg/recentlyUsed",
+                IsInstalled = true
+            });
+
+            _reactionUpgradedSet = new StickerSetViewModel(ClientService, new StickerSetInfo
+            {
+                Title = Strings.EmojiPackCollectibles,
+                Name = "tg/collectibles",
+                IsInstalled = true
+            });
+
+            Subscribe();
+        }
+
+        public override void Subscribe()
+        {
+            Aggregator.Subscribe<UpdateInstalledStickerSets>(this, Handle);
+        }
+
+        public static EmojiDrawerViewModel Create(ISession session, EmojiDrawerMode mode = EmojiDrawerMode.Chat)
+        {
+            var context = session.Resolve<EmojiDrawerViewModel>();
+            context.Dispatcher = DispatcherContext.Current;
+            context.Mode = mode;
+            return context;
+        }
+
+        private void Merge(IList<StickerViewModel> destination, IList<Sticker> origin)
+        {
+            if (destination.Count > 0)
+            {
+                for (int i = 0; i < destination.Count; i++)
+                {
+                    var sticker = destination[i];
+                    var index = -1;
+
+                    for (int j = 0; j < origin.Count; j++)
+                    {
+                        if (origin[j].SetId == sticker.SetId && origin[j].StickerValue.Id == sticker.StickerValue.Id)
+                        {
+                            index = j;
+                            break;
+                        }
+                    }
+
+                    if (index == -1)
+                    {
+                        destination.Remove(sticker);
+                        i--;
+                    }
+                }
+
+                for (int i = 0; i < origin.Count; i++)
+                {
+                    var sticker = origin[i];
+                    var index = -1;
+
+                    for (int j = 0; j < destination.Count; j++)
+                    {
+                        if (destination[j].SetId == sticker.SetId && destination[j].StickerValue.Id == sticker.StickerValue.Id)
+                        {
+                            destination[j].Update(sticker);
+
+                            index = j;
+                            break;
+                        }
+                    }
+
+                    if (index > -1 && index != i)
+                    {
+                        destination.RemoveAt(index);
+                        destination.Insert(Math.Min(i, destination.Count), new StickerViewModel(ClientService, sticker));
+                    }
+                    else if (index == -1)
+                    {
+                        destination.Insert(Math.Min(i, destination.Count), new StickerViewModel(ClientService, sticker));
+                    }
+                }
+            }
+            else
+            {
+                destination.Clear();
+                destination.AddRange(origin.Select(x => new StickerViewModel(ClientService, x)));
+            }
+        }
+
+        public void Handle(UpdateInstalledStickerSets update)
+        {
+            if (update.StickerType is not StickerTypeCustomEmoji)
+            {
+                return;
+            }
+
+            BeginOnUIThread(() => Update());
+        }
+
+        public RangeObservableCollection<EmojiGroup> StandardSets { get; } = new RangeObservableCollection<EmojiGroup>();
+        public RangeObservableCollection<StickerSetViewModel> InstalledSets { get; } = new RangeObservableCollection<StickerSetViewModel>();
+
+        public RangeObservableCollection<object> Items { get; private set; }
+
+        private SearchStickerSetsCollection _searchStickers;
+        public SearchStickerSetsCollection SearchStickers
+        {
+            get => _searchStickers;
+            set
+            {
+                Set(ref _searchStickers, value);
+                RaisePropertyChanged(nameof(Stickers));
+            }
+        }
+
+        private EmojiDrawerMode _mode;
+        public EmojiDrawerMode Mode
+        {
+            get => _mode;
+            set => Set(ref _mode, value);
+        }
+
+        //public RangeObservableCollection<StickerSetViewModel> Stickers => SearchStickers ?? (RangeObservableCollection<StickerSetViewModel>)SavedStickers;
+
+        public async void Search(string query, bool emojiOnly)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                SearchStickers = null;
+            }
+            else
+            {
+                var items = SearchStickers = new SearchStickerSetsCollection(ClientService, new StickerTypeCustomEmoji(), query, 0, emojiOnly);
+                await items.LoadMoreItemsAsync(0);
+            }
+        }
+
+        private long _customEmojiSetId;
+
+        public void OpenChat(Chat chat)
+        {
+            if (chat != null && ClientService.TryGetSupergroupFull(chat, out SupergroupFullInfo fullInfo))
+            {
+                _customEmojiSetId = fullInfo.CustomEmojiStickerSetId;
+            }
+        }
+
+        public async void Update()
+        {
+            if (_updated && _mode == EmojiDrawerMode.Chat)
+            {
+                return;
+            }
+
+            _updated = true;
+
+            var stickers = new List<object>();
+
+            if (_mode is EmojiDrawerMode.Chat or EmojiDrawerMode.Text)
+            {
+                var recents = Emoji.GetRecents(Settings.RecentEmoji);
+                var emojiGroups = Emoji.Get(Settings.RecentEmoji);
+
+                var source = new List<object>();
+                var customEmoji = new MutableVector<long>();
+
+                foreach (var item in recents)
+                {
+                    if (item.Value.Contains(';'))
+                    {
+                        if (_mode == EmojiDrawerMode.Text)
+                        {
+                            continue;
+                        }
+
+                        var split = item.Value.Split(';');
+                        if (split.Length == 2 && long.TryParse(split[1], out long customEmojiId))
+                        {
+                            customEmoji.Add(customEmojiId);
+                            source.Add(customEmojiId);
+                        }
+                    }
+                    else
+                    {
+                        source.Add(item);
+                    }
+                }
+
+                if (customEmoji.Count > 0)
+                {
+                    var response = await ClientService.SendAsync(new GetCustomEmojiStickers(customEmoji));
+                    if (response is Stickers customEmojiStickers)
+                    {
+                        foreach (var sticker in customEmojiStickers.StickersValue)
+                        {
+                            if (sticker.FullType is not StickerFullTypeCustomEmoji customEmojiType)
+                            {
+                                continue;
+                            }
+
+                            for (int i = 0; i < source.Count; i++)
+                            {
+                                if (source[i] is long customEmojiId && customEmojiId == customEmojiType.CustomEmojiId)
+                                {
+                                    source[i] = new StickerViewModel(ClientService, sticker);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (int i = 0; i < source.Count; i++)
+                {
+                    if (source[i] is long)
+                    {
+                        source.RemoveAt(i);
+                        i--;
+                    }
+                }
+
+                stickers.Add(new RecentEmoji(source));
+                stickers.AddRange(emojiGroups);
+
+                StandardSets.ReplaceWith(emojiGroups);
+
+                if (_mode == EmojiDrawerMode.Text)
+                {
+                    return;
+                }
+            }
+
+            var installedSets = _allowCustomEmoji || _mode != EmojiDrawerMode.Reactions
+                ? new List<StickerSetViewModel>(await GetInstalledSets())
+                : new List<StickerSetViewModel>(0);
+
+            var sets = new List<StickerSetViewModel>(installedSets);
+
+            if (_mode != EmojiDrawerMode.Chat)
+            {
+                if (_mode == EmojiDrawerMode.Reactions)
+                {
+                    if (_reactionRecentSet.Stickers.Count > 0)
+                    {
+                        sets.Insert(0, _reactionRecentSet);
+                        installedSets.Insert(0, _reactionRecentSet);
+                    }
+
+                    sets.Insert(0, _reactionTopSet);
+                }
+                else
+                {
+                    var response = await GetDefaultStickersAsync(_mode);
+                    if (response is Stickers defaultStickers)
+                    {
+                        if (_mode is EmojiDrawerMode.Topics or EmojiDrawerMode.EmojiStatus or EmojiDrawerMode.ChatEmojiStatus)
+                        {
+                            // This is a placeholder, actual icon is drawn using the list header with negative margins
+                            var placeholder = new Sticker(0, 0, 0, 0, string.Empty, null, null, null, null);
+                            defaultStickers.StickersValue = [placeholder, .. defaultStickers.StickersValue];
+                        }
+
+                        _reactionTopSet.Update(defaultStickers.StickersValue);
+
+                        sets.Insert(0, _reactionTopSet);
+                        installedSets.Insert(0, _reactionTopSet);
+
+                        if (_mode == EmojiDrawerMode.EmojiStatus)
+                        {
+                            var response2 = await ClientService.SendAsync(new GetUpgradedGiftEmojiStatuses());
+                            if (response2 is EmojiStatuses statuses)
+                            {
+                                var ids = new MultiValueDictionary<long, EmojiStatusTypeUpgradedGift>();
+
+                                foreach (var status in statuses.EmojiStatusesValue)
+                                {
+                                    if (status.Type is EmojiStatusTypeUpgradedGift upgradedGift)
+                                    {
+                                        ids.Add(upgradedGift.ModelCustomEmojiId, upgradedGift);
+                                    }
+                                }
+
+                                var response3 = await ClientService.SendAsync(new GetCustomEmojiStickers(ids.Keys.ToVector()));
+                                if (response3 is Stickers stickers2)
+                                {
+                                    var stickers3 = new List<StickerViewModel>();
+
+                                    foreach (var sticker in stickers2.StickersValue)
+                                    {
+                                        if (sticker.FullType is StickerFullTypeCustomEmoji customEmoji && ids.TryGetValue(customEmoji.CustomEmojiId, out var values))
+                                        {
+                                            foreach (var value in values)
+                                            {
+                                                stickers3.Add(new StickerViewModel(ClientService, sticker, value));
+                                            }
+                                        }
+                                    }
+
+                                    _reactionUpgradedSet.Update(stickers3);
+
+                                    sets.Insert(1, _reactionUpgradedSet);
+                                    installedSets.Insert(1, _reactionUpgradedSet);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            stickers.AddRange(sets);
+            Items.ReplaceWith(stickers);
+
+            InstalledSets.ReplaceWith(installedSets);
+        }
+
+        private Task<Object> GetDefaultStickersAsync(EmojiDrawerMode mode)
+        {
+            if (mode == EmojiDrawerMode.EmojiStatus)
+            {
+                return GetDefaultStatusAsync();
+            }
+            else if (mode == EmojiDrawerMode.ChatEmojiStatus)
+            {
+                return GetDefaultChatStatusAsync();
+            }
+
+            Function func = _mode switch
+            {
+                EmojiDrawerMode.ChatPhoto => new GetDefaultChatPhotoCustomEmojiStickers(),
+                EmojiDrawerMode.UserPhoto => new GetDefaultChatPhotoCustomEmojiStickers(),
+                EmojiDrawerMode.Background => new GetDefaultBackgroundCustomEmojiStickers(),
+                EmojiDrawerMode.Topics => new GetForumTopicDefaultIcons(),
+                _ => null
+            };
+
+            if (func != null)
+            {
+                return ClientService.SendAsync(func);
+            }
+
+            return Task.FromResult<Object>(null);
+        }
+
+        private async Task<Object> GetDefaultStatusAsync()
+        {
+            var themedResponse = await ClientService.SendAsync(new GetThemedEmojiStatuses()) as EmojiStatusCustomEmojis;
+            var recentResponse = await ClientService.SendAsync(new GetRecentEmojiStatuses()) as EmojiStatusCustomEmojis;
+            var defaulResponse = await ClientService.SendAsync(new GetDefaultEmojiStatuses()) as EmojiStatusCustomEmojis;
+
+            var themed = themedResponse?.CustomEmojiIds ?? Array.Empty<long>();
+            var recent = recentResponse?.CustomEmojiIds ?? Array.Empty<long>();
+            var defaul = defaulResponse?.CustomEmojiIds ?? Array.Empty<long>();
+
+            var emoji = new MutableVector<long>();
+            var delay = new List<long>();
+
+            foreach (var status in themed.Take(7).Union(recent.Union(defaul)))
+            {
+                if (emoji.Count < 8 * 5 - 2 && !emoji.Contains(status))
+                {
+                    emoji.Add(status);
+                }
+                else if (!delay.Contains(status))
+                {
+                    delay.Add(status);
+                }
+            }
+
+            // TODO: why the order by???
+            //if (response is Stickers stickers)
+            //{
+            //    _reactionTopSet.Update(stickers.StickersValue.OrderBy(x => emoji.IndexOf(x.FullType is StickerFullTypeCustomEmoji customEmoji ? customEmoji.CustomEmojiId : 0)), true);
+            //}
+
+            return await ClientService.SendAsync(new GetCustomEmojiStickers(emoji));
+        }
+
+        private async Task<Object> GetDefaultChatStatusAsync()
+        {
+            var themedResponse = await ClientService.SendAsync(new GetThemedChatEmojiStatuses()) as EmojiStatusCustomEmojis;
+            var recentResponse = await ClientService.SendAsync(new GetRecentEmojiStatuses()) as EmojiStatusCustomEmojis;
+            var defaulResponse = await ClientService.SendAsync(new GetDefaultChatEmojiStatuses()) as EmojiStatusCustomEmojis;
+
+            var disallowedResponse = await ClientService.SendAsync(new GetDisallowedChatEmojiStatuses()) as EmojiStatusCustomEmojis;
+
+            var themed = themedResponse?.CustomEmojiIds ?? Array.Empty<long>();
+            var recent = recentResponse?.CustomEmojiIds ?? Array.Empty<long>();
+            var defaul = defaulResponse?.CustomEmojiIds ?? Array.Empty<long>();
+            var disall = disallowedResponse?.CustomEmojiIds ?? Array.Empty<long>();
+
+            var emoji = new MutableVector<long>();
+            var delay = new List<long>();
+
+            foreach (var status in themed.Union(recent.Union(defaul)))
+            {
+                if (disall.Contains(status))
+                {
+                    continue;
+                }
+
+                if (emoji.Count < 8 * 5 - 1 && !emoji.Contains(status))
+                {
+                    emoji.Add(status);
+                }
+                else if (!delay.Contains(status))
+                {
+                    delay.Add(status);
+                }
+            }
+
+            // TODO: why the order by???
+            //if (response is Stickers stickers)
+            //{
+            //    _reactionTopSet.Update(stickers.StickersValue.OrderBy(x => emoji.IndexOf(x.FullType is StickerFullTypeCustomEmoji customEmoji ? customEmoji.CustomEmojiId : 0)), true);
+            //}
+
+            return await ClientService.SendAsync(new GetCustomEmojiStickers(emoji));
+        }
+
+        private bool Filter(StickerSetInfo info)
+        {
+            if (_mode == EmojiDrawerMode.Background)
+            {
+                return info.NeedsRepainting;
+            }
+            else if (_mode == EmojiDrawerMode.ChatEmojiStatus)
+            {
+                return info.IsAllowedAsChatEmojiStatus;
+            }
+
+            return true;
+        }
+
+        private async Task<IEnumerable<StickerSetViewModel>> GetInstalledSets()
+        {
+            if (_installedSets != null)
+            {
+                return _installedSets.Values;
+            }
+
+            var result1 = await ClientService.SendAsync(new GetInstalledStickerSets(new StickerTypeCustomEmoji()));
+            var result2 = await ClientService.SendAsync(new GetTrendingStickerSets(new StickerTypeCustomEmoji(), 0, 100));
+
+            if (result1 is StickerSets sets && result2 is TrendingStickerSets trending)
+            {
+                var installedSets = new Dictionary<long, StickerSetViewModel>();
+
+                if (_mode == EmojiDrawerMode.Chat && _customEmojiSetId != 0)
+                {
+                    var result3 = await ClientService.SendAsync(new GetStickerSet(_customEmojiSetId));
+                    if (result3 is StickerSet supergroupSet)
+                    {
+                        installedSets[supergroupSet.Id] = new StickerSetViewModel(ClientService, supergroupSet);
+                    }
+                }
+
+                foreach (var info in sets.Sets.Union(trending.Sets))
+                {
+                    if (!installedSets.ContainsKey(info.Id) && Filter(info))
+                    {
+                        if (installedSets.Count == 0)
+                        {
+                            var result3 = await ClientService.SendAsync(new GetStickerSet(info.Id));
+                            if (result3 is StickerSet set)
+                            {
+                                installedSets[info.Id] = new StickerSetViewModel(ClientService, info, set);
+                                continue;
+                            }
+                        }
+
+                        installedSets[info.Id] = new StickerSetViewModel(ClientService, info);
+                    }
+                }
+
+                _installedSets = installedSets;
+                return installedSets.Values;
+            }
+
+            return Array.Empty<StickerSetViewModel>();
+        }
+
+        public async Task<IList<(AvailableReaction, Sticker)>> UpdateReactions(AvailableReactions available)
+        {
+            if (available == null)
+            {
+                return Array.Empty<(AvailableReaction, Sticker)>();
+            }
+
+            var sum = available.TopReactions.Count
+                + available.RecentReactions.Count
+                + available.PopularReactions.Count;
+
+            var select = available.AllowCustomEmoji || sum > 7;
+            var count = select ? 6 : 7;
+
+            List<AvailableReaction> source = available.TopReactions.Take(count).ToList();
+            Vector<AvailableReaction> additional = available.RecentReactions.Count > 0
+                ? available.RecentReactions
+                : available.PopularReactions;
+
+            if (source.Count < count)
+            {
+                available.TopReactions
+                    .Select(x => x.Type)
+                    .Discern(out _, out var emoji, out var customEmoji);
+
+                foreach (var item in additional)
+                {
+                    if (item.Type is ReactionTypeEmoji emojii
+                        && emoji != null
+                        && emoji.Contains(emojii.Emoji))
+                    {
+                        continue;
+                    }
+                    else if (item.Type is ReactionTypeCustomEmoji customEmojii
+                        && customEmoji != null
+                        && customEmoji.Contains(customEmojii.CustomEmojiId))
+                    {
+                        continue;
+                    }
+
+                    source.Add(item);
+
+                    if (source.Count == count)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            ContinueReactions(available, available.TopReactions, additional);
+
+            source
+                .Select(x => x.Type)
+                .Discern(out _, out var missingReactions, out var missingEmoji);
+
+            IDictionary<long, Sticker> assets = null;
+            if (missingEmoji != null)
+            {
+                var response = await ClientService.SendAsync(new GetCustomEmojiStickers(missingEmoji.ToArray()));
+                if (response is not Stickers stickers)
+                {
+                    return Array.Empty<(AvailableReaction, Sticker)>();
+                }
+
+                assets = stickers.StickersValue.ToDictionary(x => x.FullType is StickerFullTypeCustomEmoji customEmoji ? customEmoji.CustomEmojiId : 0);
+            }
+
+            var reactions = missingReactions != null
+                ? await ClientService.GetReactionsAsync(missingReactions)
+                : null;
+
+            var visible = new List<(AvailableReaction, Sticker)>();
+
+            void Populate(IList<AvailableReaction> source, List<(AvailableReaction, Sticker)> target)
+            {
+                foreach (var item in source)
+                {
+                    if (item.Type is ReactionTypeEmoji emoji && reactions.TryGetValue(emoji.Emoji, out EmojiReaction reaction))
+                    {
+                        // Some times the sticker has a different emoji
+                        // and in that case reaction won't work
+                        reaction.ActivateAnimation.Emoji = emoji.Emoji;
+
+                        target.Add((item, reaction.ActivateAnimation));
+                    }
+                    else if (item.Type is ReactionTypeCustomEmoji customEmoji && assets.TryGetValue(customEmoji.CustomEmojiId, out Sticker sticker))
+                    {
+                        target.Add((item, sticker));
+                    }
+                    else if (item.Type is ReactionTypePaid)
+                    {
+                        target.Add((item, new Sticker(0, 0, 512, 512, "\u2B50", new StickerFormatTgs(), new StickerFullTypeRegular(), null, TdExtensions.GetLocalFile("Assets\\Animations\\PaidReactionActivate.tgs"))));
+                    }
+                }
+            }
+
+            Populate(source, visible);
+            return visible;
+        }
+
+        private async void ContinueReactions(AvailableReactions available, Vector<AvailableReaction> source, Vector<AvailableReaction> sourceRecent)
+        {
+            if (available == null)
+            {
+                return;
+            }
+
+            available.TopReactions
+                .Union(available.PopularReactions)
+                .Union(available.RecentReactions)
+                .Select(x => x.Type)
+                .Discern(out _, out var missingReactions, out var missingEmoji);
+
+            IDictionary<long, Sticker> assets = null;
+            if (missingEmoji != null)
+            {
+                var response = await ClientService.SendAsync(new GetCustomEmojiStickers(missingEmoji.ToArray()));
+                if (response is not Stickers stickers)
+                {
+                    return;
+                }
+
+                assets = stickers.StickersValue.ToDictionary(x => x.FullType is StickerFullTypeCustomEmoji customEmoji ? customEmoji.CustomEmojiId : 0);
+            }
+
+            var reactions = missingReactions != null
+                ? await ClientService.GetReactionsAsync(missingReactions)
+                : await ClientService.GetAllReactionsAsync();
+
+            var top = new List<StickerViewModel>();
+            var recent = new List<StickerViewModel>();
+
+            void Populate(Vector<AvailableReaction> source, List<StickerViewModel> target)
+            {
+                foreach (var item in source)
+                {
+                    if (item.Type is ReactionTypeEmoji emoji && reactions.TryGetValue(emoji.Emoji, out EmojiReaction reaction))
+                    {
+                        // Some times the sticker has a different emoji
+                        // and in that case reaction won't work
+                        reaction.ActivateAnimation.Emoji = emoji.Emoji;
+
+                        target.Add(new StickerViewModel(ClientService, reaction.ActivateAnimation, reaction: item));
+                    }
+                    else if (item.Type is ReactionTypeCustomEmoji customEmoji && assets.TryGetValue(customEmoji.CustomEmojiId, out Sticker sticker))
+                    {
+                        target.Add(new StickerViewModel(ClientService, sticker, reaction: item));
+                    }
+                    else if (item.Type is ReactionTypePaid)
+                    {
+                        target.Add(new StickerViewModel(ClientService, new Sticker(0, 0, 512, 512, "\u2B50", new StickerFormatTgs(), new StickerFullTypeRegular(), null, TdExtensions.GetLocalFile("Assets\\Animations\\PaidReactionActivate.tgs")), reaction: item));
+                    }
+                }
+            }
+
+            Populate(source, top);
+            Populate(sourceRecent, available.AllowCustomEmoji ? recent : top);
+
+            _allowCustomEmoji = available.AllowCustomEmoji;
+            _reactionTopSet.Update(top);
+            _reactionRecentSet.Update(recent);
+
+            Update();
+        }
+
+        private bool _allowCustomEmoji;
+
+        //private List<StickerSetViewModel> _installedSets;
+        private Dictionary<long, StickerSetViewModel> _installedSets;
+
+        public bool TryGetInstalledSet(long id, out StickerSetViewModel value)
+        {
+            return _installedSets.TryGetValue(id, out value);
+        }
+
+        private int _featuredUnreadCount;
+        public int FeaturedUnreadCount
+        {
+            get => _featuredUnreadCount;
+            set => Set(ref _featuredUnreadCount, value);
+        }
+    }
+
+    // What EmojiDrawer's group header binds. The drawer mixes EmojiGroup, RecentEmoji and
+    // StickerSetViewModel in one list, and x:DataType needs a single type to bind against.
+    public interface IDrawerGroup
+    {
+        string Title { get; }
+
+        bool IsInstalled { get; }
+    }
+
+    [GeneratedBindableCustomProperty]
+    public partial class RecentEmoji : IDrawerGroup
+    {
+        public string Title { get; }
+
+        public bool IsInstalled { get; } = true;
+
+        public RangeObservableCollection<object> Stickers { get; }
+
+        public RecentEmoji(List<object> items)
+        {
+            Title = Strings.RecentStickers;
+            Stickers = new RangeObservableCollection<object>(items);
+        }
+
+        public override string ToString()
+        {
+            return Title;
+        }
+    }
+
+    public partial class EmojiSetDiffHandler : IDiffHandler<object>
+    {
+        public bool CompareItems(object oldItem, object newItem)
+        {
+            if (oldItem is RecentEmoji oldRecent && newItem is RecentEmoji newRecent)
+            {
+                return true;
+            }
+            else if (oldItem is EmojiGroup oldGroup && newItem is EmojiGroup newGroup)
+            {
+                return oldGroup.Glyph == newGroup.Glyph;
+            }
+            else if (oldItem is StickerSetViewModel oldSet && newItem is StickerSetViewModel newSet)
+            {
+                return oldSet.Id == newSet.Id;
+            }
+
+            return false;
+        }
+
+        public void UpdateItem(object oldItem, object newItem)
+        {
+            if (oldItem is RecentEmoji oldRecent && newItem is RecentEmoji newRecent)
+            {
+                oldRecent.Stickers.ReplaceWith(newRecent.Stickers);
+            }
+        }
+    }
+}

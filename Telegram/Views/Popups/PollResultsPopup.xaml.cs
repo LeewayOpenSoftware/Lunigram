@@ -1,0 +1,181 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System.Collections.Generic;
+using Telegram.Collections;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Controls.Cells;
+using Telegram.Navigation;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+
+namespace Telegram.Views.Popups
+{
+    public sealed partial class PollResultsPopup : ContentPopup
+    {
+        private readonly IClientService _clientService;
+        private readonly IMessageDelegate _delegate;
+
+        public PollResultsPopup(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, IMessageDelegate delegato, long chatId, long messageId, Poll poll)
+        {
+            InitializeComponent();
+
+            _clientService = clientService;
+            _delegate = delegato;
+
+            Title = Strings.PollResults;
+            Subtitle.Text = Locale.Declension(poll.Type is PollTypeQuiz ? Strings.R.Answer : Strings.R.Vote, poll.TotalVoterCount);
+
+            var options = new List<PollResultViewModel>();
+
+            foreach (var option in poll.Options)
+            {
+                options.Add(new PollResultViewModel(chatId, messageId, poll, option, clientService, settingsService, aggregator));
+            }
+
+            Repeater.ItemsSource = options;
+        }
+
+        private void OnElementPrepared(Microsoft.UI.Xaml.Controls.ItemsRepeater sender, Microsoft.UI.Xaml.Controls.ItemsRepeaterElementPreparedEventArgs args)
+        {
+            var item = sender.ItemsSourceView.GetAt(args.Index);
+            if (item is PollVoter pollVoter)
+            {
+                var button = args.Element as Button;
+                var content = button.Content as ProfileCell;
+
+                content.UpdatePollVoter(_clientService, pollVoter);
+                button.Click += User_Click;
+
+                if (_clientService.TryGetUser(pollVoter.VoterId, out User user))
+                {
+                    AutomationProperties.SetName(button, user.FullName());
+                }
+                else if (_clientService.TryGetChat(pollVoter.VoterId, out Chat chat))
+                {
+                    AutomationProperties.SetName(button, chat.Title);
+                }
+            }
+            else if (item is PollResultViewModel option)
+            {
+                var content = args.Element as Grid;
+                var panel = content.Children[0] as Grid;
+                var header = panel.Children[0] as RichTextBlock;
+                var footer = panel.Children[1] as TextBlock;
+
+                var paragraph = header.Blocks[0] as Paragraph;
+                var span = paragraph.Inlines[0] as Span;
+                var run = paragraph.Inlines[1] as Run;
+
+                CustomEmojiIcon.Add(header, span.Inlines, _clientService, option.Text);
+
+                run.Text = $" — {option.VotePercentage}%";
+                footer.Text = Locale.Declension(option.Type is PollTypeQuiz ? Strings.R.Answer : Strings.R.Vote, option.VoterCount);
+                content.Visibility = option.VoterCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        private void User_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.DataContext is MessageSender messageSender)
+            {
+                if (messageSender is MessageSenderUser user)
+                {
+                    _delegate.OpenUser(user.UserId);
+                }
+                else if (messageSender is MessageSenderChat chat)
+                {
+                    _delegate.OpenChat(chat.ChatId, true);
+                }
+            }
+
+            Hide();
+        }
+    }
+
+    public partial class PollResultViewModel : ViewModelBase
+    {
+        private readonly long _chatId;
+        private readonly long _messageId;
+        private readonly Poll _poll;
+        private readonly PollOption _option;
+
+        private int _offset;
+        private int _remaining;
+
+        public PollResultViewModel(long chatId, long messageId, Poll poll, PollOption option, IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator)
+            : base(clientService, settingsService, aggregator)
+        {
+            _chatId = chatId;
+            _messageId = messageId;
+            _poll = poll;
+            _option = option;
+
+            Items = new RangeObservableCollection<PollVoter>();
+            LoadMoreCommand = new RelayCommand(LoadMoreExecute);
+
+            LoadMoreExecute();
+        }
+
+        public FormattedText Text => _option.Text;
+        public int VotePercentage => _option.VotePercentage;
+        public int VoterCount => _option.VoterCount;
+
+        public PollType Type => _poll.Type;
+
+        public RangeObservableCollection<PollVoter> Items { get; private set; }
+
+        public RelayCommand LoadMoreCommand { get; }
+        private async void LoadMoreExecute()
+        {
+            var limit = _option.VoterCount <= 15 ? 15 : 10;
+            limit = _offset > 0 ? 50 : limit;
+
+            var response = await ClientService.SendAsync(new GetPollVoters(_chatId, _messageId, _poll.Options.IndexOf(_option), _offset, limit));
+            if (response is PollVoters senders)
+            {
+                foreach (var sender in senders.Voters)
+                {
+                    Items.Add(sender);
+                }
+
+                _offset += senders.Voters.Count;
+                _remaining = senders.TotalCount - _offset;
+
+                RaisePropertyChanged(nameof(LoadMoreLabel));
+                RaisePropertyChanged(nameof(LoadMoreVisibility));
+            }
+        }
+
+        public string LoadMoreLabel
+        {
+            get
+            {
+                if (_remaining > 0)
+                {
+                    return Locale.Declension(Strings.R.ShowVotes, _remaining);
+                }
+
+                return null;
+            }
+        }
+
+        public Visibility LoadMoreVisibility
+        {
+            get
+            {
+                return _remaining > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+    }
+}

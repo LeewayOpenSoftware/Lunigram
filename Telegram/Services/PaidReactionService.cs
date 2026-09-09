@@ -1,0 +1,447 @@
+﻿//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services.Calls;
+using Telegram.Td;
+using Telegram.Td.Api;
+using Telegram.ViewModels;
+using Telegram.Views.Stars.Popups;
+using Windows.Foundation;
+using Windows.UI;
+using Windows.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using FontWeights = Microsoft.UI.Text.FontWeights;
+using Colors = Microsoft.UI.Colors;
+
+namespace Telegram.Services
+{
+    public partial class PaidReactionService
+    {
+        private int _sessionId;
+
+        private long _chatId;
+        private long _messageId;
+
+        private int _pendingCount;
+        private int _pendingTime;
+        private ToastPopup _pendingToast;
+        private DispatcherTimer _pendingTimer;
+
+        private static readonly ConditionalWeakTable<XamlRoot, PaidReactionService> _instances = new();
+
+        public static Task<Object> AddPendingAsync(XamlRoot xamlRoot, MessageViewModel message, int starCount, PaidReactionType type)
+        {
+            _instances.TryGetValue(xamlRoot, out PaidReactionService instance);
+
+            if (instance == null || !instance.IsValid || !instance.AreTheSame(message))
+            {
+                _instances.AddOrUpdate(xamlRoot, instance = new(message));
+            }
+
+            return instance.AddPendingImpl(xamlRoot, message, starCount, type);
+        }
+
+        public bool IsValid => _pendingToast?.IsOpen is true;
+
+        public bool AreTheSame(MessageViewModel other)
+        {
+            return _sessionId == other.ClientService.SessionId
+                && _chatId == other.ChatId
+                && _messageId == other.Id;
+        }
+
+        private PaidReactionService(MessageViewModel message)
+        {
+            _sessionId = message.ClientService.SessionId;
+            _chatId = message.ChatId;
+            _messageId = message.Id;
+        }
+
+        private async Task<Object> AddPendingImpl(XamlRoot xamlRoot, MessageViewModel message, int starCount, PaidReactionType type)
+        {
+            if (message.ClientService.OwnedStarCount.StarCount < _pendingCount + starCount)
+            {
+                _ = message.Delegate.NavigationService.ShowPopupAsync(new BuyPopup(), BuyStarsArgs.ForChannel(starCount, message.ChatId));
+                return null;
+            }
+
+            _pendingCount += starCount;
+            await message.ClientService.SendAsync(new AddPendingPaidMessageReaction(message.ChatId, message.Id, starCount, type));
+
+            var title = message.ClientService.Options.IsPaidReactionAnonymous
+                ? Strings.StarsSentAnonymouslyTitle
+                : Strings.StarsSentTitle;
+
+            var text = string.Format("**{0}**\n{1}", title, Locale.Declension(Strings.R.StarsSentText, _pendingCount));
+            var formatted = ClientEx.ParseMarkdown(text);
+
+            if (_pendingToast?.Content is Grid)
+            {
+                var content = _pendingToast.Content as Grid;
+                var textBlock = content.Children[0] as TextBlock;
+
+                TextBlockHelper.SetFormattedText(textBlock, formatted);
+
+                var animated = content.Children[2] as Grid;
+                var slice = animated.Children[0] as SelfDestructTimer;
+                var value = animated.Children[1] as AnimatedTextBlock;
+
+                _pendingTime = 5;
+                _pendingTimer.Stop();
+                _pendingTimer.Start();
+
+                slice.Maximum = _pendingTime;
+                slice.Value = DateTime.Now.AddSeconds(_pendingTime);
+
+                value.Text = _pendingTime.ToString();
+            }
+            else
+            {
+                var toast = ToastPopup.Show(xamlRoot, formatted, ToastPopupIcon.StarsSent, dismissAfter: TimeSpan.Zero);
+                var content = toast.Content as Grid;
+
+                toast.MaxWidth = 500;
+                toast.MinWidth = 336;
+
+                var undo = new Button()
+                {
+                    Content = Strings.StarsSentUndo,
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Style = BootStrapper.Current.Resources["AccentTextButtonStyle"] as Style,
+                    Margin = new Thickness(8, -4, -4, -4),
+                    Padding = new Thickness(4, 5, 4, 6)
+                };
+
+                var animated = new Grid
+                {
+                    Height = 32,
+                    Margin = new Thickness(8, -12, -4, -12)
+                };
+
+                animated.ColumnDefinitions.Add(1, GridUnitType.Auto);
+                animated.ColumnDefinitions.Add(32, GridUnitType.Pixel);
+
+                var slice = new SelfDestructTimer
+                {
+                    Background = new SolidColorBrush(Colors.Transparent),
+                    Foreground = undo.Foreground,
+                    //Width = 24,
+                    //Height = 24,
+                    //Center = 12,
+                    //Radius = 10.5
+                    Width = 22,
+                    Height = 22,
+                    Center = 11,
+                    Radius = 9.5
+                };
+
+                _pendingTime = 5;
+
+                slice.Maximum = _pendingTime;
+                slice.Value = DateTime.Now.AddSeconds(_pendingTime);
+
+                var value = new AnimatedTextBlock
+                {
+                    Foreground = undo.Foreground,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 1, 0, 1),
+                    TextStyle = BootStrapper.Current.Resources["CaptionTextBlockStyle"] as Style,
+                    Text = _pendingTime.ToString()
+                };
+
+                _pendingTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(1),
+                };
+
+                void tick(object sender, object e)
+                {
+                    _pendingTime--;
+
+                    value.Text = _pendingTime.ToString();
+
+                    if (_pendingTime == 0)
+                    {
+                        Logger.Info("expired");
+
+                        message.ClientService.Send(new CommitPendingPaidMessageReactions(message.ChatId, message.Id));
+                        undo.Click -= handler;
+
+                        _pendingTimer.Tick -= tick;
+                        _pendingTimer.Stop();
+                        _pendingTimer = null;
+
+                        _pendingToast.IsOpen = false;
+                        _pendingToast = null;
+
+                        _pendingCount = 0;
+                    }
+                }
+
+                void handler(object sender, RoutedEventArgs e)
+                {
+                    Logger.Info("closed");
+
+                    message.ClientService.Send(new RemovePendingPaidMessageReactions(message.ChatId, message.Id));
+                    undo.Click -= handler;
+
+                    _pendingTimer.Tick -= tick;
+                    _pendingTimer.Stop();
+                    _pendingTimer = null;
+
+                    _pendingToast.IsOpen = false;
+                    _pendingToast = null;
+
+                    _pendingCount = 0;
+                }
+
+                undo.Click += handler;
+
+                _pendingToast = toast;
+
+                _pendingTimer.Tick += tick;
+                _pendingTimer.Start();
+
+                Grid.SetColumn(slice, 1);
+                Grid.SetColumn(value, 1);
+
+                animated.Children.Add(slice);
+                animated.Children.Add(value);
+                animated.Children.Add(undo);
+
+                Grid.SetColumn(animated, 2);
+                content.Children.Add(animated);
+            }
+
+            return new Ok();
+        }
+    }
+
+    public partial class GroupCallPaidReactionService
+    {
+        private int _sessionId;
+
+        private int _groupCallId;
+
+        private long _pendingCount;
+        private int _pendingTime;
+        private ToastPopup _pendingToast;
+        private DispatcherTimer _pendingTimer;
+
+        private static readonly ConditionalWeakTable<XamlRoot, GroupCallPaidReactionService> _instances = new();
+
+        public static GroupCallPaidReactionService AddPending(INavigationService navigationService, VoipGroupCall groupCall, long starCount, PaidReactionType type)
+        {
+            _instances.TryGetValue(navigationService.XamlRoot, out GroupCallPaidReactionService instance);
+
+            if (instance == null || !instance.IsValid || !instance.AreTheSame(groupCall))
+            {
+                _instances.AddOrUpdate(navigationService.XamlRoot, instance = new(groupCall));
+            }
+
+            var result = instance.AddPendingImpl(navigationService, groupCall, starCount, type);
+            if (result is Ok)
+            {
+                return instance;
+            }
+
+            return null;
+        }
+
+        public bool IsValid => _pendingToast?.IsOpen is true;
+
+        public bool AreTheSame(VoipGroupCall other)
+        {
+            return _sessionId == other.ClientService.SessionId
+                && _groupCallId == other.Id;
+        }
+
+        private GroupCallPaidReactionService(VoipGroupCall message)
+        {
+            _sessionId = message.ClientService.SessionId;
+            _groupCallId = message.Id;
+        }
+
+        public event TypedEventHandler<GroupCallPaidReactionService, object> Completed;
+
+        private Object AddPendingImpl(INavigationService navigationService, VoipGroupCall groupCall, long starCount, PaidReactionType type)
+        {
+            if (groupCall.ClientService.OwnedStarCount.StarCount < _pendingCount + starCount)
+            {
+                _ = navigationService.ShowPopupAsync(new BuyPopup(), BuyStarsArgs.ForChannel(starCount, 0));
+                return null;
+            }
+
+            _pendingCount += starCount;
+            _ = groupCall.ClientService.SendAsync(new AddPendingLiveStoryReaction(groupCall.Id, starCount));
+
+            var title = groupCall.ClientService.Options.IsPaidReactionAnonymous
+                ? Strings.StarsSentAnonymouslyTitle
+                : Strings.StarsSentTitle;
+
+            var text = string.Format("**{0}**\n{1}", title, Locale.Declension(Strings.R.StarsSentText, _pendingCount));
+            var formatted = ClientEx.ParseMarkdown(text);
+
+            if (_pendingToast?.Content is Grid)
+            {
+                var content = _pendingToast.Content as Grid;
+                var textBlock = content.Children[0] as TextBlock;
+
+                TextBlockHelper.SetFormattedText(textBlock, formatted);
+
+                var animated = content.Children[2] as Grid;
+                var slice = animated.Children[0] as SelfDestructTimer;
+                var value = animated.Children[1] as AnimatedTextBlock;
+
+                _pendingTime = 5;
+                _pendingTimer.Stop();
+                _pendingTimer.Start();
+
+                slice.Maximum = _pendingTime;
+                slice.Value = DateTime.Now.AddSeconds(_pendingTime);
+
+                value.Text = _pendingTime.ToString();
+
+                return null;
+            }
+            else
+            {
+                var toast = ToastPopup.Show(navigationService.XamlRoot, formatted, ToastPopupIcon.StarsSent, dismissAfter: TimeSpan.Zero);
+                var content = toast.Content as Grid;
+
+                toast.MaxWidth = 500;
+                toast.MinWidth = 336;
+
+                var undo = new Button()
+                {
+                    Content = Strings.StarsSentUndo,
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Style = BootStrapper.Current.Resources["AccentTextButtonStyle"] as Style,
+                    Margin = new Thickness(8, -4, -4, -4),
+                    Padding = new Thickness(4, 5, 4, 6)
+                };
+
+                var animated = new Grid
+                {
+                    Height = 32,
+                    Margin = new Thickness(8, -12, -4, -12)
+                };
+
+                animated.ColumnDefinitions.Add(1, GridUnitType.Auto);
+                animated.ColumnDefinitions.Add(32, GridUnitType.Pixel);
+
+                var slice = new SelfDestructTimer
+                {
+                    Background = new SolidColorBrush(Colors.Transparent),
+                    Foreground = undo.Foreground,
+                    //Width = 24,
+                    //Height = 24,
+                    //Center = 12,
+                    //Radius = 10.5
+                    Width = 22,
+                    Height = 22,
+                    Center = 11,
+                    Radius = 9.5
+                };
+
+                _pendingTime = 5;
+
+                slice.Maximum = _pendingTime;
+                slice.Value = DateTime.Now.AddSeconds(_pendingTime);
+
+                var value = new AnimatedTextBlock
+                {
+                    Foreground = undo.Foreground,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 1, 0, 1),
+                    TextStyle = BootStrapper.Current.Resources["CaptionTextBlockStyle"] as Style,
+                    Text = _pendingTime.ToString()
+                };
+
+                _pendingTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(1),
+                };
+
+                void tick(object sender, object e)
+                {
+                    _pendingTime--;
+
+                    value.Text = _pendingTime.ToString();
+
+                    if (_pendingTime == 0)
+                    {
+                        Logger.Info("expired");
+
+                        groupCall.ClientService.Send(new CommitPendingLiveStoryReactions(groupCall.Id));
+                        undo.Click -= handler;
+
+                        _pendingTimer.Tick -= tick;
+                        _pendingTimer.Stop();
+                        _pendingTimer = null;
+
+                        _pendingToast.IsOpen = false;
+                        _pendingToast = null;
+
+                        _pendingCount = 0;
+                        Completed?.Invoke(this, null);
+                    }
+                }
+
+                void handler(object sender, RoutedEventArgs e)
+                {
+                    Logger.Info("closed");
+
+                    groupCall.ClientService.Send(new RemovePendingLiveStoryReactions(groupCall.Id));
+                    undo.Click -= handler;
+
+                    _pendingTimer.Tick -= tick;
+                    _pendingTimer.Stop();
+                    _pendingTimer = null;
+
+                    _pendingToast.IsOpen = false;
+                    _pendingToast = null;
+
+                    _pendingCount = 0;
+                    Completed?.Invoke(this, null);
+                }
+
+                undo.Click += handler;
+
+                _pendingToast = toast;
+
+                _pendingTimer.Tick += tick;
+                _pendingTimer.Start();
+
+                Grid.SetColumn(slice, 1);
+                Grid.SetColumn(value, 1);
+
+                animated.Children.Add(slice);
+                animated.Children.Add(value);
+                animated.Children.Add(undo);
+
+                Grid.SetColumn(animated, 2);
+                content.Children.Add(animated);
+
+                return new Ok();
+            }
+        }
+    }
+}

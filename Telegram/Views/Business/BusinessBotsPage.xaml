@@ -1,0 +1,316 @@
+﻿<local:HostedPage x:Class="Telegram.Views.Business.BusinessBotsPage"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+                  xmlns:controls="using:Telegram.Controls"
+                  xmlns:cells="using:Telegram.Controls.Cells"
+                  xmlns:local="using:Telegram.Views"
+                  mc:Ignorable="d">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <local:HostedPage.Action>
+        <Button Content="{CustomResource Done}"
+                Click="{x:Bind ViewModel.Continue}"
+                Style="{StaticResource AccentButtonStyle}"
+                Visibility="{x:Bind ViewModel.HasChanged, Mode=OneWay}" />
+    </local:HostedPage.Action>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <controls:TableListView x:Name="ScrollingHost"
+                                ItemsSource="{x:Bind ViewModel.Results}"
+                                ContainerContentChanging="OnContainerContentChanging"
+                                SelectionMode="None">
+            <ListView.Header>
+                <controls:SettingsPanel IsHeader="True">
+                    <controls:SettingsHeadline IsLink="True"
+                                               Text="{CustomResource BusinessBotsInfo}"
+                                               Source="ms-appx:///Assets/Animations/BusinessBots.tgs" />
+
+                    <controls:HeaderedControl>
+                        <TextBox x:Name="UsernameField"
+                                 Text="{x:Bind ViewModel.Results.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontFamily="{ThemeResource EmojiThemeFontFamily}"
+                                 PlaceholderText="{CustomResource BusinessBotLink}"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 Padding="12,11,6,12" />
+                        <Grid x:Name="UserBotField"
+                              Background="{ThemeResource SettingsItemBackground}"
+                              BorderBrush="{ThemeResource SettingsItemBorderBrush}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <cells:ProfileCell x:Name="UserBotCell" />
+                            <controls:GlyphButton Click="{x:Bind ViewModel.Clear}"
+                                                  Glyph="&#xE711;"
+                                                  Grid.Column="1" />
+                        </Grid>
+                    </controls:HeaderedControl>
+                </controls:SettingsPanel>
+            </ListView.Header>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Background="{ThemeResource SettingsItemBackground}"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <cells:ProfileCell />
+
+                        <controls:SettingsButton Click="Add_Click"
+                                                 Background="{StaticResource AccentButtonBackground}"
+                                                 Content="{CustomResource Add}"
+                                                 Style="{StaticResource PillButtonStyle}"
+                                                 FontWeight="SemiBold"
+                                                 HorizontalAlignment="Right"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,12,0"
+                                                 Grid.Column="1" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+            <ListView.Footer>
+                <controls:SettingsPanel IsFooter="True">
+                    <controls:SettingsFooter Text="{CustomResource BusinessBotLinkInfo}" />
+
+                    <controls:HeaderedControl Header="{CustomResource BusinessBotChats}">
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsExclude, Mode=TwoWay}"
+                                                      Content="{CustomResource BusinessChatsAllPrivateExcept}"
+                                                      GroupName="BusinessRecipients" />
+                        <controls:SettingsRadioButton IsChecked="{x:Bind ViewModel.IsInclude, Mode=TwoWay}"
+                                                      Content="{CustomResource BusinessChatsOnlySelected}"
+                                                      GroupName="BusinessRecipients" />
+                    </controls:HeaderedControl>
+
+                    <StackPanel Visibility="{x:Bind ViewModel.IsInclude, Mode=OneWay}">
+                        <controls:HeaderedControl Header="{CustomResource BusinessChatsIncluded}">
+                            <controls:SettingsButton Click="{x:Bind ViewModel.AddIncluded}"
+                                                     Content="{CustomResource BusinessChatsIncludedAdd}"
+                                                     Glyph="&#xEA08;" />
+                        </controls:HeaderedControl>
+
+                        <muxc:ItemsRepeater Layout="{StaticResource ThreadStackLayout}"
+                                            ItemsSource="{x:Bind ViewModel.IncludedChats}"
+                                            ElementPrepared="OnElementPrepared">
+                            <muxc:ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <cells:ProfileCell Background="{ThemeResource SettingsItemBackground}"
+                                                       BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                       BorderThickness="1"
+                                                       ContextRequested="Include_ContextRequested"
+                                                       Margin="24,4,24,0"
+                                                       CornerRadius="4"
+                                                       MaxWidth="1000" />
+                                </DataTemplate>
+                            </muxc:ItemsRepeater.ItemTemplate>
+                        </muxc:ItemsRepeater>
+                    </StackPanel>
+
+                    <StackPanel>
+                        <controls:HeaderedControl Header="{CustomResource BusinessChatsExcluded}">
+                            <controls:SettingsButton Click="{x:Bind ViewModel.AddExcluded}"
+                                                     Content="{CustomResource BusinessChatsExcludedAdd}"
+                                                     Glyph="&#xEA08;" />
+                        </controls:HeaderedControl>
+
+                        <muxc:ItemsRepeater Layout="{StaticResource ThreadStackLayout}"
+                                            ItemsSource="{x:Bind ViewModel.ExcludedChats}"
+                                            ElementPrepared="OnElementPrepared">
+                            <muxc:ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <cells:ProfileCell Background="{ThemeResource SettingsItemBackground}"
+                                                       BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                       BorderThickness="1"
+                                                       ContextRequested="Exclude_ContextRequested"
+                                                       Margin="24,4,24,0"
+                                                       CornerRadius="4"
+                                                       MaxWidth="1000" />
+                                </DataTemplate>
+                            </muxc:ItemsRepeater.ItemTemplate>
+                        </muxc:ItemsRepeater>
+                    </StackPanel>
+
+                    <controls:SettingsFooter Text="{CustomResource BusinessBotChatsInfo}" />
+
+                    <controls:HeaderedControl Header="{CustomResource BusinessBotPermissions}"
+                                              Footer="{CustomResource BusinessBotPermissionsInfo}">
+                        <controls:SettingsExpander>
+                            <controls:SettingsExpander.Header>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsThreeState="True"
+                                              IsChecked="{x:Bind ViewModel.CanManageMessages, Mode=TwoWay}"
+                                              Margin="8,-11,0,-12">
+                                    </CheckBox>
+                                    <TextBlock Grid.Column="1">
+                                        <Run Text="{CustomResource BusinessBotPermissionsMessagesSection}" />
+                                        <Run Text="{x:Bind ViewModel.ManageMessagesCount, Mode=OneWay}"
+                                             FontWeight="SemiBold" />
+                                    </TextBlock>
+                                </Grid>
+                            </controls:SettingsExpander.Header>
+                            <StackPanel>
+                                <CheckBox IsChecked="True"
+                                          IsEnabled="False"
+                                          Content="{CustomResource BusinessBotPermissionsMessagesRead}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanReply, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsMessagesReply}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanReadMessages, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsMessagesMarkAsRead}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanDeleteSentMessages, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsMessagesDeleteSent}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanDeleteAllMessages, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsMessagesDeleteReceived}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          CornerRadius="0" />
+                            </StackPanel>
+                        </controls:SettingsExpander>
+
+                        <controls:SettingsExpander>
+                            <controls:SettingsExpander.Header>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsThreeState="True"
+                                              IsChecked="{x:Bind ViewModel.CanManageProfile, Mode=TwoWay}"
+                                              Margin="8,-11,0,-12">
+                                    </CheckBox>
+                                    <TextBlock Grid.Column="1">
+                                        <Run Text="{CustomResource BusinessBotPermissionsProfileSection}" />
+                                        <Run Text="{x:Bind ViewModel.ManageProfileCount, Mode=OneWay}"
+                                             FontWeight="SemiBold" />
+                                    </TextBlock>
+                                </Grid>
+                            </controls:SettingsExpander.Header>
+                            <StackPanel>
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanEditName, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsProfileName}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanEditBio, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsProfileBio}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanEditProfilePhoto, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsProfilePicture}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanEditUsername, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsProfileUsername}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+                            </StackPanel>
+                        </controls:SettingsExpander>
+
+                        <controls:SettingsExpander>
+                            <controls:SettingsExpander.Header>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsThreeState="True"
+                                              IsChecked="{x:Bind ViewModel.CanManageGifts, Mode=TwoWay}"
+                                              Margin="8,-11,0,-12">
+                                    </CheckBox>
+                                    <TextBlock Grid.Column="1">
+                                        <Run Text="{CustomResource BusinessBotPermissionsGiftsSection}" />
+                                        <Run Text="{x:Bind ViewModel.ManageGiftsCount, Mode=OneWay}"
+                                             FontWeight="SemiBold" />
+                                    </TextBlock>
+                                </Grid>
+                            </controls:SettingsExpander.Header>
+                            <StackPanel>
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanViewGiftsAndStars, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsGiftsView}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanSellGifts, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsGiftsSell}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanChangeGiftSettings, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsGiftsSettings}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanTransferGifts, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsGiftsTransfer}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          BorderThickness="0,0,0,1"
+                                          CornerRadius="0" />
+
+                                <CheckBox IsChecked="{x:Bind ViewModel.CanTransferStars, Mode=TwoWay}"
+                                          Content="{CustomResource BusinessBotPermissionsGiftsTransferStars}"
+                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                          Background="Transparent"
+                                          CornerRadius="0" />
+                            </StackPanel>
+                        </controls:SettingsExpander>
+
+                        <CheckBox IsChecked="{x:Bind ViewModel.CanManageStories, Mode=TwoWay}"
+                                  Content="{CustomResource BusinessBotPermissionsStories}"
+                                  Style="{StaticResource SettingsCheckBoxStyle}" />
+                    </controls:HeaderedControl>
+                </controls:SettingsPanel>
+            </ListView.Footer>
+        </controls:TableListView>
+    </Grid>
+</local:HostedPage>

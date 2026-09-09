@@ -1,0 +1,2065 @@
+//
+// Copyright (c) Fela Ameghino 2015-2026
+//
+// Distributed under the GNU General Public License v3.0. (See accompanying
+// file LICENSE or copy at https://www.gnu.org/licenses/gpl-3.0.txt)
+//
+
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using Telegram.Collections;
+using Telegram.Common;
+using Telegram.Controls;
+using Telegram.Converters;
+using Telegram.Navigation;
+using Telegram.Navigation.Services;
+using Telegram.Services;
+using Telegram.Td.Api;
+using Telegram.ViewModels.Delegates;
+using Telegram.ViewModels.Profile;
+using Telegram.ViewModels.Supergroups;
+using Telegram.Views;
+using Telegram.Views.Chats;
+using Telegram.Views.Popups;
+using Telegram.Views.Supergroups;
+// Both configurations since parcel 3: Views/Users is no longer empty on Linux -- UserEditPage is
+// in the subset and AddToContacts below navigates to it.
+using Telegram.Views.Users;
+#if !LINUX
+// Four folders that the Linux subset does not compile at all. It is the USING that fails
+// (CS0246), not the call, so guarding the call sites alone is not enough. Every member each of
+// them provided is guarded below with the same #if, and each guard says which screen is missing.
+using Telegram.Views.Premium.Popups;
+using Telegram.Views.Profile.Popups;
+using Telegram.Views.Stars.Popups;
+using Telegram.Views.Supergroups.Popups;
+#endif
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+
+namespace Telegram.ViewModels
+{
+    public partial class ProfileViewModel : ProfileTabsViewModel, IDelegable<IProfileDelegate>, IHandle
+    {
+        public string LastSeen { get; internal set; }
+
+        public IProfileDelegate Delegate { get; set; }
+
+        private readonly IVoipService _voipService;
+        private readonly INotificationsService _notificationsService;
+        private readonly ITranslateService _translateService;
+
+        public ProfileViewModel(IClientService clientService, ISettingsService settingsService, IEventAggregator aggregator, IVoipService voipService, INotificationsService notificationsService, IStorageService storageService, ITranslateService translateService)
+            : base(clientService, settingsService, storageService, aggregator)
+        {
+            _voipService = voipService;
+            _notificationsService = notificationsService;
+            _translateService = translateService;
+
+            _giftsTabViewModel.ItemsReady += Gifts_ItemsReady;
+
+            SetTimerCommand = new RelayCommand<int?>(SetTimer);
+        }
+
+        private void Gifts_ItemsReady(object sender, EventArgs e)
+        {
+            Delegate?.UpdateChatGifts(Chat);
+        }
+
+        public ITranslateService TranslateService => _translateService;
+
+        public ProfileSavedChatsTabViewModel SavedChatsTab => _savedChatsTabViewModel;
+        public ProfileTopicsTabViewModel TopicsTab => _topicsTabViewModel;
+        public ProfileStoriesTabViewModel PinnedStoriesTab => _pinnedStoriesTabViewModel;
+        public ProfileStoriesTabViewModel ArchivedStoriesTab => _archivedStoriesTabViewModel;
+        public ProfileGroupsTabViewModel GroupsTab => _groupsTabViewModel;
+        public ProfileChannelsTabViewModel ChannelsTab => _channelsTabViewModel;
+        public ProfileBotsTabViewModel BotsTab => _botsTabViewModel;
+        public ProfileGiftsTabViewModel GiftsTab => _giftsTabViewModel;
+        public SupergroupMembersViewModel MembersTab => _membersTabVieModel;
+
+        protected ObservableCollection<ChatMember> _members;
+        public ObservableCollection<ChatMember> Members
+        {
+            get => _members;
+            set => Set(ref _members, value);
+        }
+
+        private ProfileTab _mainTab;
+
+        public long LinkedChatId { get; private set; }
+
+        private DeleteMessageReactionsFromSender _deleteReactions;
+        public DeleteMessageReactionsFromSender DeleteReactions
+        {
+            get => _deleteReactions;
+            set => Set(ref _deleteReactions, value);
+        }
+
+        private ReportMessageReactions _reportReactions;
+        public ReportMessageReactions ReportReactions
+        {
+            get => _reportReactions;
+            set => Set(ref _reportReactions, value);
+        }
+
+        protected override Task OnNavigatedToAsync(object parameter, NavigationMode mode, NavigationState state)
+        {
+            if (parameter is ChatMessageTopic chatMessageTopic)
+            {
+                parameter = chatMessageTopic.ChatId;
+
+                if (chatMessageTopic.MessageTopic is MessageTopicSavedMessages savedMessages)
+                {
+                    if (ClientService.TryGetSavedMessagesTopic(savedMessages.SavedMessagesTopicId, out SavedMessagesTopic topic))
+                    {
+                        SavedMessagesTopic = topic;
+                        Topic = new MessageTopicSavedMessages(topic.Id);
+                    }
+                }
+                else if (chatMessageTopic.MessageTopic is MessageTopicForum forum)
+                {
+                    if (ClientService.TryGetForumTopic(chatMessageTopic.ChatId, forum.ForumTopicId, out ForumTopic topic))
+                    {
+                        ForumTopic = topic;
+                        Topic = new MessageTopicForum(topic.Info.ForumTopicId);
+                    }
+                }
+            }
+
+            if (state != null && state.TryGet("delete_reactions", out DeleteMessageReactionsFromSender deleteReactions))
+            {
+                DeleteReactions = deleteReactions;
+            }
+
+            if (state != null && state.TryGet("report_reactions", out ReportMessageReactions reportReactions))
+            {
+                ReportReactions = reportReactions;
+            }
+
+            var chatId = (long)parameter;
+
+            Chat = ClientService.GetChat(chatId);
+
+            var chat = _chat;
+            if (chat == null)
+            {
+                return Task.CompletedTask;
+            }
+
+            //Subscribe();
+            Delegate?.UpdateChat(chat);
+
+            if (chat.Type is ChatTypePrivate privata)
+            {
+                var item = ClientService.GetUser(privata.UserId);
+                var cache = ClientService.GetUserFull(privata.UserId);
+
+                Delegate?.UpdateUser(chat, item, cache, false, false);
+                ClientService.Send(new GetUserFullInfo(privata.UserId));
+
+                if (cache != null)
+                {
+                    LinkedChatId = cache.PersonalChatId;
+                }
+
+                if (cache?.BotInfo?.CanGetRevenueStatistics is true || item.Type is UserTypeBot { CanBeEdited: true })
+                {
+                    UpdateBalance(chat.Id, new MessageSenderUser(item.Id));
+                }
+            }
+            else if (chat.Type is ChatTypeSecret secretType)
+            {
+                var secret = ClientService.GetSecretChat(secretType.SecretChatId);
+                var item = ClientService.GetUser(secretType.UserId);
+                var cache = ClientService.GetUserFull(secretType.UserId);
+
+                Delegate?.UpdateSecretChat(chat, secret);
+
+                Delegate?.UpdateUser(chat, item, cache, true, false);
+                ClientService.Send(new GetUserFullInfo(secret.UserId));
+
+                if (cache != null)
+                {
+                    Delegate?.UpdateUser(chat, item, cache, true, false);
+                }
+            }
+            else if (chat.Type is ChatTypeBasicGroup basic)
+            {
+                var item = ClientService.GetBasicGroup(basic.BasicGroupId);
+                var cache = ClientService.GetBasicGroupFull(basic.BasicGroupId);
+
+                Delegate?.UpdateBasicGroup(chat, item, cache);
+                ClientService.Send(new GetBasicGroupFullInfo(basic.BasicGroupId));
+            }
+            else if (chat.Type is ChatTypeSupergroup super)
+            {
+                var item = ClientService.GetSupergroup(super.SupergroupId);
+                var cache = ClientService.GetSupergroupFull(super.SupergroupId);
+
+                Delegate?.UpdateSupergroup(chat, item, cache);
+                ClientService.Send(new GetSupergroupFullInfo(super.SupergroupId));
+
+                if (cache != null)
+                {
+                    LinkedChatId = cache.LinkedChatId;
+                }
+
+                if (cache?.CanGetRevenueStatistics is true || cache?.CanGetStarRevenueStatistics is true)
+                {
+                    UpdateBalance(chat.Id, new MessageSenderChat(chat.Id));
+                }
+            }
+
+            return base.OnNavigatedToAsync(parameter, mode, state);
+        }
+
+        public override void Subscribe()
+        {
+            base.Subscribe();
+
+            Aggregator.Subscribe<UpdateUser>(this, Handle)
+                .Subscribe<UpdateUserFullInfo>(Handle)
+                .Subscribe<UpdateBasicGroup>(Handle)
+                .Subscribe<UpdateBasicGroupFullInfo>(Handle)
+                .Subscribe<UpdateSupergroup>(Handle)
+                .Subscribe<UpdateSupergroupFullInfo>(Handle)
+                .Subscribe<UpdateUserStatus>(Handle)
+                .Subscribe<UpdateChatTitle>(Handle)
+                .Subscribe<UpdateChatPhoto>(Handle)
+                .Subscribe<UpdateChatLastMessage>(Handle)
+                .Subscribe<UpdateChatEmojiStatus>(Handle)
+                .Subscribe<UpdateChatAccentColors>(Handle)
+                .Subscribe<UpdateChatActiveStories>(Handle)
+                .Subscribe<UpdateChatNotificationSettings>(Handle);
+        }
+
+        protected override async Task UpdateTabsAsync(Chat chat)
+        {
+            var tabs = new List<ProfileTabItem>();
+            var mainTab = default(ProfileTab);
+
+            if (_savedMessagesTopic != null)
+            {
+                await UpdateSharedCountAsync(chat, tabs);
+            }
+            else if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                var user = ClientService.GetUser(chat);
+                var cached = ClientService.GetUserFull(chat);
+
+                // This should really rarely happen
+                cached ??= await ClientService.SendAsync(new GetUserFullInfo(user.Id)) as UserFullInfo;
+                mainTab = cached?.MainProfileTab;
+
+                if (MyProfile && user.Id == ClientService.Options.MyId)
+                {
+                    tabs.Add(new ProfileTabItem(new ProfileTabPosts(), ChatStoriesType.Pinned, PinnedStoriesTab.Items, Strings.R.ProfileStoriesCount));
+
+                    if (cached != null && cached.GiftCount > 0)
+                    {
+                        tabs.Add(new ProfileTabItem(new ProfileTabGifts(), null, cached.GiftCount, Strings.R.ProfileGiftsCount));
+                    }
+
+                    tabs.Add(new ProfileTabItem(new ProfileTabArchivedPosts(), ChatStoriesType.Archive, ArchivedStoriesTab.Items, Strings.R.ProfileStoriesArchiveCount));
+                }
+                else
+                {
+                    if (user.Type is UserTypeBot { HasTopics: true })
+                    {
+                        tabs.Add(new ProfileTabItem(new ProfileTabTopics(), null, TopicsTab.Items, Strings.R.Chats));
+                    }
+
+                    if (user.Id == ClientService.Options.MyId)
+                    {
+                        tabs.Add(new ProfileTabItem(new ProfileTabSavedChats(), null, SavedChatsTab.Items, Strings.R.Chats));
+                    }
+                    else if (cached?.BotInfo != null && cached.BotInfo.HasMediaPreviews)
+                    {
+                        tabs.Add(new ProfileTabItem(new ProfileTabPreviews(), ChatStoriesType.Pinned, PinnedStoriesTab.Items, Strings.R.ProfileStoriesCount));
+                    }
+                    else
+                    {
+                        if (cached != null && cached.HasPostedToProfileStories)
+                        {
+                            tabs.Add(new ProfileTabItem(new ProfileTabPosts(), ChatStoriesType.Pinned, PinnedStoriesTab.Items, Strings.R.ProfileStoriesCount));
+                        }
+
+                        if (user.Id != ClientService.Options.MyId && cached != null && cached.GiftCount > 0)
+                        {
+                            tabs.Add(new ProfileTabItem(new ProfileTabGifts(), null, cached.GiftCount, Strings.R.ProfileGiftsCount));
+                        }
+                    }
+
+                    await UpdateSharedCountAsync(chat, tabs);
+
+                    if (cached != null && cached.GroupInCommonCount > 0)
+                    {
+                        tabs.Add(new ProfileTabItem(new ProfileTabGroups(), null, cached.GroupInCommonCount, Strings.R.CommonGroups));
+                    }
+
+                    if (user.Type is UserTypeBot)
+                    {
+                        await _botsTabViewModel.Items.LoadMoreItemsAsync(0);
+
+                        if (_botsTabViewModel.Items.Count > 0)
+                        {
+                            tabs.Add(new ProfileTabItem(new ProfileTabSimilarBots(), null, _botsTabViewModel.TotalCount, Strings.R.Bots));
+                        }
+                    }
+                }
+            }
+            else if (chat.Type is ChatTypeSupergroup typeSupergroup)
+            {
+                var supergroup = ClientService.GetSupergroup(chat);
+                var cached = ClientService.GetSupergroupFull(chat);
+
+                // This should really rarely happen
+                cached ??= await ClientService.SendAsync(new GetSupergroupFullInfo(supergroup.Id)) as SupergroupFullInfo;
+                mainTab = cached?.MainProfileTab;
+
+                if (ForumTopic == null && cached?.HasPinnedStories is true)
+                {
+                    tabs.Add(new ProfileTabItem(new ProfileTabPosts(), ChatStoriesType.Pinned, PinnedStoriesTab.Items, Strings.R.ProfileStoriesCount));
+                }
+
+                if (ForumTopic == null && cached?.GiftCount > 0)
+                {
+                    tabs.Add(new ProfileTabItem(new ProfileTabGifts(), null, cached.GiftCount, Strings.R.ProfileGiftsCount));
+                }
+
+                if (typeSupergroup.IsChannel)
+                {
+                    await UpdateSharedCountAsync(chat, tabs);
+                    await _channelsTabViewModel.Items.LoadMoreItemsAsync(0);
+
+                    if (_channelsTabViewModel.Items.Count > 0)
+                    {
+                        tabs.Add(new ProfileTabItem(new ProfileTabSimilarChannels(), null, _channelsTabViewModel.TotalCount, Strings.R.Channels));
+                    }
+                }
+                else
+                {
+                    if (ForumTopic == null)
+                    {
+                        if (supergroup.HasForumTabs)
+                        {
+                            tabs.Add(new ProfileTabItem(new ProfileTabTopics(), null, TopicsTab.Items, Strings.R.Chats));
+                        }
+
+                        tabs.Add(new ProfileTabItem(new ProfileTabMembers(), null, ClientService.GetMembersCount(chat), Strings.R.Members));
+                    }
+
+                    await UpdateSharedCountAsync(chat, tabs);
+                }
+            }
+            else if (chat.Type is ChatTypeBasicGroup)
+            {
+                tabs.Add(new ProfileTabItem(new ProfileTabMembers(), null, ClientService.GetMembersCount(chat), Strings.R.Members));
+                await UpdateSharedCountAsync(chat, tabs);
+            }
+
+            ProfileTabItem already = null;
+            if (mainTab != null)
+            {
+                already = tabs.FirstOrDefault(x => x.Type.GetType() == mainTab.GetType());
+
+                if (already != null)
+                {
+                    tabs.Remove(already);
+                    tabs.Insert(0, already);
+                }
+            }
+
+            Items.ReplaceWith(tabs);
+            SelectedItem = already ?? tabs.FirstOrDefault();
+
+            _mainTab = mainTab;
+
+            if (already?.Type is not ProfileTabGifts)
+            {
+                _giftsTabViewModel.Preload();
+            }
+        }
+
+        private void UpdateMainTab(ProfileTab mainTab)
+        {
+            if (mainTab == null || (_mainTab == null && Items.Empty()))
+            {
+                return;
+            }
+
+            if (_mainTab == null || mainTab.GetType() != _mainTab.GetType())
+            {
+                var already = Items.FirstOrDefault(x => x.Type.GetType() == mainTab.GetType());
+                if (already != null)
+                {
+                    Items.Remove(already);
+                    Items.Insert(0, already);
+                }
+
+                SelectedItem ??= already;
+
+                _mainTab = mainTab;
+            }
+        }
+
+        private async void UpdateBalance(long chatId, MessageSender senderId)
+        {
+            var response = await ClientService.SendAsync(new GetStarTransactions(senderId, string.Empty, null, string.Empty, 1));
+            if (response is StarTransactions transactions)
+            {
+                StarCount = transactions.StarAmount;
+            }
+
+            var response2 = await ClientService.SendAsync(new GetChatRevenueStatistics(chatId, false));
+            if (response2 is ChatRevenueStatistics statistics)
+            {
+                CryptoCount = statistics.RevenueAmount.BalanceAmount;
+            }
+        }
+
+        public void Handle(UpdateUser update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate privata && privata.UserId == update.User.Id)
+            {
+                ClientService.TryGetUserFull(privata.UserId, out UserFullInfo fullInfo);
+                BeginOnUIThread(() => Delegate?.UpdateUser(chat, update.User, fullInfo, false, false));
+            }
+            else if (chat.Type is ChatTypeSecret secret && secret.UserId == update.User.Id)
+            {
+                ClientService.TryGetUserFull(secret.UserId, out UserFullInfo fullInfo);
+                BeginOnUIThread(() => Delegate?.UpdateUser(chat, update.User, fullInfo, true, false));
+            }
+        }
+
+        public void Handle(UpdateUserFullInfo update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate privata && privata.UserId == update.UserId && ClientService.TryGetUser(privata.UserId, out User user))
+            {
+                BeginOnUIThread(() =>
+                {
+                    LinkedChatId = update.UserFullInfo.PersonalChatId;
+                    UpdateMainTab(update.UserFullInfo.MainProfileTab);
+                    Delegate?.UpdateUser(chat, user, update.UserFullInfo, false, false);
+
+                    if (update.UserFullInfo.BotInfo?.CanGetRevenueStatistics is true)
+                    {
+                        UpdateBalance(chat.Id, new MessageSenderUser(update.UserId));
+                    }
+                });
+            }
+            else if (chat.Type is ChatTypeSecret secret && secret.UserId == update.UserId && ClientService.TryGetUser(secret.UserId, out user))
+            {
+                BeginOnUIThread(() => Delegate?.UpdateUser(chat, user, update.UserFullInfo, true, false));
+            }
+        }
+
+
+
+        public void Handle(UpdateBasicGroup update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeBasicGroup basic && basic.BasicGroupId == update.BasicGroup.Id)
+            {
+                ClientService.TryGetBasicGroupFull(basic.BasicGroupId, out BasicGroupFullInfo fullInfo);
+                BeginOnUIThread(() =>
+                {
+                    MembersTab.UpdateMembers();
+                    Delegate?.UpdateBasicGroup(chat, update.BasicGroup, fullInfo);
+                });
+            }
+        }
+
+        public void Handle(UpdateBasicGroupFullInfo update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeBasicGroup basic && basic.BasicGroupId == update.BasicGroupId)
+            {
+                ClientService.TryGetBasicGroup(basic.BasicGroupId, out BasicGroup basicGroup);
+                BeginOnUIThread(() =>
+                {
+                    MembersTab.UpdateMembers();
+                    Delegate?.UpdateBasicGroup(chat, basicGroup, update.BasicGroupFullInfo);
+                });
+            }
+        }
+
+
+
+        public void Handle(UpdateSupergroup update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeSupergroup super && super.SupergroupId == update.Supergroup.Id && ClientService.TryGetSupergroupFull(update.Supergroup.Id, out SupergroupFullInfo fullInfo))
+            {
+                BeginOnUIThread(() =>
+                {
+                    MembersTab.UpdateMembers();
+                    Delegate?.UpdateSupergroup(chat, update.Supergroup, fullInfo);
+                });
+            }
+        }
+
+        public void Handle(UpdateSupergroupFullInfo update)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeSupergroup super && super.SupergroupId == update.SupergroupId)
+            {
+                ClientService.TryGetSupergroup(super.SupergroupId, out Supergroup supergroup);
+                BeginOnUIThread(() =>
+                {
+                    LinkedChatId = update.SupergroupFullInfo.LinkedChatId;
+                    UpdateMainTab(update.SupergroupFullInfo.MainProfileTab);
+                    MembersTab.UpdateMembers();
+                    Delegate?.UpdateSupergroup(chat, supergroup, update.SupergroupFullInfo);
+
+                    if (update.SupergroupFullInfo?.CanGetRevenueStatistics is true || update.SupergroupFullInfo?.CanGetStarRevenueStatistics is true)
+                    {
+                        UpdateBalance(chat.Id, new MessageSenderChat(chat.Id));
+                    }
+                });
+            }
+        }
+
+
+
+        public void Handle(UpdateChatTitle update)
+        {
+            if (update.ChatId == _chat?.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatTitle(_chat));
+            }
+            else if (update.ChatId == LinkedChatId && ClientService.TryGetChat(LinkedChatId, out Chat linkedChat))
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatTitle(linkedChat));
+            }
+        }
+
+        public void Handle(UpdateChatPhoto update)
+        {
+            if (update.ChatId == _chat?.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatPhoto(_chat));
+            }
+            else if (update.ChatId == LinkedChatId && ClientService.TryGetChat(LinkedChatId, out Chat linkedChat))
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatPhoto(linkedChat));
+            }
+        }
+
+        public void Handle(UpdateChatLastMessage update)
+        {
+            if (update.ChatId == LinkedChatId && ClientService.TryGetChat(LinkedChatId, out Chat linkedChat))
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatLastMessage(linkedChat));
+            }
+        }
+
+        public void Handle(UpdateChatEmojiStatus update)
+        {
+            if (update.ChatId == _chat?.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatEmojiStatus(_chat));
+            }
+        }
+
+        public void Handle(UpdateChatAccentColors update)
+        {
+            if (update.ChatId == _chat?.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatAccentColors(_chat));
+            }
+        }
+
+        public void Handle(UpdateChatActiveStories update)
+        {
+            if (update.ActiveStories.ChatId == _chat?.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatActiveStories(_chat));
+            }
+        }
+
+        public void Handle(UpdateUserStatus update)
+        {
+            if (_chat?.Type is ChatTypePrivate privata && privata.UserId == update.UserId || _chat?.Type is ChatTypeSecret secret && secret.UserId == update.UserId)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateUserStatus(_chat, ClientService.GetUser(update.UserId)));
+            }
+        }
+
+        public void Handle(UpdateChatNotificationSettings update)
+        {
+            if (update.ChatId == _chat?.Id)
+            {
+                BeginOnUIThread(() => Delegate?.UpdateChatNotificationSettings(_chat));
+            }
+        }
+
+        public async void SendMessage()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Id == ClientService.Options.MyId)
+            {
+                await ClientService.SendAsync(new ToggleChatViewAsTopics(chat.Id, false));
+            }
+
+            if (NavigationService.IsChatOpen(chat.Id))
+            {
+                NavigationService.GoBack();
+            }
+            else
+            {
+                NavigationService.NavigateToChat(chat);
+            }
+        }
+
+        public void OpenLinkedChannel()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ClientService.TryGetUserFull(chat, out UserFullInfo userFullInfo))
+            {
+                NavigationService.NavigateToChat(userFullInfo.PersonalChatId);
+            }
+            else if (ClientService.TryGetSupergroupFull(chat, out SupergroupFullInfo supergroupFullInfo))
+            {
+                NavigationService.NavigateToChat(supergroupFullInfo.LinkedChatId);
+            }
+        }
+
+        public void OpenStatistics()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            // Statistics ("ver metricas"). RevenuePage navigates on to ChatStatisticsPage, and the
+            // charts under it (Telegram/Charts, 8.450 lines) are written entirely on Win2D
+            // CanvasControl. That is a rewrite onto SKCanvasElement, not a patch. Declared in
+            // unigram-linux/HANDOFF.md.
+            Logger.Warning("ProfileViewModel.OpenStatistics: RevenuePage is not in the Linux subset (charts are Win2D).");
+#else
+            NavigationService.Navigate(typeof(RevenuePage), chat.Id);
+#endif
+        }
+
+        public void OpenBoosts()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            Logger.Warning("ProfileViewModel.OpenBoosts: ChatBoostsPage is not in the Linux subset.");
+#else
+            NavigationService.Navigate(typeof(ChatBoostsPage), chat.Id);
+#endif
+        }
+
+        public void OpenArchivedStories()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            // Stories are out of the subset entirely (8.513 lines). ChatStoriesType survives as an
+            // enum in Telegram.Linux/Hubs/StoriesStubs.cs because ProfileTabsViewModel names it;
+            // the page does not.
+            Logger.Warning("ProfileViewModel.OpenArchivedStories: ChatStoriesPage is not in the Linux subset.");
+#else
+            NavigationService.Navigate(typeof(ChatStoriesPage), new ChatStoriesArgs(chat.Id, ChatStoriesType.Archive));
+#endif
+        }
+
+        public async void Block()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var confirm = await ShowPopupAsync(Strings.AreYouSureBlockContact, Strings.AppName, Strings.OK, Strings.Cancel);
+            if (confirm != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            ToggleIsBlocked(chat, true);
+        }
+
+        public async void Unblock()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var confirm = await ShowPopupAsync(Strings.AreYouSureUnblockContact, Strings.AppName, Strings.OK, Strings.Cancel);
+            if (confirm != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            ToggleIsBlocked(chat, false);
+        }
+
+        private void ToggleIsBlocked(Chat chat, bool blocked)
+        {
+            if (chat.Type is ChatTypePrivate privata)
+            {
+                ClientService.Send(new SetMessageSenderBlockList(new MessageSenderUser(privata.UserId), blocked ? new BlockListMain() : null));
+            }
+            else if (chat.Type is ChatTypeSecret secret)
+            {
+                ClientService.Send(new SetMessageSenderBlockList(new MessageSenderUser(secret.UserId), blocked ? new BlockListMain() : null));
+            }
+        }
+
+        public async void Share()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                var user = ClientService.GetUser(chat.Type is ChatTypePrivate privata ? privata.UserId : chat.Type is ChatTypeSecret secret ? secret.UserId : 0);
+                if (user != null)
+                {
+#if LINUX
+                Logger.Warning("ProfileViewModel.Share: ChooseChatsPopup is not in the Linux subset.");
+#else
+                    await ShowPopupAsync(new ChooseChatsPopup(), new ChooseChatsConfigurationPostMessage(new InputMessageContact(new Contact(user.PhoneNumber, user.FirstName, user.LastName, string.Empty, user.Id))));
+#endif
+                }
+            }
+        }
+
+        public void CopyPhone()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var user = ClientService.GetUser(chat);
+            if (user == null)
+            {
+                return;
+            }
+
+            MessageHelper.CopyText(XamlRoot, PhoneNumber.Format(user.PhoneNumber));
+        }
+
+        public void CopyId()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ClientService.TryGetUser(chat, out User user))
+            {
+                MessageHelper.CopyText(XamlRoot, user.Id.ToString());
+            }
+            else
+            {
+                MessageHelper.CopyText(XamlRoot, chat.Id.ToString());
+            }
+        }
+
+        public string CopyDescription()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return null;
+            }
+
+            if (chat.Type is ChatTypeSupergroup super)
+            {
+                var supergroup = ClientService.GetSupergroupFull(super.SupergroupId);
+                if (supergroup == null)
+                {
+                    return null;
+                }
+
+                return supergroup.Description;
+            }
+            else
+            {
+                var user = ClientService.GetUserFull(chat);
+                if (user == null)
+                {
+                    return null;
+                }
+
+                return user.BotInfo?.ShortDescription ?? user.Bio.Text;
+            }
+        }
+
+        public void ViewUsername()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ClientService.HasActiveUsername(chat, out string username))
+            {
+                OpenUsernameInfo(username);
+            }
+        }
+
+        public void CopyUsername()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ClientService.HasActiveUsername(chat, out string username))
+            {
+                MessageHelper.CopyText(XamlRoot, $"@{username}");
+            }
+        }
+
+        public void CopyUsernameLink()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ClientService.HasActiveUsername(chat, out string username))
+            {
+                MessageHelper.CopyLink(ClientService, XamlRoot, new InternalLinkTypePublicChat(username, string.Empty, false));
+            }
+        }
+
+        public void ShareUsername()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            Logger.Warning("ProfileViewModel.ShareUsername: QrCodePopup is not in the Linux subset.");
+#else
+            ShowPopup(new QrCodePopup(ClientService, NavigationService, Settings, chat));
+#endif
+        }
+
+        public void GiftPremium()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            Logger.Warning("ProfileViewModel.GiftPremium: GiftPopup is not in the Linux subset.");
+#else
+            if (ClientService.TryGetUser(chat, out User user) &&
+                ClientService.TryGetUserFull(chat, out UserFullInfo fullInfo))
+            {
+                ShowPopup(new GiftPopup(ClientService, NavigationService, user, fullInfo));
+            }
+            else
+            {
+                ShowPopup(new GiftPopup(ClientService, NavigationService, chat));
+            }
+#endif
+        }
+
+        public async void CreateSecretChat()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var confirm = await ShowPopupAsync(Strings.AreYouSureSecretChat, Strings.AreYouSureSecretChatTitle, Strings.Start, Strings.Cancel);
+            if (confirm != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate privata)
+            {
+                var response = await ClientService.SendAsync(new CreateNewSecretChat(privata.UserId));
+                if (response is Chat result)
+                {
+                    NavigationService.NavigateToChat(result);
+                }
+            }
+        }
+
+        public async void ToggleProtectedContent()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var protectedContent = chat.HasProtectedContent;
+
+#if LINUX
+            // DisableSharingPopup IS the confirmation for this. Turning content protection on for
+            // a real chat with no way to say no is not an acceptable degradation, so the whole
+            // command returns. Restore when the popup enters the subset.
+            Logger.Warning("ProfileViewModel.ToggleProtectedContent: DisableSharingPopup (the confirmation) is not in the Linux subset; not touching the chat.");
+            return;
+#else
+            if (!protectedContent && (Constants.DEBUG || !IsPremium || AppSettings.ToolTip.Required("DisableSharing")))
+            {
+                var confirm = await ShowPopupAsync(new DisableSharingPopup(ClientService));
+                if (confirm != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+
+                AppSettings.ToolTip.Increment("DisableSharing");
+
+                if (!IsPremium)
+                {
+                    NavigationService.ShowPromo();
+                    return;
+                }
+            }
+
+            ClientService.Send(new ToggleChatHasProtectedContent(chat.Id, !protectedContent));
+            ShowToast(protectedContent ? Strings.DisableSharingToastEnabled : Strings.DisableSharingToastDisabled, protectedContent ? ToastPopupIcon.Success : ToastPopupIcon.Ban);
+#endif
+        }
+
+        public void ShowIdenticon()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            Logger.Warning("ProfileViewModel.ShowIdenticon: IdenticonPopup is not in the Linux subset.");
+#else
+            ShowPopup(new IdenticonPopup(ClientService, chat));
+#endif
+        }
+
+        public async void Invite()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                var user = ClientService.GetUser(chat);
+                if (user == null || user.Type is not UserTypeBot)
+                {
+                    return;
+                }
+
+#if LINUX
+                Logger.Warning("ProfileViewModel.Invite: ChooseChatsPopup is not in the Linux subset.");
+#else
+                await ShowPopupAsync(new ChooseChatsPopup(), new ChooseChatsConfigurationStartBot(user));
+#endif
+            }
+            else
+            {
+                MembersTab.Add();
+            }
+        }
+
+        public void PrivacyPolicy()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ClientService.TryGetUserFull(chat, out UserFullInfo fullInfo))
+            {
+                if (fullInfo.BotInfo?.PrivacyPolicyUrl.Length > 0)
+                {
+                    MessageHelper.OpenUrl(null, null, fullInfo.BotInfo.PrivacyPolicyUrl);
+                }
+                else if (fullInfo.BotInfo.Commands.Any(x => string.Equals(x.Command, "privacy", StringComparison.OrdinalIgnoreCase)))
+                {
+                    ClientService.Send(new SendMessage(chat.Id, null, null, null, new InputMessageText("/privacy".AsFormattedText(), null, false)));
+                    SendMessage();
+                }
+                else
+                {
+                    MessageHelper.OpenUrl(null, null, Strings.BotDefaultPrivacyPolicy);
+                }
+            }
+        }
+
+        public void Mute()
+        {
+            ToggleMute(false);
+        }
+
+        public void Unmute()
+        {
+            ToggleMute(true);
+        }
+
+        public void ToggleMute()
+        {
+            ToggleMute(ClientService.Notifications.IsMuted(_chat));
+        }
+
+        private void ToggleMute(bool unmute)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            _notificationsService.SetMuteFor(chat, ClientService.Notifications.IsMuted(chat) ? 0 : 632053052, XamlRoot);
+        }
+
+        public async void OpenUsernameInfo(string username)
+        {
+#if LINUX
+            Logger.Warning("ProfileViewModel.OpenUsernameInfo: CollectiblePopup is not in the Linux subset.");
+#else
+            var type = new CollectibleItemTypeUsername(username);
+            var response = await ClientService.SendAsync(new GetCollectibleItemInfo(type));
+
+            if (response is CollectibleItemInfo info)
+            {
+                ShowPopup(new CollectiblePopup(ClientService, Chat, info, type));
+            }
+#endif
+        }
+
+        public async void OpenPhoneInfo()
+        {
+#if LINUX
+            Logger.Warning("ProfileViewModel.OpenPhoneInfo: CollectiblePopup is not in the Linux subset.");
+#else
+            if (ClientService.TryGetUser(_chat, out User user))
+            {
+                var type = new CollectibleItemTypePhoneNumber(user.PhoneNumber);
+                var response = await ClientService.SendAsync(new GetCollectibleItemInfo(type));
+
+                if (response is CollectibleItemInfo info)
+                {
+                    ShowPopup(new CollectiblePopup(ClientService, Chat, info, type));
+                }
+            }
+#endif
+        }
+
+        #region Show last seen
+
+        public async void ShowLastSeen()
+        {
+#if LINUX
+            // ChangePrivacyPopup is the consent step in front of SetUserPrivacySettingRules, which
+            // rewrites the user's own "last seen" privacy for EVERYONE. Guarded whole.
+            Logger.Warning("ProfileViewModel.ShowLastSeen: ChangePrivacyPopup (the consent step) is not in the Linux subset; not touching privacy settings.");
+#else
+            if (ClientService.TryGetUser(_chat, out User user))
+            {
+                var popup = new ChangePrivacyPopup(user, ChangePrivacyType.LastSeen, IsPremium, IsPremiumAvailable);
+
+                var confirm = await ShowPopupAsync(popup);
+                if (confirm == ContentDialogResult.Primary)
+                {
+                    ClientService.Send(new SetUserPrivacySettingRules(new UserPrivacySettingShowStatus(), new UserPrivacySettingRules(new UserPrivacySettingRule[] { new UserPrivacySettingRuleAllowAll() })));
+                    ShowToast(Strings.PremiumLastSeenSet, ToastPopupIcon.Info);
+                }
+                else if (confirm == ContentDialogResult.Secondary && IsPremiumAvailable && !IsPremium)
+                {
+                    NavigationService.ShowPromo(new PremiumSourceFeature(new PremiumFeatureAdvancedChatManagement()));
+                }
+            }
+#endif
+        }
+
+        #endregion
+
+        #region Search
+
+        public void Search()
+        {
+            OpenSearch(string.Empty);
+        }
+
+        public void OpenSearch(string query)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (NavigationService.IsChatOpen(chat.Id))
+            {
+                NavigationService.GoBack(new NavigationState { { "search", query } });
+            }
+            else
+            {
+                NavigationService.NavigateToChat(chat, state: new NavigationState { { "search", query } });
+            }
+        }
+
+        #endregion
+
+        #region Call
+
+        public void VoiceCall()
+        {
+            Call(false);
+        }
+
+        public void VideoCall()
+        {
+            Call(true);
+        }
+
+        private void Call(bool video)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                _voipService.StartPrivateCall(NavigationService, chat, video);
+            }
+            else if (chat.VideoChat.GroupCallId == 0)
+            {
+                _voipService.CreateGroupCall(NavigationService, chat.Id);
+            }
+            else
+            {
+                _voipService.JoinGroupCall(NavigationService, chat.Id);
+            }
+        }
+
+        #endregion
+
+        public void AddToContacts()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var user = ClientService.GetUser(chat);
+            if (user == null)
+            {
+                return;
+            }
+
+            // Was a Logger.Warning on Linux until parcel 3 put UserEditPage in the subset. Two
+            // unfenced doors reach this: the profile overflow menu's "Add contact"
+            // (ProfileHeader.xaml.cs:1708) and the Edit entry on a private chat's note
+            // (ProfileHeader.xaml.cs:1616, through Edit() below) -- both drawn, both dead until now.
+            NavigationService.Navigate(typeof(UserEditPage), user.Id);
+        }
+
+        public async void Edit()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            // SupergroupTopicPopup drags the whole emoji drawer in; SupergroupEditPage is the screen
+            // upstream reaches permissions and administrators FROM, and every switch on it writes to
+            // the real group on the spot. Both declared in unigram-linux/HANDOFF.md.
+            if (_forumTopic != null || chat.Type is ChatTypeSupergroup or ChatTypeBasicGroup)
+            {
+                Logger.Warning("ProfileViewModel.Edit: SupergroupTopicPopup / SupergroupEditPage are not in the Linux subset.");
+            }
+            else if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                AddToContacts();
+            }
+#else
+            if (_forumTopic != null)
+            {
+                var popup = new SupergroupTopicPopup(ClientService, _forumTopic.Info);
+
+                var confirm = await ShowPopupAsync(popup);
+                if (confirm == ContentDialogResult.Primary)
+                {
+                    ClientService.Send(new EditForumTopic(chat.Id, _forumTopic.Info.ForumTopicId, popup.SelectedName, true, popup.SelectedIcon.CustomEmojiId));
+                }
+            }
+            else if (chat.Type is ChatTypeSupergroup or ChatTypeBasicGroup)
+            {
+                NavigationService.Navigate(typeof(SupergroupEditPage), chat.Id);
+            }
+            else if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                AddToContacts();
+            }
+#endif
+        }
+
+        public void Discuss()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (chat.Type is ChatTypeSupergroup)
+            {
+                var fullInfo = ClientService.GetSupergroupFull(chat);
+                if (fullInfo == null)
+                {
+                    return;
+                }
+
+                NavigationService.NavigateToChat(fullInfo.LinkedChatId);
+            }
+        }
+
+        public async void Join()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var response = await ClientService.SendAsync(new JoinChat(chat.Id));
+            MessageHelper.HandleChatJoinResult(ClientService, NavigationService, chat.Id, chat.Type is ChatTypeSupergroup { IsChannel: true }, response);
+        }
+
+        public void ShowRating()
+        {
+#if LINUX
+            // ProfileRatingPopup draws with RichTextBlock, which is [NotImplemented] for __SKIA__
+            // and paints nothing, and its four show/hide animations set no Duration. It would open
+            // as an empty box. Out until both are dealt with.
+            Logger.Warning("ProfileViewModel.ShowRating: ProfileRatingPopup is not in the Linux subset.");
+#else
+            if (ClientService.TryGetUser(Chat, out User user) && ClientService.TryGetUserFull(Chat, out UserFullInfo fullInfo))
+            {
+                ShowPopup(new ProfileRatingPopup(ClientService, user, fullInfo.Rating, fullInfo.PendingRating, fullInfo.PendingRatingDate));
+            }
+#endif
+        }
+
+        public async void ShowPromo()
+        {
+            bool CanShowPromo()
+            {
+                if (ClientService.TryGetUser(Chat, out User user) && user.IsPremium && user.VerificationStatus?.IsScam is not true && user.VerificationStatus?.IsFake is not true)
+                {
+                    return user.IsPremium || Chat.EmojiStatus != null;
+                }
+                else if (ClientService.TryGetSupergroup(Chat, out Supergroup supergroup) && supergroup.VerificationStatus?.IsScam is not true && supergroup.VerificationStatus?.IsFake is not true)
+                {
+                    return Chat.EmojiStatus != null;
+                }
+
+                return false;
+            }
+
+            if (CanShowPromo())
+            {
+                if (Chat?.EmojiStatus?.Type is EmojiStatusTypeCustomEmoji emojiStatusTypeCustomEmoji)
+                {
+                    var response = await ClientService.SendAsync(new GetCustomEmojiStickers(new[] { emojiStatusTypeCustomEmoji.CustomEmojiId }));
+                    if (response is Stickers stickers)
+                    {
+                        var second = await ClientService.SendAsync(new GetStickerSet(stickers.StickersValue[0].SetId));
+                        if (second is StickerSet stickerSet)
+                        {
+#if LINUX
+                            Logger.Warning("ProfileViewModel.ShowPromo: PromoPopup is not in the Linux subset.");
+#else
+                            NavigationService.ShowPopup(new PromoPopup(ClientService, Chat, stickerSet), new PremiumSourceFeature(new PremiumFeatureEmojiStatus()));
+#endif
+                        }
+                    }
+                }
+                else if (Chat?.EmojiStatus?.Type is EmojiStatusTypeUpgradedGift emojiStatusTypeUpgradedGift)
+                {
+#if LINUX
+                    Logger.Warning("ProfileViewModel.ShowPromo: MessageHelper.NavigateToUpgradedGift is not in the Linux subset.");
+#else
+                    MessageHelper.NavigateToUpgradedGift(ClientService, NavigationService, emojiStatusTypeUpgradedGift.GiftName);
+#endif
+                }
+                else
+                {
+#if LINUX
+                    Logger.Warning("ProfileViewModel.ShowPromo: PromoPopup is not in the Linux subset.");
+#else
+                    NavigationService.ShowPopup(new PromoPopup(ClientService, Chat, null), new PremiumSourceFeature(new PremiumFeatureEmojiStatus()));
+#endif
+                }
+            }
+        }
+
+        public void OpenChat()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            NavigationService.NavigateToChat(chat.Id, createNewWindow: true);
+        }
+
+        public async void DeleteChat()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            Logger.Info(chat.Type);
+
+            // DeleteChatPopup IS the confirmation this stands behind; it is now in the Linux subset.
+            // ProfileHeader only offers this entry when the status is Member or Restricted, so the
+            // owner case (which needs DeleteChat, not LeaveChat) cannot be reached from here.
+            var updated = await ClientService.SendAsync(new GetChat(chat.Id)) as Chat ?? chat;
+            var dialog = new DeleteChatPopup(ClientService, updated, null, false);
+
+            var confirm = await ShowPopupAsync(dialog);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                var check = dialog.IsChecked == true;
+
+                if (updated.Type is ChatTypeSecret secret)
+                {
+                    await ClientService.SendAsync(new CloseSecretChat(secret.SecretChatId));
+                }
+                else if (updated.Type is ChatTypeBasicGroup or ChatTypeSupergroup)
+                {
+                    await ClientService.SendAsync(new LeaveChat(updated.Id));
+                }
+
+                var user = ClientService.GetUser(updated);
+                if (user != null && user.Type is UserTypeRegular)
+                {
+                    ClientService.Send(new DeleteChatHistory(updated.Id, true, check));
+                }
+                else
+                {
+                    if (updated.Type is ChatTypePrivate privata && check)
+                    {
+                        await ClientService.SendAsync(new SetMessageSenderBlockList(new MessageSenderUser(privata.UserId), new BlockListMain()));
+                    }
+
+                    ClientService.Send(new DeleteChatHistory(updated.Id, true, false));
+                }
+            }
+        }
+
+        public async void Delete()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            var message = Strings.AreYouSureDeleteAndExit;
+            if (chat.Type is ChatTypePrivate or ChatTypeSecret)
+            {
+                message = Strings.AreYouSureDeleteContact;
+            }
+            else if (chat.Type is ChatTypeSupergroup super)
+            {
+                message = super.IsChannel ? Strings.ChannelLeaveAlert : Strings.MegaLeaveAlert;
+            }
+
+            var confirm = await ShowPopupAsync(message, Strings.AppName, Strings.OK, Strings.Cancel);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                if (chat.Type is ChatTypePrivate privata)
+                {
+                    ClientService.Send(new RemoveContacts(new[] { privata.UserId }));
+                }
+                else if (chat.Type is ChatTypeSecret secret)
+                {
+                    ClientService.Send(new RemoveContacts(new[] { secret.UserId }));
+                }
+                else
+                {
+                    if (chat.Type is ChatTypeBasicGroup or ChatTypeSupergroup)
+                    {
+                        await ClientService.SendAsync(new LeaveChat(chat.Id));
+                    }
+
+                    ClientService.Send(new DeleteChatHistory(chat.Id, true, false));
+                }
+            }
+
+            //var user = _item as TLUser;
+            //if (user == null)
+            //{
+            //    return;
+            //}
+
+            //var confirm = await ShowPopupAsync(Strings.AreYouSureDeleteContact, Strings.AppName, Strings.OK, Strings.Cancel);
+            //if (confirm != ContentDialogResult.Primary)
+            //{
+            //    return;
+            //}
+
+            //var response = await LegacyService.DeleteContactAsync(user.ToInputUser());
+            //if (response.IsSucceeded)
+            //{
+            //    // TODO: delete from synced contacts
+
+            //    Aggregator.Publish(new TLUpdateContactLink
+            //    {
+            //        UserId = response.Result.User.Id,
+            //        MyLink = response.Result.MyLink,
+            //        ForeignLink = response.Result.ForeignLink
+            //    });
+
+            //    user.RaisePropertyChanged(() => user.HasFirstName);
+            //    user.RaisePropertyChanged(() => user.HasLastName);
+            //    user.RaisePropertyChanged(() => user.FirstName);
+            //    user.RaisePropertyChanged(() => user.LastName);
+            //    user.RaisePropertyChanged(() => user.FullName);
+            //    user.RaisePropertyChanged(() => user.DisplayName);
+
+            //    user.RaisePropertyChanged(() => user.HasPhone);
+            //    user.RaisePropertyChanged(() => user.Phone);
+
+            //    RaisePropertyChanged(() => IsEditEnabled);
+            //    RaisePropertyChanged(() => IsAddEnabled);
+
+            //    var dialog = ClientService.GetDialog(_item.ToPeer());
+            //    if (dialog != null)
+            //    {
+            //        dialog.RaisePropertyChanged(() => dialog.With);
+            //    }
+            //}
+        }
+
+        #region Mute for
+
+        public async void MuteFor(int? value)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (value is int update)
+            {
+                _notificationsService.SetMuteFor(chat, update, XamlRoot);
+            }
+            else
+            {
+#if LINUX
+                // ChatMutePopup is the "mute for how long" picker. The fixed durations in the menu
+                // above still work; only "custom" lands here.
+                Logger.Warning("ProfileViewModel.MuteFor: ChatMutePopup is not in the Linux subset.");
+                return;
+#else
+                var mutedFor = Settings.Notifications.GetMuteFor(chat);
+                var popup = new ChatMutePopup(mutedFor);
+
+                var confirm = await ShowPopupAsync(popup);
+                if (confirm != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+
+                if (mutedFor != popup.Value)
+                {
+                    _notificationsService.SetMuteFor(chat, popup.Value, XamlRoot);
+                }
+#endif
+            }
+        }
+
+        public void SetSound(bool silent)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            _notificationsService.SetSound(chat, silent, XamlRoot);
+        }
+
+        #endregion
+
+        #region Set timer
+
+        public RelayCommand<int?> SetTimerCommand { get; }
+        private async void SetTimer(int? ttl)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            if (ttl is int value && value != chat.MessageAutoDeleteTime)
+            {
+                ClientService.Send(new SetChatMessageAutoDeleteTime(chat.Id, value));
+            }
+            else if (ttl == null)
+            {
+#if LINUX
+                // ChatTtlPopup is the picker AND the confirmation for the auto-delete timer, which
+                // is applied to the real chat the moment it closes. The fixed values in the menu
+                // above still work; only "custom" lands here.
+                Logger.Warning("ProfileViewModel.SetTimer: ChatTtlPopup is not in the Linux subset; not changing the auto-delete timer.");
+#else
+                var dialog = new ChatTtlPopup(ChatTtlType.Auto);
+                dialog.Value = chat.MessageAutoDeleteTime;
+
+                var confirm = await ShowPopupAsync(dialog);
+                if (confirm != ContentDialogResult.Primary || chat.MessageAutoDeleteTime == dialog.Value)
+                {
+                    return;
+                }
+
+                ClientService.Send(new SetChatMessageAutoDeleteTime(chat.Id, dialog.Value));
+#endif
+            }
+        }
+
+        #endregion
+
+        public void OpenMainWebApp()
+        {
+            if (_chat == null || !ClientService.TryGetUser(_chat, out User user))
+            {
+                return;
+            }
+
+#if LINUX
+            // Mini apps need the Chromium web presenter, which is Windows-only in this port.
+            Logger.Warning("ProfileViewModel.OpenMainWebApp: MessageHelper.NavigateToMainWebApp is not in the Linux subset.");
+#else
+            MessageHelper.NavigateToMainWebApp(ClientService, NavigationService, user, string.Empty, new WebAppOpenModeFullSize());
+#endif
+        }
+
+        public async void DeleteReaction()
+        {
+            var deleteReactions = DeleteReactions;
+            if (deleteReactions == null)
+            {
+                return;
+            }
+
+            var popup = new MessagePopup
+            {
+                Message = Strings.DeleteAlertReaction,
+                Title = Strings.DeleteReaction,
+                PrimaryButtonText = Strings.Delete,
+                SecondaryButtonText = Strings.Cancel,
+                IsChecked = true,
+                PrimaryButtonStyle = BootStrapper.Current.Resources["DangerButtonStyle"] as Style
+            };
+
+            var confirm = await ShowPopupAsync(popup);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                DeleteReactions = null;
+                Delegate?.UpdateChat(Chat);
+
+                ClientService.Send(deleteReactions);
+
+                ShowToast(Strings.ReactionDeleteSent, ToastPopupIcon.Info);
+            }
+        }
+
+        public async void BanAndReport()
+        {
+            var reportReactions = ReportReactions;
+            if (reportReactions == null)
+            {
+                return;
+            }
+
+            var popup = new MessagePopup
+            {
+                Message = Strings.ReportAlertReaction,
+                Title = Strings.ReportReaction,
+                PrimaryButtonText = Strings.ReportChat,
+                SecondaryButtonText = Strings.Cancel,
+                CheckBoxLabel = Strings.BanUser,
+                IsChecked = true,
+                PrimaryButtonStyle = BootStrapper.Current.Resources["DangerButtonStyle"] as Style
+            };
+
+            var confirm = await ShowPopupAsync(popup);
+            if (confirm == ContentDialogResult.Primary)
+            {
+                ReportReactions = null;
+                Delegate?.UpdateChat(Chat);
+
+                ClientService.Send(reportReactions);
+
+                if (popup.IsChecked is true)
+                {
+                    ClientService.Send(new BanChatMember(reportReactions.ChatId, reportReactions.SenderId, 0, false));
+                }
+
+                ShowToast(Strings.ReportChatSent, ToastPopupIcon.Info);
+            }
+        }
+
+        #region Supergroup
+
+        public void OpenSimilarChat(Chat chat)
+        {
+            ClientService.Send(new OpenChatSimilarChat(_chat.Id, chat.Id));
+            NavigationService.NavigateToChat(chat);
+        }
+
+        public void OpenSimilarBot(User user)
+        {
+            if (_chat.Type is ChatTypePrivate privata)
+            {
+                ClientService.Send(new OpenBotSimilarBot(privata.UserId, user.Id));
+                NavigationService.NavigateToUser(user.Id);
+            }
+        }
+
+        public void OpenSavedMessagesTopic(SavedMessagesTopic topic)
+        {
+            NavigationService.NavigateToChat(_chat.Id, topic: new MessageTopicSavedMessages(topic.Id));
+        }
+
+        public void OpenForumTopic(ForumTopic topic)
+        {
+            if (_chat is not Chat chat)
+            {
+                return;
+            }
+
+            if (NavigationService.IsChatOpen(chat.Id))
+            {
+                NavigationService.ReplaceChatInBackStack(chat.Id, new ChatMessageTopic(chat.Id, new MessageTopicForum(topic.Info.ForumTopicId)));
+                NavigationService.GoBack();
+            }
+            else
+            {
+                NavigationService.NavigateToChat(chat, topic: new MessageTopicForum(topic.Info.ForumTopicId));
+            }
+        }
+
+        private StarAmount _starCount;
+        public StarAmount StarCount
+        {
+            get => _starCount;
+            set => Set(ref _starCount, value);
+        }
+
+        private long _cryptoCount;
+        public long CryptoCount
+        {
+            get => _cryptoCount;
+            set => Set(ref _cryptoCount, value);
+        }
+
+        public void OpenBalance()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            // Balance / revenue. Same reason as OpenStatistics: RevenuePage leads to
+            // ChatStatisticsPage and the charts under it are 8.450 lines of Win2D.
+            Logger.Warning("ProfileViewModel.OpenBalance: ChatRevenuePage / RevenuePage are not in the Linux subset (charts are Win2D).");
+#else
+            if (chat.Type is ChatTypePrivate privata)
+            {
+                NavigationService.Navigate(typeof(ChatRevenuePage), chat.Id);
+            }
+            else if (chat.Type is ChatTypeSupergroup)
+            {
+                NavigationService.Navigate(typeof(RevenuePage), chat.Id, new NavigationState { { "selectedIndex", 2 } });
+            }
+#endif
+        }
+
+        public void OpenAdmins()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            NavigationService.Navigate(typeof(SupergroupAdministratorsPage), chat.Id);
+        }
+
+        public void OpenKicked()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            // SupergroupPermissionsPage is the most destructive screen in the app: every checkbox
+            // writes SetChatPermissions to the real group instantly. It also needs SettingsExpander,
+            // whose <Style TargetType> in Themes/Generic.xaml carries the win: prefix. Note nothing
+            // in the profile calls this today (upstream reaches it from SupergroupEditPage).
+            Logger.Warning("ProfileViewModel.OpenKicked: SupergroupPermissionsPage is not in the Linux subset.");
+#else
+            NavigationService.Navigate(typeof(SupergroupPermissionsPage), chat.Id);
+#endif
+        }
+
+        public void OpenMembers()
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+            NavigationService.Navigate(typeof(SupergroupMembersPage), chat.Id);
+        }
+
+        public async void OpenAffiliate()
+        {
+            var chat = _chat;
+            if (chat == null || !ClientService.TryGetUser(chat, out User user) || !ClientService.TryGetUserFull(user.Id, out UserFullInfo fullInfo))
+            {
+                return;
+            }
+
+#if LINUX
+            Logger.Warning("ProfileViewModel.OpenAffiliate: the two affiliate popups (Views/Stars/Popups) are not in the Linux subset.");
+#else
+            var affiliateType = new AffiliateTypeCurrentUser();
+
+            var response = await ClientService.SendAsync(new GetConnectedAffiliateProgram(affiliateType, user.Id));
+            if (response is ConnectedAffiliateProgram program)
+            {
+                ShowPopup(new ConnectedAffiliateProgramPopup(ClientService, NavigationService, program, affiliateType));
+            }
+            else
+            {
+                ShowPopup(new FoundAffiliateProgramPopup(ClientService, NavigationService, new FoundAffiliateProgram(user.Id, fullInfo.BotInfo.AffiliateProgram), affiliateType));
+            }
+#endif
+        }
+
+        public virtual ChatMemberCollection CreateMembers(long supergroupId)
+        {
+            return new ChatMemberCollection(ClientService, supergroupId, new SupergroupMembersFilterRecent());
+        }
+
+        #endregion
+
+        #region Context menu
+
+        public void PromoteMember(ChatMember member)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            // The menu entry stays (fidelity to Unigram) but the editor of administrator rights is
+            // not in the subset. Same treatment as SupergroupMembersViewModel.PromoteMember.
+            Logger.Warning("ProfileViewModel.PromoteMember: SupergroupEditAdministratorPopup is not in the Linux subset.");
+#else
+            NavigationService.ShowPopupAsync(new SupergroupEditAdministratorPopup(), new SupergroupEditMemberArgs(chat.Id, member.MemberId));
+#endif
+        }
+
+        public void RestrictMember(ChatMember member)
+        {
+            var chat = _chat;
+            if (chat == null)
+            {
+                return;
+            }
+
+#if LINUX
+            Logger.Warning("ProfileViewModel.RestrictMember: SupergroupEditRestrictedPopup is not in the Linux subset.");
+#else
+            NavigationService.ShowPopupAsync(new SupergroupEditRestrictedPopup(), new SupergroupEditMemberArgs(chat.Id, member.MemberId));
+#endif
+        }
+
+        public async void RemoveMember(ChatMember member)
+        {
+            var chat = _chat;
+            if (chat == null || _members == null)
+            {
+                return;
+            }
+
+            var index = _members.IndexOf(member);
+
+            _members.Remove(member);
+
+            var response = await ClientService.SendAsync(new SetChatMemberStatus(chat.Id, member.MemberId, new ChatMemberStatusBanned()));
+            if (response is Error)
+            {
+                _members.Insert(index, member);
+            }
+        }
+
+        public void SetMainTab(ProfileTab tab)
+        {
+            if (MyProfile)
+            {
+                ClientService.Send(new SetMainProfileTab(tab));
+            }
+            else if (Chat.Type is ChatTypeSupergroup supergroup)
+            {
+                ClientService.Send(new SetSupergroupMainProfileTab(supergroup.SupergroupId, tab));
+            }
+        }
+
+        #endregion
+
+    }
+
+    // Basic groups answer with their whole membership in one response; supergroups page. Which of
+    // the two a given instance is doing is fixed by the constructor that made it.
+    public partial class ChatMemberCollection : IncrementalCollection<ChatMember>
+    {
+        private const int Limit = 200;
+
+        private readonly IClientService _clientService;
+
+        private readonly long _chatId;
+        private readonly string _query;
+        private readonly ChatMembersFilter _chatFilter;
+
+        private readonly long _supergroupId;
+        private readonly SupergroupMembersFilter _supergroupFilter;
+
+        public ChatMemberCollection(IClientService clientService, long chatId, string query, ChatMembersFilter filter)
+        {
+            _clientService = clientService;
+            _chatId = chatId;
+            _query = query;
+            _chatFilter = filter;
+        }
+
+        public ChatMemberCollection(IClientService clientService, long supergroupId, SupergroupMembersFilter filter)
+        {
+            _clientService = clientService;
+            _supergroupId = supergroupId;
+            _supergroupFilter = filter;
+        }
+
+        protected override Task<IncrementalLoadResult> OnLoadMoreItemsAsync(uint count)
+        {
+            return _chatId != 0
+                ? SearchChatMembersAsync()
+                : GetSupergroupMembersAsync();
+        }
+
+        // One response covers the group, so there is never a second page.
+        private async Task<IncrementalLoadResult> SearchChatMembersAsync()
+        {
+            var response = await _clientService.SendAsync(new SearchChatMembers(_chatId, _query, Limit, _chatFilter));
+            if (response is not ChatMembers members)
+            {
+                return default;
+            }
+
+            return Append(members.Members, _chatFilter is null or ChatMembersFilterMembers, false);
+        }
+
+        private async Task<IncrementalLoadResult> GetSupergroupMembersAsync()
+        {
+            // Read before the await: it is the offset this page continues from.
+            var offset = Count;
+
+            var response = await _clientService.SendAsync(new GetSupergroupMembers(_supergroupId, _supergroupFilter, offset, Limit));
+            if (response is not ChatMembers members)
+            {
+                return default;
+            }
+
+            // Sorted only when this first response is already the whole membership. Past that the
+            // server's order is the only thing keeping consecutive pages consistent with each other.
+            var sorted = offset == 0
+                && members.TotalCount <= Limit
+                && _supergroupFilter is null or SupergroupMembersFilterRecent;
+
+            return Append(members.Members, sorted, members.Members.Count == Limit);
+        }
+
+        private IncrementalLoadResult Append(Vector<ChatMember> members, bool sorted, bool hasMoreItems)
+        {
+            if (sorted)
+            {
+                members = members.OrderBy(x => x, new ChatMemberComparer(_clientService, true)).ToArray();
+            }
+
+            // One at a time, not AddRange: a ListView wants a notification per item.
+            foreach (var member in members)
+            {
+                Add(member);
+            }
+
+            return new IncrementalLoadResult((uint)members.Count, hasMoreItems);
+        }
+    }
+
+    public partial class ChatMemberComparer : IComparer<ChatMember>
+    {
+        private readonly IClientService _clientService;
+        private readonly bool _epoch;
+
+        public ChatMemberComparer(IClientService clientService, bool epoch)
+        {
+            _clientService = clientService;
+            _epoch = epoch;
+        }
+
+        public int Compare(ChatMember x, ChatMember y)
+        {
+            _clientService.TryGetUser(x.MemberId, out User xUser);
+            _clientService.TryGetUser(y.MemberId, out User yUser);
+
+            if (xUser == null || yUser == null)
+            {
+                return -1;
+            }
+
+            if (_epoch)
+            {
+                var epoch = LastSeenConverter.GetIndex(yUser).CompareTo(LastSeenConverter.GetIndex(xUser));
+                if (epoch == 0)
+                {
+                    var fullName = xUser.FirstName.CompareTo(yUser.FirstName);
+                    if (fullName == 0)
+                    {
+                        return yUser.Id.CompareTo(xUser.Id);
+                    }
+
+                    return fullName;
+                }
+
+                return epoch;
+            }
+            else
+            {
+                var fullName = xUser.FirstName.CompareTo(yUser.FirstName);
+                if (fullName == 0)
+                {
+                    return yUser.Id.CompareTo(xUser.Id);
+                }
+
+                return fullName;
+            }
+        }
+    }
+
+    public partial class GroupCallMessageComparer : IComparer<GroupCallMessage>
+    {
+        public int Compare(GroupCallMessage x, GroupCallMessage y)
+        {
+            // TODO: expiration date?
+            return y.Date.CompareTo(x.Date);
+        }
+    }
+}

@@ -1,0 +1,245 @@
+<controls:CorePage x:Class="Telegram.Views.Authorization.AuthorizationPage"
+                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                   xmlns:local="using:Telegram.Views"
+                   xmlns:common="using:Telegram.Common"
+                   xmlns:controls="using:Telegram.Controls"
+                   xmlns:models="using:Telegram.Entities"
+                   xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+                   xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                   Loaded="OnLoaded"
+                   mc:Ignorable="d">
+
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <SlideNavigationTransitionInfo Effect="FromRight" />
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+
+        <StackPanel x:Name="PhonePanel"
+                    VerticalAlignment="Center"
+                    Padding="12,0,12,20"
+                    MaxWidth="360"
+                    Grid.Row="1"
+                    Grid.RowSpan="2"
+                    Canvas.ZIndex="1">
+            <Border x:Name="Logo2Panel"
+                    Width="160"
+                    Height="160">
+                <Border x:Name="Logo2"
+                        Background="#2AABEE"
+                        Width="160"
+                        Height="160"
+                        CornerRadius="80">
+                    <Path Fill="White"
+                          StrokeThickness="0"
+                          Data="M36.2,79.2C59.5,69,75.1,62.3,82.9,59.1c22.2-9.2,26.8-10.8,29.8-10.9c0.7,0,2.1,0.2,3.1,0.9 c0.8,0.7,1,1.5,1.1,2.2c0.1,0.6,0.2,2,0.1,3.1c-1.2,12.6-6.4,43.3-9.1,57.5c-1.1,6-3.3,8-5.5,8.2c-4.6,0.4-8.2-3.1-12.7-6 c-7-4.6-11-7.5-17.9-12c-7.9-5.2-2.8-8.1,1.7-12.7c1.2-1.2,21.6-19.8,22-21.5c0-0.2,0.1-1-0.4-1.4c-0.5-0.4-1.2-0.3-1.7-0.2 c-0.7,0.2-12,7.6-33.7,22.3c-3.2,2.2-6.1,3.3-8.7,3.2c-2.9-0.1-8.4-1.6-12.4-2.9c-5-1.6-9-2.5-8.6-5.3 C30.4,82.1,32.4,80.7,36.2,79.2z" />
+                </Border>
+            </Border>
+
+            <StackPanel x:Name="PhoneInnerPanel"
+                        Margin="0,32,0,0">
+                <TextBlock x:Name="TitleLabel"
+                           Text="{x:Bind ViewModel.S.YourPhone, Mode=OneWay}"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           TextAlignment="Center" />
+                <TextBlock Text="{x:Bind ViewModel.S.StartText, Mode=OneWay}"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           TextAlignment="Center"
+                           Padding="0,8,0,16" />
+
+                <controls:CountryBox TabIndex="1"
+                                     Country="{x:Bind ViewModel.SelectedCountry, Mode=TwoWay}"
+                                     SelectionChanged="Countries_SelectionChanged"
+                                     MinWidth="280"
+                                     HorizontalAlignment="Stretch" />
+
+                <controls:PhoneTextBox x:Name="PrimaryInput"
+                                       TabIndex="0"
+                                       Text="{x:Bind ViewModel.PhoneNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                       Country="{x:Bind ViewModel.SelectedCountry, Mode=TwoWay}"
+                                       MinWidth="200"
+                                       InputScope="TelephoneNumber"
+                                       IsTextPredictionEnabled="False"
+                                       KeyDown="PhoneNumber_KeyDown"
+                                       Margin="0,12,0,4" />
+
+                <muxc:ProgressBar IsIndeterminate="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                  Background="Transparent" />
+
+                <Button x:Name="NextButton"
+                        Content="{x:Bind ViewModel.S.OK, Mode=OneWay}"
+                        Command="{x:Bind ViewModel.SendCommand}"
+                        Style="{StaticResource AccentButtonStyle}"
+                        HorizontalAlignment="Stretch"
+                        Margin="0,4,0,8" />
+
+                <Button x:Name="Switch2"
+                        Click="Switch2_Click"
+                        Content="{x:Bind ViewModel.S.LoginWithQrCode, Mode=OneWay}"
+                        Style="{StaticResource AccentTextButtonStyle}"
+                        HorizontalAlignment="Center" />
+
+                <StackPanel Height="64"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,-64">
+                    <Button Click="{x:Bind ViewModel.LoginWithPasskey}"
+                            Content="{x:Bind ViewModel.S.LoginWithPasskey}"
+                            Visibility="{x:Bind ViewModel.CanUseLoginPasskey, Mode=OneWay}"
+                            Style="{StaticResource AccentTextButtonStyle}"
+                            HorizontalAlignment="Center" />
+
+                    <Button Click="{x:Bind ViewModel.ContinueOnThisLanguage}"
+                            Content="{x:Bind ViewModel.ContinueOnThisLanguageText, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.ContinueOnThisLanguageText, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                            Style="{StaticResource AccentTextButtonStyle}"
+                            HorizontalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel x:Name="TokenPanel"
+                    VerticalAlignment="Center"
+                    Padding="12,20"
+                    MaxWidth="360"
+                    Grid.Row="1"
+                    Grid.RowSpan="2">
+            <Grid Width="222"
+                  Height="222">
+                <Grid x:Name="TokenRoot">
+                    <Border Background="#FFFFFF"
+                            CornerRadius="16,16,4,16"
+                            Margin="-4" />
+                    <controls:AnimatedImage x:Name="TokenPlaceholder"
+                                            AutoPlay="True"
+                                            IsCachingEnabled="False"
+                                            FrameSize="222,222"
+                                            DecodeFrameType="Logical"
+                                            Width="222"
+                                            Height="222" />
+                    <controls:QrCode x:Name="Token"
+                                     Foreground="#000000"
+                                     Text="{x:Bind ViewModel.Token, Mode=OneWay}"
+                                     Width="222"
+                                     Height="222" />
+                </Grid>
+                <Border x:Name="Logo1Panel"
+                        Width="48"
+                        Height="48">
+                    <Border x:Name="Logo1"
+                            Background="#2AABEE"
+                            Width="48"
+                            Height="48"
+                            CornerRadius="24">
+                        <Path Fill="White"
+                              StrokeThickness="0"
+                              Data="M10.9,23.7c7-3,11.7-5.1,14-6c6.7-2.8,8-3.3,9-3.3c0.2,0,0.6,0,0.9,0.3c0.2,0.2,0.3,0.5,0.3,0.6 s0.1,0.6,0,0.9c-0.4,3.8-1.9,13-2.7,17.3c-0.3,1.8-1,2.4-1.6,2.5c-1.4,0.1-2.5-0.9-3.8-1.8c-2.1-1.4-3.3-2.2-5.4-3.6 c-2.4-1.6-0.8-2.4,0.5-3.8c0.4-0.4,6.5-6,6.6-6.5c0-0.1,0-0.3-0.1-0.4c-0.1-0.1-0.3-0.1-0.5,0c-0.2,0-3.6,2.3-10.1,6.7 c-1,0.7-1.8,1-2.6,1c-0.9,0-2.5-0.5-3.7-0.9c-1.5-0.5-2.7-0.7-2.6-1.6C9.1,24.6,9.7,24.2,10.9,23.7z" />
+                    </Border>
+                </Border>
+            </Grid>
+
+            <StackPanel x:Name="TokenInnerPanel"
+                        Margin="0,12,0,0">
+                <TextBlock Text="{x:Bind ViewModel.S.LoginWithQrCodeTitle, Mode=OneWay}"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           TextAlignment="Center" />
+
+                <Grid HorizontalAlignment="Center"
+                      RowSpacing="8"
+                      Margin="0,8,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <controls:BadgeControl Text="1"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,8,0" />
+                    <controls:BadgeControl Text="2"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,8,0"
+                                           Grid.Row="1" />
+                    <controls:BadgeControl Text="3"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,8,0"
+                                           Grid.Row="2" />
+
+                    <TextBlock Text="{x:Bind ViewModel.S.LoginWithQrCodeStep1, Mode=OneWay}"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               VerticalAlignment="Bottom"
+                               Grid.Column="1" />
+
+                    <TextBlock Text="{x:Bind ViewModel.S.LoginWithQrCodeStep2, Mode=OneWay}"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               VerticalAlignment="Bottom"
+                               Grid.Column="1"
+                               Grid.Row="1" />
+
+                    <TextBlock Text="{x:Bind ViewModel.S.LoginWithQrCodeStep3, Mode=OneWay}"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               VerticalAlignment="Bottom"
+                               Grid.Column="1"
+                               Grid.Row="2" />
+                </Grid>
+
+                <Button Click="Switch1_Click"
+                        Content="{x:Bind ViewModel.S.LoginWithQrCodeSkip, Mode=OneWay}"
+                        Style="{StaticResource AccentTextButtonStyle}"
+                        HorizontalAlignment="Center" />
+
+                <StackPanel Height="64"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,-64">
+                    <Button Click="{x:Bind ViewModel.LoginWithPasskey}"
+                            Content="{x:Bind ViewModel.S.LoginWithPasskey}"
+                            Visibility="{x:Bind ViewModel.CanUseLoginPasskey, Mode=OneWay}"
+                            Style="{StaticResource AccentTextButtonStyle}"
+                            HorizontalAlignment="Center" />
+
+                    <Button Click="{x:Bind ViewModel.ContinueOnThisLanguage}"
+                            Content="{x:Bind ViewModel.ContinueOnThisLanguageText, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.ContinueOnThisLanguageText, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                            Style="{StaticResource AccentTextButtonStyle}"
+                            HorizontalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+
+        </StackPanel>
+
+        <controls:VersionLabel VerticalAlignment="Bottom"
+                               HorizontalAlignment="Center"
+                               Grid.Row="2" />
+
+        <!-- SettingsProxyPopup is outside the Linux subset, so ViewModel.Proxy is a no-op there:
+             the button would be dead. Dropped on Skia until the popup is ported. -->
+        <win:Button x:Name="Proxy"
+                    Click="{x:Bind ViewModel.Proxy}"
+                    Content="{x:Bind ViewModel.S.ProxySettings, Mode=OneWay}"
+                    Style="{StaticResource AccentTextButtonStyle}"
+                    HorizontalAlignment="Right"
+                    Margin="12,0"
+                    Grid.Row="1" />
+
+        <Border x:Name="TitleBar"
+                Background="Transparent" />
+        <controls:BackButton x:Name="Back" />
+    </Grid>
+</controls:CorePage>

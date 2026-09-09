@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Packages Telegram.Modern.csproj, the same way Telegram.Msix packages Telegram.csproj.
+
+  A second project rather than a switch on the first one, because the two have to be installable
+  at the same time: every fix in the AOT port so far was verified by running it beside the
+  shipping build. That means a different Identity/Name, which means a different manifest, which
+  is the one thing a single wapproj cannot condition cleanly.
+
+  Nothing is duplicated but this file. The manifest is generated from the packaging manifest,
+  Telegram.Msix\Package.appxmanifest - the one that describes the real bundle, Telegram plus
+  Telegram.Stub. Telegram\Package.appxmanifest is not the source: that one is only used when
+  deploying the app project straight from Visual Studio.
+
+  Only the name and display name are poked into the copy, so this installs beside both the
+  shipping package and the loose layout Telegram.Modern.csproj registers. The publisher is left
+  alone: the source carries the Store one, CN=Telegram FZ-LLC, while the certificate is issued to
+  CN=D89C87B4, and the packaging targets substitute the certificate's subject into the generated
+  manifest at package time.
+
+  Build it through Telegram.Modern.slnx, never this file directly - $(SolutionDir) is empty
+  otherwise - and see net10-port-todo.md for the bundle command. It has its own solution so that
+  a plain Telegram.slnx build does not pay for a NativeAOT compile.
+-->
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '15.0'">
+    <VisualStudioVersion>15.0</VisualStudioVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- See the essay on this property in Telegram.Msix.wapproj. Same reasoning, and it matters
+         more here: without it the referenced project is built twice, and the second build is a
+         full NativeAOT compile. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM64">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM64">
+      <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup>
+    <WapProjPath Condition="'$(WapProjPath)'==''">$(MSBuildExtensionsPath)\Microsoft\DesktopBridge\</WapProjPath>
+  </PropertyGroup>
+  <!-- CoreClr, not the default Managed: the debugger has to attach to a CoreCLR/NativeAOT process
+       rather than a .NET Native one. This is the property the template adds that Telegram.Msix,
+       being .NET Native, does not have. -->
+  <PropertyGroup>
+    <DebuggerFlavor>AppHostLocalDebugger</DebuggerFlavor>
+    <RemoteDebugEnabled>False</RemoteDebugEnabled>
+    <DebuggerType>CoreClr</DebuggerType>
+  </PropertyGroup>
+  <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.props" />
+  <PropertyGroup>
+    <ProjectGuid>9a903edf-aa79-46fe-8576-2fb410ab21e6</ProjectGuid>
+    <TargetPlatformVersion>10.0.26100.0</TargetPlatformVersion>
+    <TargetPlatformMinVersion>10.0.18362.0</TargetPlatformMinVersion>
+    <DefaultLanguage>en</DefaultLanguage>
+    <!--
+      Without this the bundle carries no language packages at all, and Windows sees an
+      English-only app.
+
+      A wapproj does not expand Resource Language="x-generate" from the PRI it builds - it merges
+      the generated manifests of its UAP project references, and takes their expanded Resources
+      with it. Telegram.csproj is such a reference and contributes all thirty languages;
+      Telegram.Modern.csproj is an ordinary .NETCoreApp reference and contributes nothing, so the
+      manifest here keeps only the default language, however many the PRI holds. The packaging
+      targets then drop every resource file map whose language the manifest does not name.
+
+      The split itself was always right - obj\x64\Release\split.language-*.pri are all there, they
+      were just never packed. This packages what the split produced, which is the shape
+      Telegram.Msix bundles: near-empty per-language packages that exist to declare support,
+      since the strings themselves come from the API and not from the .resw. As there, the main
+      package still declares only EN; the languages are declared by the packs.
+    -->
+    <AppxFilterOutUnusedLanguagesResourceFileMaps>false</AppxFilterOutUnusedLanguagesResourceFileMaps>
+    <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+    <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
+    <!--
+      Taken from a private property instead of -p:UapAppxPackageBuildMode, which on a solution build
+      is a global one and so reaches Telegram.Modern.csproj as well - where it cannot be overridden.
+
+      That project has the single-project MSIX tooling on, and its GenerateUploadMsixPackage target
+      keys off nothing but BuildAppxUploadPackageForUap: a store mode there makes the app package
+      and sign itself, a second time and beside this one, and fail with APPX0101 for want of a
+      signing key. Giving it a key would only turn the failure into a wasted ILC-sized packaging
+      pass. SideloadOnly leaves that flag false, which is why only the store modes ever broke.
+
+      Build.Modern.ps1 passes ModernPackageBuildMode. A Visual Studio packaging wizard build still
+      works: it sets the real property globally, and a global one wins over this line.
+    -->
+    <UapAppxPackageBuildMode Condition="'$(ModernPackageBuildMode)' != ''">$(ModernPackageBuildMode)</UapAppxPackageBuildMode>
+    <!-- On, as in Telegram.Msix. A sideload build does produce an .appxsym - the shipping bundles
+         have one each - and without it a tester's crash cannot be symbolicated at all, which is
+         what happened to 12.10.0.13967. The ILC pdb is ~300 MB, against ~180 MB for the .NET
+         Native symbol package, and that is simply the price of being able to read the reports. -->
+    <AppxSymbolPackageEnabled>True</AppxSymbolPackageEnabled>
+    <AppxBundlePlatforms>x64</AppxBundlePlatforms>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <PackageCertificateKeyFile>..\Telegram_TemporaryKey.pfx</PackageCertificateKeyFile>
+    <EntryPointProjectUniqueName>..\Telegram\Telegram.Modern.csproj</EntryPointProjectUniqueName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Platform)'=='x64' or '$(Platform)'=='ARM64'">
+    <AppxBundle>Always</AppxBundle>
+  </PropertyGroup>
+
+  <!--
+    The generated manifest.
+
+    A third identity, deliberately: NOT Telegram.Modern.csproj's 38833FF26BA1D.UnigramNet10.
+    Windows cannot move an installed app between a registered loose layout and a bundle any more
+    than it can between an msix and an msixbundle, so sharing the name would leave whichever was
+    installed first blocking the other. The csproj keeps the layout identity for
+    Add-AppxPackage -Register during development; this one owns the bundle.
+  -->
+  <PropertyGroup>
+    <ModernPackageIdentity>38833FF26BA1D.UnigramNet10Bundle</ModernPackageIdentity>
+    <ModernPackageDisplayName>Unigram .NET 10 (bundle)</ModernPackageDisplayName>
+    <ModernSourceManifest>..\Telegram.Msix\Package.appxmanifest</ModernSourceManifest>
+    <!-- Alternative installs beside Telegram.Msix's bundle; Original is the identity to ship a
+         beta under. In the path as well as the condition, because the target is incremental on the
+         source manifest and this file - flipping the property alone would reuse the old manifest. -->
+    <ModernIdentity Condition="'$(ModernIdentity)' == ''">Alternative</ModernIdentity>
+    <ModernAppxManifest>$(BaseIntermediateOutputPath)Package.$(ModernIdentity).appxmanifest</ModernAppxManifest>
+    <ModernManifestNamespaces>&lt;Namespace Prefix='f' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;&lt;Namespace Prefix='uap' Uri='http://schemas.microsoft.com/appx/manifest/uap/windows10' /&gt;&lt;Namespace Prefix='uap5' Uri='http://schemas.microsoft.com/appx/manifest/uap/windows10/5' /&gt;</ModernManifestNamespaces>
+    <!-- The app does not land at the package root the way it does in the shipping bundle. The
+         entry point exemption only applies to the legacy UWP project system; an SDK-style
+         reference is payload like any other and goes in a folder named after the project. The
+         Application element copes on its own, because it says $targetnametoken$.exe and the
+         packaging rewrites it - but the startupTask and appExecutionAlias extensions spell
+         Telegram.exe out, and MakeAppx rejects the package because that path does not exist.
+         Derived rather than written out, since the project name is still a placeholder. -->
+    <ModernAppFolder>$([System.IO.Path]::GetFileNameWithoutExtension('$(EntryPointProjectUniqueName)'))</ModernAppFolder>
+  </PropertyGroup>
+
+  <Target Name="PatchModernPackageManifest"
+          BeforeTargets="PrepareForBuild"
+          Inputs="$(ModernSourceManifest);$(MSBuildThisFileFullPath)"
+          Outputs="$(ModernAppxManifest)">
+    <MakeDir Directories="$(BaseIntermediateOutputPath)" />
+    <Copy SourceFiles="$(ModernSourceManifest)" DestinationFiles="$(ModernAppxManifest)" />
+    <!-- -p:ModernIdentity=Original leaves the copy alone, so the bundle carries the identity
+         Telegram.Msix ships - which is what a beta for testers wants, and which means it can no
+         longer be installed beside it. The Executable rewrite below is not part of this: that one
+         is about where the payload sits in the package and is always needed. -->
+    <XmlPoke Condition="'$(ModernIdentity)' != 'Original'"
+             XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="/f:Package/f:Identity/@Name" Value="$(ModernPackageIdentity)" />
+    <XmlPoke Condition="'$(ModernIdentity)' != 'Original'"
+             XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="/f:Package/f:Properties/f:DisplayName" Value="$(ModernPackageDisplayName)" />
+    <XmlPoke Condition="'$(ModernIdentity)' != 'Original'"
+             XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="/f:Package/f:Applications/f:Application/uap:VisualElements/@DisplayName" Value="$(ModernPackageDisplayName)" />
+    <XmlPoke XmlInputPath="$(ModernAppxManifest)" Namespaces="$(ModernManifestNamespaces)"
+             Query="//uap5:Extension[@Executable='Telegram.exe']/@Executable" Value="$(ModernAppFolder)\Telegram.exe" />
+  </Target>
+
+  <ItemGroup>
+    <AppxManifest Include="$(ModernAppxManifest)">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+  </ItemGroup>
+  <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The manifest declares a windows.fullTrustProcess extension pointing at the stub, so it
+         has to be in the package as it is in the shipping bundle. -->
+    <ProjectReference Include="..\Telegram.Stub\Telegram.Stub.csproj" />
+    <ProjectReference Include="..\Telegram\Telegram.Modern.csproj">
+      <UseLowTrustEntryPoint>True</UseLowTrustEntryPoint>
+      <SkipGetTargetFrameworkProperties>True</SkipGetTargetFrameworkProperties>
+      <PublishProfile>Properties\PublishProfiles\win-$(Platform).pubxml</PublishProfile>
+      <!-- As a property too, not just metadata: nothing in DesktopBridge, AppxPackage or the .NET
+           SDK reads the metadata, so outside Visual Studio the reference resolves at the
+           no-RuntimeIdentifier output path and the PRI step looks for a resources.pri that was
+           never built there. -->
+      <AdditionalProperties>PublishProfile=Properties\PublishProfiles\win-$(Platform).pubxml</AdditionalProperties>
+    </ProjectReference>
+  </ItemGroup>
+</Project>
