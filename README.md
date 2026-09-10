@@ -1,10 +1,9 @@
 # Unigram for Linux
+<img width="2172" height="724" alt="c46e2308-a0e2-4d17-ab19-6161150abb78" src="https://github.com/user-attachments/assets/e00da11a-d7c9-45a0-b0f3-3f72820eb7eb" />
 
 This is an **unofficial community Linux port of [Unigram](https://github.com/UnigramDev/Unigram)**, the Telegram client for Windows, adapted to Linux with [Uno Platform](https://platform.uno/) and Skia.
 
-It is not affiliated with, endorsed by, or an official distribution of Telegram, Telegram Messenger LLP, Unigram, or UnigramDev. Unigram and the original work are credited to [UnigramDev/Unigram](https://github.com/UnigramDev/Unigram). Telegram is a trademark of its respective owner.
-
-The port is based on Unigram 12.10.2. It is released under the GNU General Public License v3; see [LICENSE](LICENSE).
+It is not affiliated with, endorsed by, or an official distribution of Telegram, Telegram Messenger LLP, Unigram, or UnigramDev. Unigram and the original work are credited to [UnigramDev/Unigram](https://github.com/UnigramDev/Unigram). Telegram is a trademark of its respective owner. It is released under the GNU General Public License v3; see [LICENSE](LICENSE).
 
 ## What works
 
