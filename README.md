@@ -35,9 +35,7 @@ If a capability is not listed as working above, treat it as **unverified** rathe
 
 ## Install
 
-Release artifacts are currently **unsigned**. The SHA256 values below provide an integrity check; a human may sign and rename the files before upload, including removing the `-UNSIGNED` suffix.
-
-Packaged builds bundle their own copy of libopus; loader resolution to the bundled copy is verified at packaging time, but a live voice call is not exercised during packaging.
+Release artifacts are currently **unsigned**. The SHA256 values below provide an integrity check. Packaged builds bundle their own copy of libopus; loader resolution to the bundled copy is verified at packaging time, but a live voice call is not exercised during packaging.
 
 ### AppImage
 
