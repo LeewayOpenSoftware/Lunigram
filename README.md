@@ -1,49 +1,61 @@
-# Unigram for Linux
-<img width="2172" height="724" alt="c46e2308-a0e2-4d17-ab19-6161150abb78" src="https://github.com/user-attachments/assets/e00da11a-d7c9-45a0-b0f3-3f72820eb7eb" />
+# Lunigram
 
-This is an **unofficial community Linux port of [Unigram](https://github.com/UnigramDev/Unigram)**, the Telegram client for Windows, adapted to Linux with [Uno Platform](https://platform.uno/) and Skia.
+<img width="2172" height="724" alt="Lunigram — Unigram for Linux" src="https://github.com/user-attachments/assets/e00da11a-d7c9-45a0-b0f3-3f72820eb7eb" />
 
-It is not affiliated with, endorsed by, or an official distribution of Telegram, Telegram Messenger LLP, Unigram, or UnigramDev. Unigram and the original work are credited to [UnigramDev/Unigram](https://github.com/UnigramDev/Unigram). Telegram is a trademark of its respective owner. It is released under the GNU General Public License v3; see [LICENSE](LICENSE).
+**Unigram for Linux.**
+
+Lunigram is a community port of [Unigram](https://github.com/UnigramDev/Unigram), bringing the familiar Unigram experience from Windows to Linux using [Uno Platform](https://platform.uno/) and Skia.
+
+The goal is fairly simple: keep as much of Unigram as possible while making it feel at home and work reliably on Linux.
+
+Lunigram is still a work in progress, but the main application is already usable and many core features are working.
 
 ## What works
 
-The following have been exercised on screen in the Linux build:
+The Linux build currently supports:
 
-- Chats and scrolling
-- Chat themes
-- Wallpapers: rendering, preview, and applying a wallpaper
-- A profile's Posts tab: loading and grid display, including Ctrl+wheel zoom
-- Avatars
-- One-to-one voice calls with the local camera
-- Group voice calls: call window, participants, mute, and leave
-- Group video: local and remote camera video
+* Chats and message history
+* Chat scrolling
+* Chat themes
+* Wallpapers, including previewing and applying them
+* Avatars
+* Profile Posts, including the grid view and Ctrl+wheel zoom
+* One-to-one voice calls
+* Local camera during calls
+* Group voice calls
+* Group call participants, mute and leave controls
+* Group video with local and remote cameras
 
-These are reports of the tested port, not a claim that every Telegram feature or every hardware and desktop combination behaves identically.
+There is still plenty to test, especially across different Linux distributions, desktop environments and hardware.
 
-## Known limitations and unverified areas
+If something is not listed here, it does not necessarily mean that it is broken — it may simply not have been thoroughly tested yet.
 
-The following are not yet supported, remain under verification, or have known issues:
+## Known issues
 
-- Screen sharing is not yet supported.
-- Wayland portal integration has not been verified.
-- Forum-topic navigation still has a scroll issue.
-- Some base-bump residue items remain: page-block follow-up, pointer-position, and selectable-offsets work.
-- A tint-effect guard still produces log noise.
-- The Linux toast asset glob still needs attention.
+A few parts still need work:
 
-If a capability is not listed as working above, treat it as **unverified** rather than assuming parity with the Windows client.
+* Screen sharing is not supported yet.
+* Wayland portal integration still needs testing.
+* Forum topics have a known scrolling issue.
+* Some work inherited from the recent Unigram base update is still being cleaned up.
+* The tint effect can currently produce harmless log noise.
+* Linux toast/notification assets still need some attention.
+
+Bug reports and testing on different Linux setups are welcome.
 
 ## Install
 
-Release artifacts are currently **unsigned**. The SHA256 values below provide an integrity check. Packaged builds bundle their own copy of libopus; loader resolution to the bundled copy is verified at packaging time, but a live voice call is not exercised during packaging.
+Prebuilt packages are available for AppImage, Flatpak and Debian/Ubuntu.
+
+Current release builds are unsigned, so SHA256 hashes are provided for verification.
 
 ### AppImage
 
-`Unigram-12.10.2-x86_64-UNSIGNED.AppImage`  
-Size: 92,494,328 bytes  
-SHA256: `749be9cc3c7acb34efaabd24abcbb588ca9b0c17a348d0fa6240e55ceb22666f`
+`Unigram-12.10.2-x86_64-UNSIGNED.AppImage`
 
-Run it after making it executable:
+SHA256:
+
+`749be9cc3c7acb34efaabd24abcbb588ca9b0c17a348d0fa6240e55ceb22666f`
 
 ```sh
 chmod +x Unigram-12.10.2-x86_64-UNSIGNED.AppImage
@@ -52,38 +64,78 @@ chmod +x Unigram-12.10.2-x86_64-UNSIGNED.AppImage
 
 ### Flatpak
 
-`Unigram-12.10.2-x86_64-UNSIGNED.flatpak`  
-Size: 76,343,184 bytes  
-SHA256: `f42a892e41fc5d05671ef19837196451caffb86021afd951dc92ab337f1e01a4`
+`Unigram-12.10.2-x86_64-UNSIGNED.flatpak`
+
+SHA256:
+
+`f42a892e41fc5d05671ef19837196451caffb86021afd951dc92ab337f1e01a4`
 
 ```sh
 flatpak install --user ./Unigram-12.10.2-x86_64-UNSIGNED.flatpak
 ```
 
-### Debian / Ubuntu (.deb)
+### Debian / Ubuntu
 
-`unigram-linux_12.10.2_amd64-UNSIGNED.deb`  
-Size: 79,898,968 bytes  
-SHA256: `d927db4a1e1eb864bff1d78b4008ee54e880532480574991e09a64aec1592fca`
+`unigram-linux_12.10.2_amd64-UNSIGNED.deb`
+
+SHA256:
+
+`d927db4a1e1eb864bff1d78b4008ee54e880532480574991e09a64aec1592fca`
 
 ```sh
 sudo apt install ./unigram-linux_12.10.2_amd64-UNSIGNED.deb
 ```
 
-The package installs its payload under `/opt/unigram-linux` with a launcher at `/usr/bin/unigram`.
+The Debian package installs Lunigram under:
 
-The native-library bundle is also available for builders:
+```text
+/opt/unigram-linux
+```
 
-`unigram-linux-prebuilt-native-libs-x86_64.tar.zst`  
-Size: 23,759,472 bytes  
-SHA256: `e406016c363ea9c6219dc1446ff9324bb10361f0c044f6a772689d79b82b9b00`
+with the launcher available at:
 
-## Build from source
+```text
+/usr/bin/unigram
+```
 
-See [BUILDING-LINUX.md](BUILDING-LINUX.md) for the authoritative prerequisites and build steps. A clean build needs the native libraries from the companion `unigram-linux` repository and a matching TDLib scheme.
+A bundle of the native libraries used by the project is also available for developers:
 
-Each builder must provide their own Telegram `api_id` and `api_hash` from [my.telegram.org](https://my.telegram.org/apps), using `Telegram/Constants.Secret.cs.template` to create the gitignored `Telegram/Constants.Secret.cs`. Do not commit credentials or share a filled-in copy.
+`unigram-linux-prebuilt-native-libs-x86_64.tar.zst`
 
-## Credits and license
+SHA256:
 
-The application is derived from Unigram by UnigramDev and incorporates third-party native components. See [NOTICE](NOTICE) for the native component inventory and build locations. Source is licensed under GPLv3; see [LICENSE](LICENSE).
+`e406016c363ea9c6219dc1446ff9324bb10361f0c044f6a772689d79b82b9b00`
+
+## Building Lunigram
+
+If you want to build the project yourself, see [BUILDING-LINUX.md](BUILDING-LINUX.md).
+
+The build currently requires the native libraries from the companion `unigram-linux` repository as well as a matching TDLib scheme.
+
+You will also need your own Telegram `api_id` and `api_hash`, which can be created at [my.telegram.org](https://my.telegram.org/apps).
+
+Copy:
+
+```text
+Telegram/Constants.Secret.cs.template
+```
+
+to:
+
+```text
+Telegram/Constants.Secret.cs
+```
+
+and add your credentials there.
+
+`Constants.Secret.cs` is ignored by Git and should never be committed.
+
+## About the project
+
+Lunigram is based on the work of the [Unigram](https://github.com/UnigramDev/Unigram) project and its contributors.
+
+It is an independent community port and is not affiliated with or endorsed by Telegram, Telegram Messenger LLP, Unigram or UnigramDev.
+
+Telegram is a trademark of its respective owner.
+
+The project is released under the GNU General Public License v3. See [LICENSE](LICENSE) for details and [NOTICE](NOTICE) for information about the third-party native components used by the Linux build.
